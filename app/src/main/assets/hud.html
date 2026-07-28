@@ -1,0 +1,1503 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>HUD</title>
+<style>
+/* Paleta tomada del UI de Champions: carmesí para el rival, azul real para lo
+   tuyo, verde ácido para lo seleccionado, texto crema.
+   Layout pensado para HORIZONTAL: el panel es más ancho que alto, así que la
+   navegación va en un riel lateral y el alto se reserva para datos. */
+:root{
+  --ink:#140B1E;
+  --foe:#7E1D42; --foe-2:#5A0F2E; --foe-pill:#D6437A; --foe-row:#E0678F;
+  --ally:#2F3AA8; --ally-2:#1E2578; --ally-pill:#4E5AD8;
+  --pick:#C7F03F; --cream:#FFF6E6; --dim:#C9A8B8; --faint:#8E7A92;
+  --hp1:#9BE04A; --hp2:#DCF03C; --warn:#FFB03A; --sure:#5BE8C4; --bad:#FF6B7A;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{background:transparent;color:var(--cream);
+  font-family:system-ui,-apple-system,"Roboto",sans-serif;font-size:11.5px;line-height:1.28;
+  font-weight:600;overflow:hidden;display:flex}
+::-webkit-scrollbar{width:0}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+
+/* ── riel lateral: no roba alto, que es lo escaso en horizontal ── */
+.rail{width:46px;flex:0 0 46px;display:flex;flex-direction:column;gap:3px;
+  padding:6px 5px calc(6px + env(safe-area-inset-bottom)) 6px}
+.rail .tab{flex:1;border-radius:12px;background:color-mix(in srgb,var(--ally-2) 90%,transparent);color:var(--cream);
+  font-size:7.5px;font-weight:800;letter-spacing:.04em;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:1px;min-height:0}
+.rail .tab i{font-style:normal;font-size:13px;line-height:1}
+.rail .tab[data-on="1"]{background:var(--pick);color:var(--ink)}
+
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:4px;padding:6px 8px 4px;flex:0 0 auto}
+.mark{font-size:8px;font-weight:800;letter-spacing:.16em;color:var(--pick)}
+.grow{flex:1}
+.ico{width:25px;height:25px;border-radius:999px;background:color-mix(in srgb,var(--ally-2) 90%,transparent);
+  color:var(--cream);font-size:12px;display:grid;place-items:center}
+.ico:active{background:var(--pick);color:var(--ink)}
+.ico[data-on="1"]{background:var(--pick);color:var(--ink)}
+
+.body{flex:1;overflow-y:auto;padding:0 8px 8px;display:flex;flex-direction:column;gap:6px}
+/* dos columnas: el ancho sobra en horizontal */
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:6px;align-items:start}
+
+.card{border-radius:15px;padding:8px;border:1px solid rgba(255,255,255,.12);
+  background:color-mix(in srgb,var(--ally) 92%,transparent);
+  box-shadow:0 2px 10px rgba(0,0,0,.45)}
+.card.f{background:color-mix(in srgb,var(--foe) 92%,transparent)}
+.card.d{background:color-mix(in srgb,var(--ally-2) 92%,transparent)}
+.hd{display:inline-block;background:var(--ally-pill);color:var(--cream);
+  font-size:8px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;
+  padding:3px 10px;border-radius:999px;margin-bottom:6px}
+.card.f .hd{background:var(--foe-pill)}
+.hd em{font-style:normal;opacity:.75;letter-spacing:.02em;text-transform:none;margin-left:4px}
+
+.row{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.09);
+  border-radius:999px;padding:5px 9px;margin-bottom:3px}
+.row:nth-child(even){background:rgba(255,255,255,.05)}
+.row:last-child{margin-bottom:0}
+.row b{flex:1;min-width:0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row b s{display:block;text-decoration:none;font-size:8.5px;font-weight:600;color:var(--dim)}
+.row u{text-decoration:none;font-variant-numeric:tabular-nums;font-weight:800;white-space:nowrap}
+.row u s{display:block;text-decoration:none;font-size:8.5px;font-weight:600;color:var(--dim);text-align:right}
+.k{color:var(--warn)} .ok{color:var(--pick)} .no{color:var(--faint)}
+.cf{color:var(--sure)} .bd{color:var(--bad)}
+
+.track{position:relative;height:5px;background:rgba(0,0,0,.42);border-radius:4px;
+  overflow:hidden;margin-top:3px}
+.track::after{content:"";position:absolute;top:0;bottom:0;right:0;width:2px;background:#fff;opacity:.55}
+.tick{position:absolute;top:1px;bottom:1px;width:2px;border-radius:2px;background:var(--pick)}
+.tick.x{background:var(--warn)}
+
+/* ── barras de PS ── */
+.hpbox{margin-bottom:6px}.hpbox:last-child{margin-bottom:0}
+.hplab{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px}
+.hplab b{font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hplab u{text-decoration:none;font-size:13px;font-weight:800;font-variant-numeric:tabular-nums}
+.hpwrap{position:relative;height:24px}
+.hpbg{position:absolute;inset:0;background:rgba(0,0,0,.42);border-radius:999px;overflow:hidden}
+.hpfill{position:absolute;left:0;top:0;bottom:0;border-radius:999px;
+  background:linear-gradient(90deg,var(--hp1),var(--hp2))}
+.hpbox.low .hpfill{background:linear-gradient(90deg,#FF9A3C,#FFD03C)}
+.hpbox.crit .hpfill{background:linear-gradient(90deg,#FF4A5E,#FF8A3C)}
+.hpwrap input{position:absolute;inset:0;width:100%;height:100%;opacity:0;margin:0;
+  -webkit-appearance:none;appearance:none;background:none}
+.hpwrap input::-webkit-slider-thumb{-webkit-appearance:none;width:32px;height:32px}
+.knob{position:absolute;top:50%;width:13px;height:13px;margin:-6.5px 0 0 -6.5px;border-radius:50%;
+  background:var(--cream);box-shadow:0 1px 4px rgba(0,0,0,.5);pointer-events:none}
+
+/* ── etapas: stepper compacto ── */
+.bo{display:flex;align-items:center;gap:4px;margin-bottom:3px}
+.bo b{width:30px;font-size:8.5px;font-weight:800;color:var(--dim)}
+.bo .st{flex:1;display:flex;align-items:center;gap:3px}
+.bo .st button{width:22px;height:22px;border-radius:999px;background:rgba(0,0,0,.30);
+  font-size:13px;font-weight:800;line-height:1}
+.bo .st button:active{background:var(--pick);color:var(--ink)}
+.bo .st u{flex:1;text-decoration:none;text-align:center;font-size:11px;font-weight:800;
+  font-variant-numeric:tabular-nums}
+.bo .st u.up{color:var(--pick)} .bo .st u.dn{color:var(--bad)}
+
+.pills{display:flex;flex-wrap:wrap;gap:3px}
+.p{font-size:9px;font-weight:700;padding:5px 9px;border-radius:999px;
+  background:rgba(0,0,0,.28);color:var(--cream)}
+.p[data-on="1"]{background:var(--pick);color:var(--ink)}
+.p em{font-style:normal;opacity:.65;margin-left:3px}
+
+.team{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;margin-bottom:6px}
+.mon{background:var(--foe-2);border:2px solid transparent;border-radius:11px;padding:5px 2px;
+  text-align:center;position:relative;min-width:0}
+.mon[data-on="1"]{border-color:var(--pick)}
+.mon[data-out="1"]{opacity:.32}
+.mon b{display:block;font-size:8.5px;font-weight:800;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.mon s{display:block;text-decoration:none;font-size:8px;color:var(--dim);margin-top:1px}
+.mon .fg{position:absolute;top:2px;right:3px;font-size:7px}
+
+input[type=text]{width:100%;background:rgba(0,0,0,.30);color:var(--cream);border:none;
+  border-radius:999px;padding:6px 10px;font-size:10.5px;font-family:inherit;font-weight:700}
+/* Selector propio: un <select> nativo necesita foco de ventana para abrir su
+   popup, y esta ventana es NOT_FOCUSABLE a proposito (si tuviera foco le
+   robaria el teclado y el boton atras al juego). Por eso la lista se dibuja
+   dentro del panel. */
+.sel{display:flex;align-items:center;gap:4px;width:100%;background:rgba(0,0,0,.30);
+  color:var(--cream);border-radius:999px;padding:6px 10px;font-size:10.5px;font-weight:700;
+  text-align:left}
+.sel b{flex:1;min-width:0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sel i{font-style:normal;font-size:8px;opacity:.6}
+.sel:active{background:var(--pick);color:var(--ink)}
+.sheet{position:fixed;inset:0;background:rgba(6,4,12,.94);z-index:99;display:flex;
+  flex-direction:column;padding:8px}
+.sheet .sh{display:flex;align-items:center;gap:6px;padding:2px 4px 7px}
+.sheet .sh b{flex:1;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--dim)}
+.sheet .list{flex:1;overflow-y:auto;display:grid;grid-template-columns:1fr 1fr;gap:5px;
+  align-content:start;padding-bottom:6px}
+.sheet .op{display:flex;align-items:center;gap:6px;background:var(--ally-2);
+  border:2px solid transparent;border-radius:11px;padding:8px 9px;min-height:38px;
+  font-size:11px;font-weight:700;text-align:left;overflow:hidden}
+/* min-width:0 en el hijo es lo que impide que los nombres largos empujen la
+   celda y se pisen con la de al lado. */
+.sheet .op n{flex:1;min-width:0;font-style:normal;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;line-height:1.15}
+.sheet .op n em{display:block;font-style:normal;font-size:8.5px;font-weight:600;
+  color:var(--dim);overflow:hidden;text-overflow:ellipsis}
+.sheet .op q{quotes:none;width:5px;align-self:stretch;border-radius:3px;flex:0 0 5px}
+.sheet .op[data-on="1"]{background:var(--pick);color:var(--ink);border-color:var(--pick)}
+.sheet .op[data-on="1"] n em{color:rgba(20,11,30,.65)}
+.sheet .grp{grid-column:1/-1;font-size:8.5px;font-weight:800;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--dim);padding:6px 4px 1px}
+.abc{display:flex;flex-wrap:wrap;gap:2px;padding:0 2px 6px}
+.abc button{min-width:20px;height:20px;border-radius:6px;background:rgba(0,0,0,.35);
+  color:var(--dim);font-size:9px;font-weight:800}
+.abc button:active{background:var(--pick);color:var(--ink)}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.f3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}
+.cap{font-size:8px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--dim);margin:0 0 2px 4px}
+.btn{width:100%;padding:9px;border-radius:999px;background:var(--ally-pill);
+  font-size:10.5px;font-weight:800;color:var(--cream)}
+.btn:active,.btn.g{background:var(--pick);color:var(--ink)}
+.msg{font-size:9.5px;font-weight:600;color:var(--dim);line-height:1.4}
+.msg.w{color:var(--warn)}
+
+/* ── predicción ── */
+.pl{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.09);
+  border-radius:999px;padding:5px 9px;margin-bottom:3px}
+.pl i{font-style:normal;width:34px;font-size:7.5px;font-weight:800;letter-spacing:.06em;
+  color:var(--ink);background:var(--pick);border-radius:999px;text-align:center;padding:2px 0}
+.pl i.b{background:rgba(0,0,0,.3);color:var(--dim)}
+.pl b{flex:1;min-width:0;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl b s{display:block;text-decoration:none;font-size:8.5px;font-weight:600;color:var(--dim)}
+.pl u{text-decoration:none;font-size:10px;font-weight:800;font-variant-numeric:tabular-nums}
+.note{display:flex;gap:5px;font-size:9.5px;color:var(--cream);padding:4px 0;line-height:1.35}
+.note::before{content:"▸";color:var(--pick);font-weight:800}
+.sp{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.sp b{width:32px;font-size:8.5px;font-weight:800;color:var(--dim)}
+.sp .bar{position:relative;flex:1;height:19px}
+.sp .bg{position:absolute;inset:0;background:rgba(0,0,0,.34);border-radius:999px;overflow:hidden}
+.sp .fl{position:absolute;left:0;top:0;bottom:0;background:var(--ally-pill);border-radius:999px}
+.sp input{position:absolute;inset:0;width:100%;height:100%;opacity:0;margin:0;
+  -webkit-appearance:none;appearance:none}
+.sp u{text-decoration:none;width:42px;text-align:right;font-size:10px;font-weight:800;
+  font-variant-numeric:tabular-nums}
+.hide{display:none}
+</style>
+</head>
+<body>
+
+<nav class="rail">
+  <button class="tab" data-tab="pre"><i>◈</i>PREVIA</button>
+  <button class="tab" data-tab="field" data-on="1"><i>▦</i>CAMPO</button>
+  <button class="tab" data-tab="foe"><i>◆</i>RIVAL</button>
+  <button class="tab" data-tab="mine"><i>●</i>MÍO</button>
+  <button class="tab" data-tab="calc"><i>÷</i>CALC</button>
+  <button class="tab" data-tab="set"><i>⚙</i></button>
+</nav>
+
+<div class="main">
+  <div class="top">
+    <div class="mark">HUD/CHAMPIONS</div>
+    <div class="grow"></div>
+    <button class="ico" id="bZip">◱</button>
+    <button class="ico" id="bTurn" title="Siguiente turno">▸</button>
+    <button class="ico" id="bPin">⇱</button>
+    <button class="ico" id="bScan">↻</button>
+    <button class="ico" id="bShut">×</button>
+  </div>
+  <div class="body" id="body"></div>
+</div>
+
+<script>
+"use strict";
+/* ═════ REGLAS DE CHAMPIONS ═════
+   Sin IVs: todos cuentan como 31. Los EVs son Stat Points: 66 en total, tope 32
+   por stat, 1 SP = +1 punto de stat a nivel 50, sumado ANTES de la alineación.
+   Verificado contra la pantalla de stats del juego: Gholdengo AtqEsp base 133
+   con 32 SP y alineación que sube da 203 = floor((153+32)*1.1). Si fuera después
+   daría 200. Confirmado con 10 stats de 6 Pokémon distintos. */
+const LVL=50, IV=31, SP_MAX=32, SP_POOL=66, SP_AFTER_NAT=false;
+const STN=["PS","Atq","Def","AtqEsp","DefEsp","Vel"];
+const BON=["Atq","Def","AtqEsp","DefEsp","Vel"];   // etapas: sin PS
+
+const hpOf=(b,sp)=>Math.floor((2*b+IV)*LVL/100)+LVL+10+sp;
+const stOf=(b,sp,nat)=>SP_AFTER_NAT
+  ? Math.floor((Math.floor((2*b+IV)*LVL/100)+5)*nat)+sp
+  : Math.floor((Math.floor((2*b+IV)*LVL/100)+5+sp)*nat);
+const natMul=(i,up,dn)=> i===up?1.1 : i===dn?0.9 : 1;
+
+/* ═════ DATOS BASE ═════ */
+/* Colores por tipo. decoMove() y decoItem() dependen de esto: sin el mapa
+   lanzaban ReferenceError, el render moría antes de enganchar los eventos y la
+   interfaz entera quedaba congelada al abrir cualquier selector. */
+const T={NOR:"#A8A878",FIR:"#F0803C",WAT:"#6890F0",ELE:"#F8D030",GRA:"#78C850",
+ICE:"#98D8D8",FIG:"#C03028",POI:"#A040A0",GRO:"#E0C068",FLY:"#A890F0",PSY:"#F85888",
+BUG:"#A8B820",ROC:"#B8A038",GHO:"#705898",DRA:"#7038F8",DAR:"#705848",STE:"#B8B8D0",
+FAI:"#EE99AC"};
+const SPD={
+6:["Charizard",78,84,78,109,85,100,"FIR","FLY"],9:["Blastoise",79,83,100,85,105,78,"WAT"],
+94:["Gengar",60,65,60,130,75,110,"GHO","POI"],130:["Gyarados",95,125,79,60,100,81,"WAT","FLY"],
+149:["Dragonite",91,134,95,100,100,80,"DRA","FLY"],150:["Mewtwo",106,110,90,154,90,130,"PSY"],
+248:["Tyranitar",100,134,110,95,100,61,"ROC","DAR"],257:["Blaziken",80,120,70,110,70,80,"FIR","FIG"],
+279:["Pelipper",60,50,100,95,70,65,"WAT","FLY"],324:["Torkoal",70,85,140,85,70,20,"FIR"],
+373:["Salamence",95,135,80,110,80,100,"DRA","FLY"],376:["Metagross",80,135,130,95,90,70,"STE","PSY"],
+445:["Garchomp",108,130,95,80,85,102,"DRA","GRO"],448:["Lucario",70,110,70,115,70,90,"FIG","STE"],
+468:["Togekiss",85,50,95,120,115,80,"FAI","FLY"],479:["Rotom-Lavado",50,65,107,105,107,86,"ELE","WAT"],
+500:["Emboar",110,123,65,100,65,65,"FIR","FIG"],547:["Whimsicott",60,67,85,77,75,116,"GRA","FAI"],
+591:["Amoonguss",114,85,70,85,80,30,"GRA","POI"],645:["Landorus-T",89,145,90,105,80,91,"GRO","FLY"],
+655:["Delphox",75,69,72,114,100,104,"FIR","PSY"],663:["Talonflame",78,81,71,74,69,126,"FIR","FLY"],
+700:["Sylveon",95,65,65,110,130,60,"FAI"],727:["Incineroar",95,115,90,80,90,60,"FIR","DAR"],
+730:["Primarina",80,74,74,126,116,60,"WAT","FAI"],812:["Rillaboom",100,125,90,60,70,85,"GRA"],
+823:["Corviknight",98,87,105,53,85,67,"FLY","STE"],861:["Grimmsnarl",95,120,65,95,75,60,"DAR","FAI"],
+876:["Indeedee-H",70,55,65,95,105,85,"PSY","NOR"],887:["Dragapult",88,120,75,100,75,142,"DRA","GHO"],
+892:["Urshifu",100,130,100,63,60,97,"FIG","DAR"],901:["Ursaluna",130,140,105,45,80,50,"GRO","NOR"],
+902:["Basculegion",120,112,65,80,75,78,"WAT","GHO"],910:["Kingambit",100,135,120,60,85,50,"DAR","STE"],
+934:["Garganacl",100,100,130,45,90,35,"ROC"],981:["Farigiraf",120,90,70,110,70,60,"NOR","PSY"],
+987:["Flutter Mane",55,55,55,135,135,135,"GHO","FAI"],991:["Iron Hands",154,140,108,50,68,50,"FIG","ELE"],
+998:["Baxcalibur",115,145,92,75,86,87,"DRA","ICE"],1000:["Gholdengo",87,60,95,133,91,84,"STE","GHO"],
+1004:["Chi-Yu",55,80,80,135,120,100,"DAR","FIR"],1006:["Iron Valiant",74,130,90,120,60,116,"FAI","FIG"],
+260:["Swampert",100,110,90,85,90,60,"WAT","GRO"],901261:["Swampert-Mega",100,150,110,95,110,70,"WAT","GRO"],
+302:["Sableye",50,75,75,65,65,50,"DAR","GHO"],903021:["Sableye-Mega",50,85,125,85,115,20,"DAR","GHO"],
+350:["Milotic",95,60,79,100,125,81,"WAT"],303:["Mawile",50,85,85,55,55,50,"STE","FAI"],
+903031:["Mawile-Mega",50,105,125,55,95,50,"STE","FAI"],
+1018:["Archaludon",90,105,130,125,65,85,"STE","DRA"],1013:["Sinistcha",71,60,106,121,80,70,"GRA","GHO"],
+186:["Politoed",90,75,75,90,100,70,"WAT"],598:["Ferrothorn",74,94,131,54,116,20,"GRA","STE"],
+784:["Kommo-o",75,110,125,100,105,85,"DRA","FIG"],38:["Ninetales",73,76,75,81,100,100,"FIR"],
+609:["Chandelure",60,55,90,145,90,80,"GHO","FIR"],184:["Azumarill",100,50,80,60,80,50,"WAT","FAI"],
+462:["Magnezone",70,70,115,130,90,60,"ELE","STE"],763:["Tsareena",72,120,98,50,98,72,"GRA"]};
+/* Megaevoluciones: dex sintetico 9000xx para no chocar con el real. La piedra
+   resuelve a esta forma en el calculo — sin esto, llevar Charizardita Y te daba
+   los 109 de AtqEsp del Charizard base en vez de 159. */
+const MEGA={
+"Charizardita Y":[900061,6],"Charizardita X":[900062,6],"Blastoisita":[900091,9],
+"Gengarita":[900941,94],"Gyaradosita":[901301,130],"Tyranitarita":[902481,248],
+"Blazikenita":[902571,257],"Salamencita":[903731,373],"Metagrossita":[903761,376],
+"Garchompita":[904451,445],"Lucarita":[904481,448],
+"Swampertite":[901261,260],"Sablenita":[903021,302],"Mawilita":[903031,303]};
+Object.assign(SPD,{
+900061:["Charizard-Mega Y",78,104,78,159,115,100,"FIR","FLY"],
+900062:["Charizard-Mega X",78,130,111,130,85,100,"FIR","DRA"],
+900091:["Blastoise-Mega",79,103,120,135,115,78,"WAT"],
+900941:["Gengar-Mega",60,65,80,170,95,130,"GHO","POI"],
+901301:["Gyarados-Mega",95,155,109,70,130,81,"WAT","DAR"],
+902481:["Tyranitar-Mega",100,164,150,95,120,71,"ROC","DAR"],
+902571:["Blaziken-Mega",80,160,80,130,80,100,"FIR","FIG"],
+903731:["Salamence-Mega",95,145,130,120,90,120,"DRA","FLY"],
+903761:["Metagross-Mega",80,145,150,105,110,110,"STE","PSY"],
+904451:["Garchomp-Mega",108,170,115,120,95,92,"DRA","GRO"],
+904481:["Lucario-Mega",70,145,88,140,70,112,"FIG","STE"]});
+const S=d=>{const r=SPD[d];return r?{n:r[0],s:[r[1],r[2],r[3],r[4],r[5],r[6]],t:r.slice(7)}:null};
+let DEXN=Object.keys(SPD).map(Number).filter(d=>d<900000).sort((a,b)=>S(a).n.localeCompare(S(b).n));
+/** Piedra equipada válida para esta especie. */
+const canMega=m=>{const g=MEGA[m.item];return g&&g[1]===m.dex?g[0]:null};
+/** Dex efectivo: la mega SOLO cuenta si ya megaevolucionó de verdad.
+   Llevar la piedra no implica usarla: Tyranitar espera para reinstalar arena,
+   y hay equipos que traen la piedra y nunca megaevolucionan. */
+const myDex=m=>(m.mega&&canMega(m))?canMega(m):m.dex;
+
+/* Objetos REALES de Champions (lista de WikiDex). Ojo: no existen Chaleco
+   Asalto, Cinta Elección ni Anteojos Elección. "Focus Sash" es Banda Aguante y
+   "Light Clay" es Refleluz. Cada entrada: [es, en, categoria]. */
+const IT=[
+["—","—","x"],
+["Vidasfera","Life Orb","dmg"],["Pañuelo Elección","Choice Scarf","spd"],
+["Banda Aguante","Focus Sash","def"],["Cinta Aguante","Focus Band","def"],
+["Cinta Fuerte","Muscle Band","dmg"],["Lentes Especiales","Wise Glasses","dmg"],
+["Cinturón de Experto","Expert Belt","dmg"],["Restos","Leftovers","def"],
+["Refleluz","Light Clay","sup"],["Roca Calor","Heat Rock","sup"],
+["Roca Lluvia","Damp Rock","sup"],["Roca Suave","Smooth Rock","sup"],
+["Roca Helada","Icy Rock","sup"],["Hierba Blanca","White Herb","sup"],
+["Hierba Mental","Mental Herb","sup"],["Garra Rápida","Quick Claw","sup"],
+["Roca del Rey","King's Rock","sup"],["Periscopio","Scope Lens","dmg"],
+["Lupa","Wide Lens","sup"],["Telescopio","Zoom Lens","sup"],
+["Metrónomo","Metronome","dmg"],["Bola Férrea","Iron Ball","sup"],
+["Muda Concha","Shed Shell","sup"],["Raíz Grande","Big Root","sup"],
+["Cascabel Nácar","Shell Bell","sup"],["Polvo Brillo","Bright Powder","sup"],
+["Bola Luminosa","Light Ball","dmg"],
+// bayas curativas y de resistencia
+["Baya Zidra","Sitrus Berry","def"],["Baya Aranja","Oran Berry","def"],
+["Baya Zreza","Cheri Berry","def"],["Baya Atania","Chesto Berry","def"],
+["Baya Meloc","Pecha Berry","def"],["Baya Safre","Rawst Berry","def"],
+["Baya Perasi","Aspear Berry","def"],["Baya Ziuela","Lum Berry","def"],
+["Baya Caquic","Persim Berry","def"],["Baya Zanama","Leppa Berry","def"],
+["Baya Caoca","Occa Berry","res"],["Baya Pasio","Passho Berry","res"],
+["Baya Gualot","Wacan Berry","res"],["Baya Tamar","Rindo Berry","res"],
+["Baya Rimoya","Yache Berry","res"],["Baya Pomaro","Chople Berry","res"],
+["Baya Kebia","Kebia Berry","res"],["Baya Acardo","Shuca Berry","res"],
+["Baya Kouba","Coba Berry","res"],["Baya Payapa","Payapa Berry","res"],
+["Baya Yecana","Tanga Berry","res"],["Baya Alcho","Charti Berry","res"],
+["Baya Drasi","Kasib Berry","res"],["Baya Anjiro","Haban Berry","res"],
+["Baya Dillo","Colbur Berry","res"],["Baya Baribá","Babiri Berry","res"],
+["Baya Chilan","Chilan Berry","res"],["Baya Hibis","Roseli Berry","res"],
+// potenciadores de tipo (+20%)
+["Carbón","Charcoal","typ"],["Agua Mística","Mystic Water","typ"],
+["Imán","Magnet","typ"],["Semilla Milagro","Miracle Seed","typ"],
+["Hielo Perpetuo","Never-Melt Ice","typ"],["Cinturón Negro","Black Belt","typ"],
+["Flecha Venenosa","Poison Barb","typ"],["Arena Fina","Soft Sand","typ"],
+["Pico Afilado","Sharp Beak","typ"],["Cuchara Torcida","Twisted Spoon","typ"],
+["Polvo Plata","Silver Powder","typ"],["Piedra Dura","Hard Stone","typ"],
+["Hechizo","Spell Tag","typ"],["Colmillo Dragón","Dragon Fang","typ"],
+["Lentes de Sol","Black Glasses","typ"],["Revestimiento Metálico","Metal Coat","typ"],
+["Pañuelo de Seda","Silk Scarf","typ"],["Pluma Feérica","Fairy Feather","typ"]];
+
+/* Tipo que potencia cada objeto de tipo, y baya que resiste cada tipo. */
+const TYPE_ITEM={"Carbón":"FIR","Agua Mística":"WAT","Imán":"ELE","Semilla Milagro":"GRA",
+"Hielo Perpetuo":"ICE","Cinturón Negro":"FIG","Flecha Venenosa":"POI","Arena Fina":"GRO",
+"Pico Afilado":"FLY","Cuchara Torcida":"PSY","Polvo Plata":"BUG","Piedra Dura":"ROC",
+"Hechizo":"GHO","Colmillo Dragón":"DRA","Lentes de Sol":"DAR","Revestimiento Metálico":"STE",
+"Pañuelo de Seda":"NOR","Pluma Feérica":"FAI"};
+const RES_BERRY={"Baya Caoca":"FIR","Baya Pasio":"WAT","Baya Gualot":"ELE","Baya Tamar":"GRA",
+"Baya Rimoya":"ICE","Baya Pomaro":"FIG","Baya Kebia":"POI","Baya Acardo":"GRO",
+"Baya Kouba":"FLY","Baya Payapa":"PSY","Baya Yecana":"BUG","Baya Alcho":"ROC",
+"Baya Drasi":"GHO","Baya Anjiro":"DRA","Baya Dillo":"DAR","Baya Baribá":"STE",
+"Baya Chilan":"NOR","Baya Hibis":"FAI"};
+
+
+/* Base de movimientos.
+   [potencia, tipo, F=fisico/S=especial/E=estado, alcance, prioridad, precision, nota]
+   alcance: 0 = un objetivo · 1 = ambos rivales · 2 = todos menos vos · 3 = tu lado
+   La nota es lo que importa recordar en el turno, no el texto del juego. */
+const MV={
+// ── físicos ──
+"Terremoto":[100,"GRO","F",2,0,100,"golpea a tu compañero","Earthquake"],
+"Terratemblor":[60,"GRO","F",2,0,100,"golpea a tu compañero","Bulldoze"],
+"A Bocajarro":[120,"FIG","F",0,0,100,"baja tu Def y DefEsp","Close Combat"],
+"Golpe Bajo":[70,"DAR","F",0,1,100,"prioridad; falla si el rival no ataca","Sucker Punch"],
+"Garra Dragón":[80,"DRA","F",0,0,100,"","Dragon Claw"],
+"Roca Afilada":[75,"ROC","F",1,0,80,"80% precisión","Rock Slide"],
+"Cabeza de Hierro":[80,"STE","F",0,0,100,"30% de retroceso","Iron Head"],
+"Puño Fuego":[75,"FIR","F",0,0,100,"10% quema","Fire Punch"],
+"Puño Trueno":[75,"ELE","F",0,0,100,"10% paraliza","Thunder Punch"],
+"Puño Hielo":[75,"ICE","F",0,0,100,"10% congela","Ice Punch"],
+"Tajo Umbrío":[70,"DAR","F",0,0,100,"alta prob. de crítico","Night Slash"],
+"Ave Brava":[120,"FLY","F",0,0,100,"1/3 de retroceso","Brave Bird"],
+"Envite Ígneo":[120,"FIR","F",0,0,100,"1/3 de retroceso, 10% quema","Flare Blitz"],
+"Ida y Vuelta":[70,"BUG","F",0,0,100,"cambia después de pegar","U-turn"],
+"Golpe Oscuro":[100,"DAR","F",0,0,100,"ignora Protección","Wicked Blow"],
+"Puño Certero":[90,"FIG","F",0,0,100,"nunca falla","Drain Punch"],
+"Diente Gélido":[65,"ICE","F",0,0,95,"10% congela, 10% retroceso","Ice Fang"],
+"Tamborileo":[80,"GRA","F",0,0,100,"","Drum Beating"],
+"Represalia":[70,"DAR","F",0,0,100,"×2 si tu compañero ya cayó","Knock Off"],
+"Dracoflechas":[50,"DRA","F",1,0,100,"pega dos veces, una a cada rival","Dragon Darts"],
+"Golpe Umbrío":[80,"GRO","F",0,0,100,"+prioridad con campo psíquico","Headlong Rush"],
+"Última Baza":[100,"NOR","F",0,-3,100,"va último de todo","Last Respects"],
+"Colmillo Marino":[85,"WAT","F",0,0,100,"baja Def del objetivo","Fishious Rend"],
+"Testarazo":[120,"ROC","F",0,0,100,"1/2 de retroceso","Head Smash"],
+"Tijera X":[80,"BUG","F",0,0,100,"","X-Scissor"],
+"Doble Filo":[120,"NOR","F",0,0,100,"1/3 de retroceso","Double-Edge"],
+"Ataque Furia":[90,"FLY","F",0,0,100,"","Drill Peck"],
+"Cuerpo Pesado":[0,"STE","F",0,0,100,"más potente cuanto más pesado seas","Heavy Slam"],
+"Wave Crash":[120,"WAT","F",0,0,100,"1/3 de retroceso","Wave Crash"],
+"Fuerza Bruta":[85,"GRO","F",0,0,100,"baja tu Velocidad","High Horsepower"],
+"Acua Jet":[40,"WAT","F",0,1,100,"prioridad","Aqua Jet"],
+"Sombra Vil":[40,"GHO","F",0,1,100,"prioridad","Shadow Sneak"],
+"Bala Roca":[40,"ROC","F",0,1,100,"prioridad","Rock Blast"],
+"Ataque Rápido":[40,"NOR","F",0,1,100,"prioridad","Quick Attack"],
+"Patada Salto Alta":[130,"FIG","F",0,0,90,"si falla te lastimás","High Jump Kick"],
+"Triturar":[80,"DAR","F",0,0,100,"20% baja Def","Crunch"],
+// ── especiales ──
+"Llamarada":[110,"FIR","S",0,0,85,"85% precisión, 10% quema","Fire Blast"],
+"Lanzallamas":[90,"FIR","S",0,0,100,"10% quema","Flamethrower"],
+"Onda Ígnea":[95,"FIR","S",1,0,100,"golpea a tu compañero","Heat Wave"],
+"Erupción":[150,"FIR","S",2,0,100,"pierde potencia con tus PS","Eruption"],
+"Sofoco":[130,"FIR","S",0,0,90,"baja tu AtqEsp","Overheat"],
+"Hidrobomba":[110,"WAT","S",0,0,80,"80% precisión","Hydro Pump"],
+"Surf":[90,"WAT","S",2,0,100,"golpea a tu compañero","Surf"],
+"Rayo":[90,"ELE","S",0,0,100,"10% paraliza","Thunderbolt"],
+"Trueno":[110,"ELE","S",0,0,70,"70%, infalible con lluvia","Thunder"],
+"Electro Shot":[130,"ELE","S",0,0,100,"carga un turno; inmediato con lluvia","Electro Shot"],
+"Rayo Hielo":[90,"ICE","S",0,0,100,"10% congela","Ice Beam"],
+"Rayo Aurora":[110,"ICE","S",1,0,90,"golpea a los dos rivales","Aurora Beam"],
+"Ventisca":[110,"ICE","S",1,0,70,"infalible con nieve","Blizzard"],
+"Energibola":[90,"GRA","S",0,0,100,"10% baja DefEsp","Energy Ball"],
+"Bomba Germen":[80,"GRA","S",0,0,100,"","Seed Bomb"],
+"Rayo Solar":[120,"GRA","S",0,0,100,"carga un turno; inmediato con sol","Solar Beam"],
+"Psíquico":[90,"PSY","S",0,0,100,"10% baja DefEsp","Psychic"],
+"Bola Sombra":[80,"GHO","S",0,0,100,"20% baja DefEsp","Shadow Ball"],
+"Rayo Fantasma":[85,"GHO","S",1,0,100,"golpea a los dos rivales","Shadow Bone"],
+"Pulso Umbrío":[80,"DAR","S",0,0,100,"20% de retroceso","Dark Pulse"],
+"Pulso Dragón":[85,"DRA","S",0,0,100,"","Dragon Pulse"],
+"Fuerza Lunar":[95,"FAI","S",0,0,100,"30% baja AtqEsp","Moonblast"],
+"Viento Feérico":[90,"FAI","S",0,0,100,"","Fairy Wind"],
+"Voz Cautivadora":[40,"FAI","S",1,0,100,"nunca falla, golpea a los dos","Disarming Voice"],
+"Vozarrón":[90,"NOR","S",1,0,100,"atraviesa Sustituto","Hyper Voice"],
+"Vendaval":[110,"FLY","S",0,0,70,"infalible con lluvia","Hurricane"],
+"Golpe Fantasma":[80,"STE","S",0,0,100,"","Make It Rain"],
+"Make It Rain":[120,"STE","S",1,0,100,"baja tu AtqEsp, golpea a los dos","Make It Rain"],
+"Flash Cannon":[80,"STE","S",0,0,100,"10% baja DefEsp","Flash Cannon"],
+"Matcha Gotcha":[80,"GRA","S",1,0,90,"cura la mitad del daño, 20% quema","Matcha Gotcha"],
+"Weather Ball":[50,"NOR","S",0,0,100,"tipo y potencia cambian con el clima","Weather Ball"],
+"Hurricane":[110,"FLY","S",0,0,70,"infalible con lluvia, 30% confunde","Hurricane"],
+"Hidropulso":[60,"WAT","S",0,0,100,"20% confunde","Water Pulse"],
+"Rayo Carga":[50,"ELE","S",0,0,90,"sube tu AtqEsp","Charge Beam"],
+"Erupción Ígnea":[100,"FIR","S",0,0,100,"50% quema","Blue Flare"],
+// ── estado: sin daño pero deciden partidas ──
+"Protección":[0,"NOR","E",3,4,100,"bloquea el turno; falla si repetís","Protect"],
+"Viento Afín":[0,"FLY","E",3,0,100,"tu lado duplica velocidad 4 turnos","Tailwind"],
+"Espacio Raro":[0,"PSY","E",3,-7,100,"5 turnos: el lento va primero","Trick Room"],
+"Reflejo":[0,"PSY","E",3,0,100,"reduce daño físico 5 turnos","Reflect"],
+"Pantalla de Luz":[0,"PSY","E",3,0,100,"reduce daño especial 5 turnos","Light Screen"],
+"Danza Lluvia":[0,"WAT","E",3,0,100,"lluvia 5 turnos","Rain Dance"],
+"Día Soleado":[0,"FIR","E",3,0,100,"sol 5 turnos","Sunny Day"],
+"Espora":[0,"GRA","E",0,0,100,"duerme; no afecta a tipo planta","Spore"],
+"Paralizador":[0,"GRA","E",0,0,75,"paraliza; no afecta a tipo planta","Stun Spore"],
+"Onda Trueno":[0,"ELE","E",0,0,90,"paraliza; no afecta a tipo tierra","Thunder Wave"],
+"Bostezo":[0,"NOR","E",0,0,100,"duerme al final del turno siguiente","Yawn"],
+"Rage Powder":[0,"BUG","E",3,2,100,"atrae los ataques; no afecta a tipo planta","Rage Powder"],
+"Follow Me":[0,"NOR","E",3,2,100,"atrae los ataques hacia vos","Follow Me"],
+"Wide Guard":[0,"ROC","E",3,3,100,"bloquea ataques de área","Wide Guard"],
+"Trick":[0,"PSY","E",0,0,100,"intercambia objetos","Trick"],
+"Taunt":[0,"DAR","E",0,0,100,"3 turnos sin movimientos de estado","Taunt"],
+"Antojo":[0,"NOR","E",0,1,100,"prioridad; fuerza el cambio","Fake Out"],
+"Danza Aleteo":[0,"FAI","E",0,0,100,"sube AtqEsp, DefEsp y Vel","Quiver Dance"],
+"Danza Espada":[0,"NOR","E",3,0,100,"+2 Ataque","Swords Dance"],
+"Rugido de Guerra":[0,"DAR","E",1,0,100,"baja el Ataque de los dos rivales","Parting Shot"],
+"Life Dew":[0,"WAT","E",3,0,100,"cura 25% a tu lado","Life Dew"],
+"Deseo Cura":[0,"NOR","E",3,0,100,"cura al que esté al turno siguiente","Healing Wish"],
+"Alivio":[0,"NOR","E",3,0,100,"cura la mitad de tus PS","Recover"],
+"Sal Cura ":[0,"ROC","E",3,0,100,"cura 25% por turno","Salt Cure"],
+"Refuerzo":[0,"NOR","E",3,0,100,"+1 Def y DefEsp","Bulk Up"],
+"Bilis":[0,"POI","E",0,0,100,"envenena gravemente","Toxic"],
+"Truco Defensa":[0,"PSY","E",3,0,100,"intercambia Def y DefEsp del campo","Guard Split"],
+"Aromaterapia":[0,"GRA","E",3,0,100,"cura estados de tu lado","Aromatherapy"]};
+const MOVES=Object.keys(MV);
+/* El juego del usuario está en inglés, así que ese es el idioma por defecto:
+   los nombres del HUD tienen que coincidir con lo que ve en pantalla. */
+const ES_ALT={"Wave Crash": "Embate Aqua", "Make It Rain": "Lluvia de Oro", "Flash Cannon": "Foco Resplandor", "Matcha Gotcha": "Matcha Sorpresa", "Weather Ball": "Meteorobola", "Hurricane": "Vendaval", "Rage Powder": "Polvo Ira", "Follow Me": "Señuelo", "Wide Guard": "Vasta Guardia", "Trick": "Truco", "Taunt": "Mofa", "Life Dew": "Gota Vital", "Electro Shot": "Electrocañón", "Sal Cura ": "Salazón"};
+let LANG=(()=>{try{return localStorage.getItem("hudLang")||"en"}catch(e){return "en"}})();
+const mvName=k=>LANG==="en"?(MV[k]?MV[k][7]||k:k):(ES_ALT[k]||k);
+const itName=it=>{const r=IT.find(x=>x[0]===it||x[1]===it);
+  return r?(LANG==="en"?r[1]:r[0]):it};
+const ITEMS=IT.map(x=>x[0]);   // clave interna siempre en español
+const mv=k=>{const m=MV[k];return m?{p:m[0],t:m[1],c:m[2],
+  sp:m[3]===1||m[3]===2,self:m[3]===2,pri:m[4],acc:m[5],note:m[6]}:null};
+/** Solo los que hacen daño sirven para calcular. */
+const DMG=MOVES.filter(k=>MV[k][2]!=="E"&&MV[k][0]>0);
+/* Ordenadas por el nombre que se muestra, para poder encontrarlas. */
+const sortByName=a=>[...a].sort((x,y)=>mvName(x).localeCompare(mvName(y)));
+const MOVES_A=()=>sortByName(MOVES), DMG_A=()=>sortByName(DMG);
+/** Movimientos que ofrecer para una especie: su learnset si lo conocemos. */
+const movePool=dex=>{const L=(typeof learnable==="function")&&learnable(dex);
+  return sortByName(L||MOVES)};
+const dmgPool=dex=>{const L=(typeof learnable==="function")&&learnable(dex);
+  return sortByName((L||MOVES).filter(k=>MV[k]&&MV[k][2]!=="E"&&MV[k][0]>0))};
+const ITEMS_A=()=>["—",...ITEMS.filter(x=>x!=="—").sort((a,b)=>itName(a).localeCompare(itName(b)))];
+
+/* Habilidades por especie. El HUD modela las que cambian el daño; el resto
+   figura para que quede documentado en tu equipo. */
+const ABIL={
+6:["Mar Llamas","Poder Solar"],9:["Torrente","Cabeza Roca"],94:["Levitación","Sombra Trampa"],
+130:["Intimidación","Nerviosismo"],149:["Fuerte Afecto","Multiescamas"],
+150:["Presión","Nerviosismo"],248:["Chorro Arena","Antibarrera"],
+257:["Mar Llamas","Impulso"],279:["Vista Lince","Llovizna"],
+324:["Caparazón","Sequía"],373:["Intimidación","Aerodinámico"],
+376:["Fuerza Bruta","Alma Cautiva"],445:["Arena Fuerte","Rugosidad"],
+448:["Impasible","Foco Interno","Justiciero"],468:["Dicha","Fuerte Afecto","Fortaleza"],
+479:["Levitación"],500:["Mar Llamas","Impulso"],
+547:["Bromista","Infiltrador","Manto Frondoso"],591:["Efecto Espora","Regeneración"],
+645:["Intimidación"],655:["Mar Llamas","Cuerpo Ígneo"],
+663:["Chispa","Alas Vendaval","Cuerpo Llama"],700:["Piel Feérica","Cura Floral"],
+727:["Mar Llamas","Intimidación"],730:["Torrente","Piel Líquida"],
+812:["Herbogénesis","Defensa Hoja"],823:["Presión","Espejo Mágico","Fuerza Bruta"],
+861:["Bromista","Sombra Trampa"],876:["Cura Psíquica","Sincronía","Ritmo Propio"],
+887:["Cuerpo Maldito","Cacheo","Infiltrador"],892:["Máquina Fuerte"],
+901:["Agallas","Sebo"],902:["Nerviosismo","Adaptable","Rompemoldes"],
+910:["Competitividad","Comandante Supremo","Presión"],
+934:["Purificasal","Robustez","Aguante"],981:["Cuello Armadura","Sebo","Alma Cautiva"],
+987:["Buenos Ánimos"],991:["Carga Quark"],998:["Termovoraz","Mudar"],
+1000:["Cuerpo Áureo"],1004:["Sartén Vudú"],1006:["Carga Quark"],
+260:["Torrente","Damp"],302:["Robaembeleso","Bromista"],350:["Escama Especial","Piel Milagro","Cura Floral"],
+303:["Hiperconcentración","Intimidación","Fuerza Bruta"],
+1018:["Firmeza"],1013:["Hospitalidad","Cura Herbal"],
+186:["Absorbe Agua","Nado Rápido","Llovizna"],598:["Barrera Férrea","Anticipación"],
+784:["Insonorizar","Antisonido","Impasible"],38:["Absorbe Fuego","Sequía"],
+609:["Absorbe Fuego","Cuerpo Llama","Infiltrador"],
+184:["Absorbe Agua","Impasible","Dedos Húmedos"],
+462:["Imán","Robustez","Analítico"],763:["Hoja Guardián","Sacapecho","Ritmo Propio"]};
+
+const abilsOf=d=>ABIL[d]||ABIL[Object.values(MEGA).find(g=>g[0]===d)?.[1]]||["—"];
+
+/* Roles: lo que un jugador mira antes que el daño. */
+const ROLE_MV={"Viento Afín":"tailwind","Espacio Raro":"trickroom","Danza Lluvia":"rain",
+"Reflejo":"pantallas","Pantalla de Luz":"pantallas","Onda Trueno":"estado","Espora":"estado",
+"Paralizador":"estado","Bostezo":"estado","Campo Psíquico":"prioridad"};
+const ROLE_AB={"Sequía":"sol","Llovizna":"lluvia","Chorro Arena":"arena","Bromista":"bromista",
+"Intimidación":"intimida","Cura Psíquica":"prioridad","Herbogénesis":"campo",
+"Hospitalidad":"apoyo","Comandante Supremo":"escala"};
+const isMega=i=>/ita( |$)|ita[XY]?$/i.test(i||"");
+
+const TY=["NOR","FIR","WAT","ELE","GRA","ICE","FIG","POI","GRO","FLY","PSY","BUG","ROC","GHO","DRA","DAR","STE","FAI"];
+const RAW=[
+[1,1,1,1,1,1,1,1,1,1,1,1,.5,0,1,1,.5,1],[1,.5,.5,1,2,2,1,1,1,1,1,2,.5,1,.5,1,2,1],
+[1,2,.5,1,.5,1,1,1,2,1,1,1,2,1,.5,1,1,1],[1,1,2,.5,.5,1,1,1,0,2,1,1,1,1,.5,1,1,1],
+[1,.5,2,1,.5,1,1,.5,2,.5,1,.5,2,1,.5,1,.5,1],[1,.5,.5,1,2,.5,1,1,2,2,1,1,1,1,2,1,.5,1],
+[2,1,1,1,1,2,1,.5,1,.5,.5,.5,2,0,1,2,2,.5],[1,1,1,1,2,1,1,.5,.5,1,1,1,.5,.5,1,1,0,2],
+[1,2,1,2,.5,1,1,2,1,0,1,.5,2,1,1,1,2,1],[1,1,1,.5,2,1,2,1,1,1,1,2,.5,1,1,1,.5,1],
+[1,1,1,1,1,1,2,2,1,1,.5,1,1,1,1,0,.5,1],[1,.5,1,1,2,1,.5,.5,1,.5,1,1,1,.5,1,2,.5,.5],
+[1,2,1,1,1,2,.5,1,.5,2,1,2,1,1,1,1,.5,1],[0,1,1,1,1,1,1,1,1,1,2,1,1,2,1,.5,1,1],
+[1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,1,.5,0],[1,1,1,1,1,1,.5,1,1,1,2,1,1,2,1,.5,1,.5],
+[1,.5,.5,.5,1,2,1,1,1,1,1,1,2,1,1,1,.5,2],[1,.5,1,1,1,1,2,.5,1,1,1,1,1,1,2,2,.5,1]];
+const CH={};TY.forEach((a,i)=>{CH[a]={};TY.forEach((d,j)=>CH[a][d]=RAW[i][j])});
+const EFF=(t,dt)=>dt.reduce((m,d)=>m*(CH[t]?.[d]??1),1);
+
+/* ═════ MOTOR DE DAÑO ═════ */
+const stg=(s,crit,side)=>{
+  if(crit&&((side>0&&s<0)||(side<0&&s>0)))s=0;
+  return s>=0?(2+s)/2:2/(2-s);
+};
+function calc(o){
+  const A=S(o.atk),D=S(o.def),m=mv(o.move);
+  if(!A||!D||!m)return null;
+  const phys=m.c==="F";
+  // etapas por stat: física usa Atq/Def, especial usa AtqEsp/DefEsp
+  const aB=(o.aBo||[0,0,0,0,0])[phys?0:2];
+  const dB=(o.dBo||[0,0,0,0,0])[phys?1:3];
+  const aRaw=o.aStat?(phys?o.aStat[1]:o.aStat[3])
+    :stOf(phys?A.s[1]:A.s[3],o.aSP??SP_MAX,o.aNat??1.1);
+  const dRaw=o.dStat?(phys?o.dStat[2]:o.dStat[4])
+    :stOf(phys?D.s[2]:D.s[4],o.dSP??0,o.dNat??1);
+  let a=aRaw*stg(aB,o.crit,1);
+  let d=dRaw*stg(dB,o.crit,-1);
+  if(o.dAb==="Escama Especial"&&!phys)d*=1.5;
+  // Champions no tiene Cinta ni Anteojos Elección: los multiplicadores de
+  // objeto son más chicos y van todos en post.
+  const maxHP=o.dStat?o.dStat[0]:hpOf(D.s[0],o.dHP??0);
+  let base=Math.floor(Math.floor(Math.floor(22*m.p*a/d)/50)+2);
+  let pre=1;
+  if(o.doubles&&m.sp)pre*=.75;
+  if(o.weather==="sol")pre*= m.t==="FIR"?1.5:m.t==="WAT"?.5:1;
+  if(o.weather==="lluvia")pre*= m.t==="WAT"?1.5:m.t==="FIR"?.5:1;
+  if(o.crit)pre*=1.5;
+  // ── habilidades del atacante ──
+  let mType=m.t;
+  if(o.aAb==="Piel Feérica"&&mType==="NOR")mType="FAI";
+  const stab=A.t.includes(mType)?(o.aAb==="Adaptable"?2:1.5)
+    :(o.aAb==="Piel Feérica"&&m.t==="NOR"?1.2:1);
+  let e=EFF(mType,D.t);
+  // ── inmunidades por habilidad del defensor ──
+  if(o.dAb==="Levitación"&&mType==="GRO")e=0;
+  if(o.dAb==="Absorbe Fuego"&&mType==="FIR")e=0;
+  if(o.dAb==="Escama Especial"&&!phys)e=e;   // sube DefEsp: se refleja abajo
+  if(o.dAb==="Absorbe Agua"&&mType==="WAT")e=0;
+  if((o.dAb==="Pararrayos"||o.dAb==="Motor Eléctrico")&&mType==="ELE")e=0;
+  let post=1;
+  if(o.screen&&!o.crit)post*= o.doubles?(2/3):.5;
+  // objetos del atacante
+  if(o.aItem==="Vidasfera")post*=1.3;
+  if(o.aItem==="Cinta Fuerte"&&phys)post*=1.1;
+  if(o.aItem==="Lentes Especiales"&&!phys)post*=1.1;
+  if(o.aItem==="Cinturón de Experto"&&e>1)post*=1.2;
+  if(TYPE_ITEM[o.aItem]===mType)post*=1.2;
+  // objetos del defensor
+  if(RES_BERRY[o.dItem]===mType&&e>1)post*=.5;
+  if(o.aSta==="quemado"&&phys&&o.aAb!=="Agallas")post*=.5;   // la quemadura baja SOLO el daño físico
+  // atacante
+  if(o.aAb==="Poder Solar"&&!phys&&o.weather==="sol")post*=1.5;
+  if(o.aAb==="Chorro Potente"&&mType==="WAT")post*=2;
+  if(o.aAb==="Sartén Vudú"&&mType==="FIR"&&!phys)post*=1.33;
+  if(o.aAb==="Agallas"&&phys&&o.aSta&&o.aSta!=="—")post*=1.5;
+  // habilidades de apuro: se activan por debajo de un tercio de PS
+  const pinch={"Torrente":"WAT","Mar Llamas":"FIR","Espesura":"GRA","Enjambre":"BUG"}[o.aAb];
+  if(pinch&&mType===pinch&&(o.aHp??100)<=33)post*=1.5;
+  // defensor
+  if(o.dAb==="Multiescamas"&&(o.dHp??100)>=100)post*=.5;
+  if(o.dAb==="Barrera Férrea"&&e>1)post*=.75;
+  if((o.dAb==="Filtro"||o.dAb==="Solidez"||o.dAb==="Coraza Filtro")&&e>1)post*=.75;
+  if(o.dAb==="Robustez"&&e>1)post*=.75;
+  const fly=D.t.includes("FLY");
+  if(o.terrain==="eléctrico"&&m.t==="ELE"&&!fly)post*=1.3;
+  if(o.terrain==="psíquico"&&m.t==="PSY"&&!fly)post*=1.3;
+  if(o.terrain==="hierba"&&m.t==="GRA"&&!fly)post*=1.3;
+  if(o.terrain==="hierba"&&m.t==="GRO"&&m.sp)post*=.5;
+  const R=[];
+  for(let r=85;r<=100;r++){
+    let x=Math.floor(base*pre);x=Math.floor(x*r/100);
+    x=Math.floor(x*stab);x=Math.floor(x*e);
+    R.push(Math.max(e>0?1:0,Math.floor(x*post)));
+  }
+  return {R,maxHP,e,move:o.move};
+}
+function best(atk,def,ctx,pool){
+  let win=null;
+  for(const k of (pool&&pool.length?pool.filter(x=>MV[x]&&MV[x][2]!=='E'&&MV[x][0]>0):DMG)){
+    const r=calc({...ctx,atk,def,move:k});
+    if(r&&(!win||r.R[15]>win.R[15]))win=r;
+  }
+  return win;
+}
+const verdict=(r,cur)=>{
+  if(!r)return{txt:"—",cls:"no",pct:""};
+  if(r.e===0)return{txt:"Inmune",cls:"no",pct:"×0"};
+  const hp=cur??r.maxHP, ko=r.R.filter(x=>x>=hp).length;
+  return {txt: ko===16?"KO":ko?`${Math.round(ko/16*100)}%`:`${Math.ceil(hp/r.R[15])}HKO`,
+    cls: ko?"k":"ok",
+    pct:`${Math.round(r.R[0]/r.maxHP*100)}–${Math.round(r.R[15]/r.maxHP*100)}% ×${r.e}`, ko};
+};
+
+/* ═════ INFERENCIA ═════ */
+function spdRange(f){
+  const sp=S(f.dex); if(!sp)return{min:0,max:0,rawMax:0};
+  const raw={min:stOf(sp.s[5],0,0.9),max:stOf(sp.s[5],SP_MAX,1.1)};
+  const mul=f.item==="Pañuelo Elección"?1.5:1;
+  return {min:Math.max(f.spdMin||0,Math.floor(raw.min*mul)),
+          max:Math.min(f.spdMax||9999,Math.floor(raw.max*mul)), rawMax:raw.max};
+}
+/** Velocidad efectiva: Tailwind duplica, la parálisis parte al medio. */
+const effSpd=(v,side,sta)=>{
+  let x=v;
+  if(B.tw[side]>0)x=Math.floor(x*2);
+  if(sta==="paralizado")x=Math.floor(x*.5);
+  if(B.tr>0)x=-x;                      // en Espacio Raro el orden se invierte
+  return x;
+};
+const shown=v=>Math.abs(v);
+function observeOrder(f,myEff,faster){
+  const twMul=B.tw.them>0?2:1;
+  const need=Math.ceil(Math.abs(myEff)/twMul);
+  if(faster) f.spdMin=Math.max(f.spdMin||0,need+1);
+  else       f.spdMax=Math.min(f.spdMax||9999,Math.max(1,need-1));
+  const r=spdRange(f);
+  if(!f.item&&f.spdMin>r.rawMax){f.item="Pañuelo Elección";f.itemSure=true}
+  if(f.spdMin>=stOf(S(f.dex).s[5],SP_MAX,1.1))f.spdSure=true;
+}
+function solveBulk(atk,def,move,obsPct,ctx){
+  const out=[],tol=3.2;
+  for(let hp=0;hp<=SP_MAX;hp+=2)for(let df=0;df<=SP_MAX;df+=2){
+    if(hp+df>SP_POOL)continue;
+    for(const nat of [0.9,1,1.1]){
+      const r=calc({...ctx,atk,def,move,dHP:hp,dSP:df,dNat:nat});
+      if(!r)continue;
+      const lo=r.R[0]/r.maxHP*100, hi=r.R[15]/r.maxHP*100;
+      if(obsPct>=lo-tol&&obsPct<=hi+tol)out.push({hp,df});
+    }
+  }
+  if(!out.length)return{ok:false};
+  return {ok:true,n:out.length,
+    hp:[Math.min(...out.map(o=>o.hp)),Math.max(...out.map(o=>o.hp))],
+    df:[Math.min(...out.map(o=>o.df)),Math.max(...out.map(o=>o.df))]};
+}
+
+/* ═════ PREDICCIÓN DE TEAM PREVIEW ═════
+   Razona como se razona en la previa: primero los ejes de partida (control de
+   velocidad, clima, megas), después el intercambio de daño. */
+function rolesFoe(f){
+  const m=metaOf(f.dex),R=new Set();
+  (m?.moves||[]).forEach(([k])=>{if(ROLE_MV[k])R.add(ROLE_MV[k])});
+  if(f.abil){ if(ROLE_AB[f.abil])R.add(ROLE_AB[f.abil]) }
+  else (m?.abilities||[]).forEach(([k])=>{if(ROLE_AB[k])R.add(ROLE_AB[k])});
+  if((m?.items||[]).some(([i])=>isMega(i)))R.add("mega");
+  return R;
+}
+function rolesMine(m){
+  const R=new Set();
+  (m.moves||[]).forEach(k=>{if(ROLE_MV[k])R.add(ROLE_MV[k])});
+  if(isMega(m.item))R.add("mega");
+  return R;
+}
+const roleScore=R=>{
+  let s=0;
+  if(R.has("tailwind")||R.has("trickroom"))s+=26;
+  if(R.has("sol")||R.has("lluvia")||R.has("arena"))s+=20;
+  if(R.has("intimida"))s+=12;
+  if(R.has("prioridad"))s+=12;
+  if(R.has("pantallas"))s+=10;
+  if(R.has("estado"))s+=9;
+  if(R.has("bromista"))s+=8;
+  return s;
+};
+
+function predict(){
+  const foes=B.team.filter(f=>f.dex&&S(f.dex));
+  const mine=MY.filter(m=>m.dex&&S(m.dex));
+  if(foes.length<2||mine.length<2)return null;
+
+  const fR=foes.map(rolesFoe), mR=mine.map(rolesMine);
+  const notes=[];
+  const ctx={doubles:B.doubles};
+
+  // ── ejes de partida ──
+  const fTR=fR.filter(r=>r.has("trickroom")).length;
+  const fTW=fR.filter(r=>r.has("tailwind")).length;
+  const mTR=mR.filter(r=>r.has("trickroom")).length;
+  const mTW=mR.filter(r=>r.has("tailwind")).length;
+  if(fTR>=2)notes.push("Trae "+fTR+" opciones de Espacio Raro: es su plan A. Tu Tailwind pierde casi todo el valor.");
+  else if(fTR===1)notes.push("Tiene una opción de Espacio Raro. Guardá cómo cortarlo o forzalo a gastarlo temprano.");
+  if(fTW>=1&&fTR===0)notes.push("Va por Tailwind. La carrera de velocidad se define en los dos primeros turnos.");
+  if(mTW>0&&fTR>=2)notes.push("Tu Tailwind es lastre acá: no lo traigas si tenés alternativa.");
+  if(mTR>0&&fTW>0)notes.push("Tu Espacio Raro castiga su Tailwind. Es tu mejor eje.");
+
+  const weather=fR.map((r,i)=>["sol","lluvia","arena"].find(w=>r.has(w))?foes[i]:null).filter(Boolean);
+  if(weather.length)notes.push("Clima propio con "+weather.map(f=>nm(f.dex)).join(" y ")+": lo va a querer instalar sí o sí.");
+
+  const megas=foes.filter((f,i)=>fR[i].has("mega"));
+  if(megas.length>1)notes.push(megas.length+" megas ("+megas.map(f=>nm(f.dex)).join(", ")+") pero solo puede usar una: cuenta uno de esos como cupo, no dos.");
+
+  // Bromista vs Siniestro: el estado de prioridad no pasa
+  const myPrank=mine.filter((m,i)=>mR[i].has("bromista"));
+  const foeDark=foes.filter(f=>S(f.dex).t.includes("DAR"));
+  if(myPrank.length&&foeDark.length)
+    notes.push("Tiene "+foeDark.map(f=>nm(f.dex)).join(" y ")+" tipo siniestro: tu Bromista no le entra. Traelo solo si aporta otra cosa.");
+  const foePrank=foes.filter((f,i)=>fR[i].has("bromista"));
+  const myDark=mine.filter(m=>S(m.dex).t.includes("DAR"));
+  if(foePrank.length&&myDark.length)
+    notes.push("Su "+foePrank.map(f=>nm(f.dex)).join(" y ")+" usa Bromista: tus siniestros son la respuesta limpia.");
+
+  // ── puntaje de cada rival ──
+  const sc=foes.map((f,i)=>{
+    const pool=foeMoves(f);
+    let off=0,def=100;
+    for(const m of mine){
+      const st=statsOf(m);
+      const r=best(f.dex,myDex(m),{...ctx,aItem:f.item,aAb:f.abil,dStat:st,dAb:m.abil},pool);
+      if(r)off=Math.max(off,r.R[15]/r.maxHP*100);
+      const back=best(myDex(m),f.dex,{...ctx,aStat:st,aItem:m.item==="—"?null:m.item,aAb:m.abil,dHP:0,dSP:0},myMoves(m));
+      if(back)def=Math.min(def,100-Math.min(100,back.R[15]/back.maxHP*100));
+    }
+    const use=metaOf(f.dex)?.usage||1;
+    return {f,i,off:Math.min(off,150),def,role:roleScore(fR[i]),use,
+      score:Math.min(off,150)*.40 + def*.26 + roleScore(fR[i])*.22 + use*1.2};
+  });
+  // una sola mega ocupa cupo
+  let megaSeen=false;
+  sc.sort((a,b)=>b.score-a.score).forEach(x=>{
+    if(fR[x.i].has("mega")){ if(megaSeen)x.score*=.45; megaSeen=true }
+  });
+  sc.sort((a,b)=>b.score-a.score);
+  const theirs=sc.slice(0,4);
+  // sus leads: quien define el turno 1 (velocidad, clima, presión)
+  const theirLeads=[...theirs].sort((a,b)=>(b.role+b.off*.35)-(a.role+a.off*.35)).slice(0,2);
+  const theirBack=theirs.filter(x=>!theirLeads.includes(x));
+
+  // ── tu recomendación contra esos 4 ──
+  const my=mine.map((m,i)=>{
+    const st=statsOf(m),pool=myMoves(m);
+    let off=0,surv=100;
+    for(const t of theirs){
+      const r=best(myDex(m),t.f.dex,{...ctx,aStat:st,aItem:m.item==="—"?null:m.item,aAb:m.abil,dHP:0,dSP:0},pool);
+      if(r)off=Math.max(off,r.R[15]/r.maxHP*100);
+      const inc=best(t.f.dex,myDex(m),{...ctx,aItem:t.f.item,aAb:t.f.abil,dStat:st,dAb:m.abil},foeMoves(t.f));
+      if(inc)surv=Math.min(surv,100-Math.min(100,inc.R[15]/inc.maxHP*100));
+    }
+    let role=roleScore(mR[i]);
+    if(fTR>=2&&mR[i].has("tailwind"))role-=24;      // Tailwind muere contra hard TR
+    if(fTW>=1&&mR[i].has("trickroom"))role+=14;
+    return {m,i,off:Math.min(off,150),surv,role,
+      score:Math.min(off,150)*.42 + surv*.26 + role*.22};
+  });
+  my.sort((a,b)=>b.score-a.score);
+  const bring=my.slice(0,4);
+  const leads=[...bring].sort((a,b)=>(b.role+b.off*.4+b.surv*.2)-(a.role+a.off*.4+a.surv*.2)).slice(0,2);
+  const back=bring.filter(x=>!leads.includes(x));
+
+  return {theirLeads,theirBack,leads,back,notes};
+}
+
+/* ═════ DEX COMPLETO ═════
+   Si assets/dex.json existe (lo genera build_dex.py con datos de Pokémon
+   Showdown), reemplaza las tablas mínimas de arriba: todas las especies de
+   Champions, todos sus movimientos y —lo que más importa— los learnsets, para
+   que cada Pokémon solo ofrezca lo que de verdad aprende.
+   Si no existe, la app sigue andando con las tablas embebidas. */
+let DEX=null, LEARN=null;
+function loadDex(){
+  if(!has)return false;
+  let raw=""; try{raw=Android.loadDex()}catch(e){return false}
+  if(!raw||raw.length<100)return false;
+  let d; try{d=JSON.parse(raw)}catch(e){return false}
+  if(!d.species||!d.moves)return false;
+
+  // especies: clave numérica igual que antes, para no romper nada
+  const byNum={};
+  for(const k in d.species){
+    const sp=d.species[k];
+    // la forma base gana el número limpio; las alternativas van a 9xxxxx
+    const key = byNum[sp.num] ? 900000+sp.num*10+(Object.keys(byNum).length%10) : sp.num;
+    byNum[key]=1;
+    SPD[key]=[sp.n,...sp.s,...sp.t];
+    ABIL[key]=sp.a.length?sp.a:["—"];
+    SLUG[key]=k;
+  }
+  // movimientos
+  for(const k in d.moves){
+    const m=d.moves[k];
+    MV[m.n]=[m.p,m.t,m.c,m.r,m.pr,m.ac,m.d,m.n];
+    MVKEY[k]=m.n;
+  }
+  LEARN=d.learnsets; DEX=d;
+  return true;
+}
+const SLUG={}, MVKEY={};
+/** Movimientos que ESTA especie puede aprender. Vacío = no sabemos, mostrar todos. */
+function learnable(dex){
+  if(!LEARN)return null;
+  const k=SLUG[dex]; if(!k||!LEARN[k])return null;
+  const out=LEARN[k].map(x=>MVKEY[x]).filter(x=>x&&MV[x]);
+  return out.length?out:null;
+}
+
+/* ═════ RECOMENDADOR DE MOVIMIENTO ═════
+   Evalúa cada movimiento tuyo contra cada objetivo y explica el porqué.
+   La explicación importa más que el número: la idea es que aprendas a leer la
+   posición, no que obedezcas una flecha. */
+function suggest(mi,ai,mine,foes){
+  const m=MY[mi],st=statsOf(m),am=B.act["m"+ai]||actNew();
+  const pool=myMoves(m); if(!pool.length)return [];
+  const out=[];
+  for(const k of pool){
+    const M=mv(k); if(!M)continue;
+    // ── movimientos de estado: valor situacional, no daño ──
+    if(M.c==="E"){
+      let v=0,why="";
+      if(k==="Protección"){v=34;why="scoutea el turno; no lo repitas dos veces seguidas"}
+      else if(k==="Viento Afín"){v=B.tw.me>0?4:(B.tr>0?8:78);
+        why=B.tw.me>0?"ya está activo":B.tr>0?"no sirve con Espacio Raro":"das vuelta la carrera de velocidad"}
+      else if(k==="Espacio Raro"){v=B.tr>0?4:(myStat(m,5)<90?76:30);
+        why=B.tr>0?"ya está activo":myStat(m,5)<90?"tu equipo es lento: es tu eje":"tu Pokémon es rápido, te perjudica"}
+      else if(k==="Reflejo"||k==="Pantalla de Luz"){v=B.screen.me>0?5:58;
+        why=B.screen.me>0?"ya tenés pantalla":"reduce el daño 4 turnos"}
+      else if(/Espora|Onda Trueno|Paralizador|Bostezo/.test(k)){v=62;why="saca del turno a una amenaza sin gastar PS"}
+      else if(/Rage Powder|Follow Me/.test(k)){v=56;why="protegés a tu compañero absorbiendo los ataques"}
+      else if(k==="Wide Guard"){v=44;why="anula ataques de área"}
+      else if(k==="Danza Espada"||k==="Danza Aleteo"){v=40;why="ganás potencia si aguantás el turno"}
+      else if(k==="Rugido de Guerra"){v=52;why="baja el Ataque de los dos rivales"}
+      else{v=30;why=M.note||"movimiento de apoyo"}
+      out.push({k,v,why,tgt:"",dmg:null});
+      continue;
+    }
+    // ── movimientos de daño: contra cada rival en campo ──
+    for(const [di,fi] of foes.entries()){
+      const f=B.team[fi],df=B.act["f"+di]||actNew();
+      const r=calc({...ctxFor("me"),atk:myDex(m),def:f.dex,move:k,aStat:st,
+        aItem:m.item==="—"?null:m.item,aAb:m.abil,aHp:B.hp["m"+ai]??100,aBo:am.bo,aSta:am.sta,
+        dHP:0,dSP:0,dItem:f.item,dAb:f.abil,dBo:df.bo});
+      if(!r||r.e===0)continue;
+      const cur=Math.floor(r.maxHP*(B.hp["f"+di]??100)/100);
+      const kos=r.R.filter(x=>x>=cur).length;
+      const pct=r.R[15]/cur*100;
+      let v=Math.min(100,pct)*0.9;
+      let why=[];
+      if(kos===16){v=140;why.push("KO seguro")}
+      else if(kos>0){v=100+kos*2;why.push(`${Math.round(kos/16*100)}% de KO`)}
+      else why.push(`le deja ${Math.max(0,Math.round(100-pct))}%`);
+      if(r.e>1)why.push(`superefectivo ×${r.e}`);
+      if(M.sp&&B.doubles){v*=1.12;why.push("pega a los dos")}
+      if(M.pri>0){v*=1.10;why.push("prioridad")}
+      if(M.acc<90){v*=M.acc/100;why.push(`solo ${M.acc}% de precisión`)}
+      // ¿te matan a vos primero? entonces el KO vale mucho más
+      const inc=best(f.dex,myDex(m),{...ctxFor("them"),aItem:f.item,aAb:f.abil,
+        dStat:st,dAb:m.abil,dBo:am.bo},foeMoves(f));
+      const myHp=Math.floor(st[0]*(B.hp["m"+ai]??100)/100);
+      if(inc&&inc.R[0]>=myHp){
+        const mySpd=effSpd(Math.floor(myStat(m,5)*(m.item==="Pañuelo Elección"?1.5:1)),"me",am.sta);
+        const hisSpd=effSpd(spdRange(f).max,"them",(B.act["f"+di]||actNew()).sta);
+        if(mySpd>hisSpd&&kos===16){v+=45;why.push("y salís primero: lo matás antes de que te mate")}
+        else why.push("ojo: te mata a vos");
+      }
+      out.push({k,v,why:why.join(" · "),tgt:nm(f.dex),dmg:r,cur});
+    }
+  }
+  out.sort((a,b)=>b.v-a.v);
+  return out.slice(0,4);
+}
+
+/* ═════ ESTADO ═════ */
+const STATUS=["—","quemado","paralizado","envenenado","dormido","congelado"];
+const actNew=()=>({sta:null,bo:[0,0,0,0,0]});
+const slot=d=>({dex:d,sp:[0,32,0,0,2,32],up:1,dn:3,item:"—",abil:(ABIL[d]||["—"])[0],
+  mega:false,moves:["","","",""]});
+const NEW=()=>({v:4,doubles:true,turn:1,mine:[0,1],foe:[0,1],team:[],
+  hp:{m0:100,m1:100,f0:100,f1:100},
+  act:{m0:actNew(),m1:actNew(),f0:actNew(),f1:actNew()},
+  weather:null,wTurns:0,terrain:null,tTurns:0,tw:{me:0,them:0},tr:0,
+  screen:{me:0,them:0},pick:0,mpick:0,apick:"m0",tab:"field",pinned:false,compact:false,focus:0,
+  obs:{a:0,m:"Terremoto",p:50}});
+const mkFoe=(dex,c,sh)=>({dex,confidence:c,shiny:!!sh,item:null,itemSure:false,abil:null,
+  moves:[],spdMin:0,spdMax:9999,spdSure:false,out:false,seen:0});
+
+let B=NEW(), MY=[slot(445),slot(910),slot(727),slot(547),slot(591),slot(1000)];
+let META={species:{},source:"?",regulation:"?"};
+const has=typeof Android!=="undefined";
+const $=s=>document.querySelector(s);
+const buzz=k=>{if(has){try{Android.haptic(k)}catch(e){}}else if(navigator.vibrate)navigator.vibrate(k?18:8)};
+const keep=()=>{if(has)try{Android.keepOpen()}catch(e){}};
+let sT=null,tT=null;
+const save=()=>{if(!has)return;clearTimeout(sT);
+  sT=setTimeout(()=>{try{Android.saveBattle(JSON.stringify(B))}catch(e){}},400)};
+const saveMy=()=>{if(!has)return;clearTimeout(tT);
+  tT=setTimeout(()=>{try{Android.saveTeam(JSON.stringify({v:1,team:MY}))}catch(e){}},400)};
+
+function boot(){
+  if(has){
+    if(loadDex()){ DEXN=Object.keys(SPD).map(Number).filter(d=>d<900000)
+      .sort((a,b)=>S(a).n.localeCompare(S(b).n)); }
+    try{META=JSON.parse(Android.loadMeta())||META}catch(e){}
+    try{const t=JSON.parse(Android.loadTeam());if(t&&t.v===1&&t.team?.length)MY=t.team}catch(e){}
+    try{const r=JSON.parse(Android.loadBattle());if(r&&r.v===4)B=Object.assign(NEW(),r)}catch(e){}
+  }
+  if(!B.team.length)B.team=[6,500,547,94,150,9].map(d=>mkFoe(d,.9));
+  syncFoe();render();
+}
+function syncFoe(){
+  const live=B.team.map((f,i)=>i).filter(i=>!B.team[i].out);
+  if(!B.team[B.foe[0]]||B.team[B.foe[0]].out)B.foe[0]=live[0]??0;
+  if(B.doubles&&(!B.team[B.foe[1]]||B.team[B.foe[1]].out||B.foe[1]===B.foe[0]))
+    B.foe[1]=live.find(i=>i!==B.foe[0])??live[0]??0;
+}
+const myStat=(m,i)=> i===0?hpOf(S(myDex(m)).s[0],m.sp[0]):stOf(S(myDex(m)).s[i],m.sp[i],natMul(i,m.up,m.dn));
+const statsOf=m=>[0,1,2,3,4,5].map(i=>myStat(m,i));
+const ctxFor=side=>({doubles:B.doubles,weather:B.weather,terrain:B.terrain,
+  screen:(side==="them"?B.screen.me:B.screen.them)>0});
+const metaOf=d=>META.species?.[String(d)]||null;
+const myMoves=m=>(m.moves||[]).filter(x=>MV[x]);
+const foeMoves=f=>f.moves.length?f.moves.filter(x=>MV[x])
+  :(metaOf(f.dex)?.moves?.map(x=>x[0]).filter(x=>MV[x])||null);
+
+/* ═════ VISTAS ═════ */
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const nm=d=>S(d)?S(d).n:"—";
+const opt=(l,v,f)=>l.map(x=>`<option value="${esc(x)}"${x==v?" selected":""}>${esc(f(x))}</option>`).join("");
+
+/* Registro de selectores del render actual. Se reconstruye en cada render, así
+   que los closures de apply() siempre ven el estado fresco. */
+let REG={}, PICK=null, tHold=0;
+/* Volver al turno 1 sin tocar el equipo ni lo que ya dedujiste del rival. */
+function resetTurns(){
+  B.turn=1;B.weather=null;B.wTurns=0;B.terrain=null;B.tTurns=0;
+  B.tw={me:0,them:0};B.tr=0;B.screen={me:0,them:0};
+  B.hp={m0:100,m1:100,f0:100,f1:100};
+  B.act={m0:actNew(),m1:actNew(),f0:actNew(),f1:actNew()};
+  save();render();
+}
+function sel(list,val,lab,apply,title,deco){
+  const id="s"+Object.keys(REG).length;
+  REG[id]={list,val,lab,apply,title:title||"",deco};
+  return `<button class="sel" data-sel="${id}"><b>${esc(lab(val))}</b><i>▼</i></button>`;
+}
+/* Pintor para listas de movimientos: banda del color del tipo y, debajo,
+   categoría y potencia. Sin esto era imposible encontrar nada. */
+const decoMove=k=>{const m=MV[k];
+  if(!m)return{c:"transparent",sub:""};
+  return {c:T[m[1]]||"transparent",
+    sub: m[2]==="E"?"estado":`${m[2]==="F"?"físico":"especial"} · ${m[0]}`};
+};
+const decoItem=it=>{const r=IT.find(x=>x[0]===it);
+  const cat={dmg:"potencia",def:"defensa",spd:"velocidad",sup:"apoyo",res:"resiste",
+    typ:"potencia de tipo",x:""}[r?r[2]:"x"]||"";
+  const ty=TYPE_ITEM[it]||RES_BERRY[it];
+  return {c:ty?T[ty]:"transparent",sub:cat};
+};
+function vSheet(){
+  const P=PICK; if(!P)return "";
+  // Con listas largas y sin teclado, saltar por inicial es la única forma
+  // razonable de encontrar algo. Solo aparece si de verdad hace falta.
+  let jump="";
+  if(P.list.length>26){
+    const letras=[...new Set(P.list.map(x=>{const l=P.lab(x);
+      return (l&&l[0]||"").toUpperCase()}).filter(c=>/[A-Z]/.test(c)))].sort();
+    jump=`<div class="abc">${letras.map(c=>
+      `<button data-jump="${c}">${c}</button>`).join("")}</div>`;
+  }
+  return `<div class="sheet" id="sheet"><div class="sh"><b>${esc(P.title)}</b>
+    <span style="font-size:9px;color:var(--faint)">${P.list.length}</span>
+    <button class="ico" data-shx="1">×</button></div>${jump}
+    <div class="list">${P.list.map((x,i)=>{
+      const d=P.deco?P.deco(x):null;
+      const ini=((P.lab(x)||"")[0]||"").toUpperCase();
+      return `<button class="op" data-op="${i}" data-ini="${esc(ini)}" data-on="${String(x)===String(P.val)?1:0}">
+        ${d?`<q style="background:${d.c}"></q>`:""}
+        <n>${esc(P.lab(x))}${d&&d.sub?`<em>${esc(d.sub)}</em>`:""}</n></button>`}).join("")}</div></div>`;
+}
+
+function render(){
+  REG={};
+  try{ renderInner() }catch(e){
+    // Nunca dejar la interfaz muerta: si una vista falla, se muestra el error
+    // y los eventos se enganchan igual para poder seguir navegando.
+    $("#body").innerHTML=`<div class="card f"><span class="hd">Error en la vista</span>
+      <div class="msg w">${esc(e&&e.message||e)}</div>
+      <div class="msg" style="margin-top:5px">Probá otra pestaña. Si se repite, mandame
+      este texto.</div></div>`;
+  }
+  try{ wire() }catch(e){}
+  $("#bPin").dataset.on=B.pinned?"1":"0";
+  $("#bZip").dataset.on=B.compact?"1":"0";
+  $("#bTurn").innerHTML=`<span style="font-size:10px;font-weight:800">T${B.turn}</span>`;
+  $("#bTurn").onpointerdown=()=>{tHold=setTimeout(()=>{tHold=0;buzz(1);resetTurns()},600)};
+  $("#bTurn").onpointerup=$("#bTurn").onpointercancel=()=>{if(tHold)clearTimeout(tHold)};
+  document.querySelectorAll(".rail .tab").forEach(x=>x.dataset.on=x.dataset.tab===B.tab?"1":"0");
+}
+function renderInner(){
+  $("#body").innerHTML=(B.compact?vCompact()
+    :{pre:vPre,field:vField,foe:vFoe,mine:vMine,calc:vCalc,set:vSet}[B.tab]())+vSheet();
+}
+
+/* ── PREVIA: qué va a sacar y qué sacar vos ── */
+function vPre(){
+  const p=predict();
+  if(!p)return `<div class="card"><div class="msg">Escaneá al rival con ↻ y cargá tu equipo en MÍO.</div></div>`;
+  const line=(x,tag,cls)=>`<div class="pl"><i class="${cls}">${tag}</i>
+    <b>${esc(nm(x.f?x.f.dex:myDex(x.m)))}<s>${x.role>=20?"control de ritmo":x.off>=95?"amenaza directa":x.surv>=55||x.def>=55?"aguanta":"apoyo"}</s></b>
+    <u>${Math.round(x.score)}</u></div>`;
+  return `<div class="cols">
+    <div class="card f"><span class="hd">Va a sacar</span>
+      ${p.theirLeads.map(x=>line(x,"LEAD","")).join("")}
+      ${p.theirBack.map(x=>line(x,"BACK","b")).join("")}
+      <div class="msg" style="margin-top:5px">Orden por probabilidad, no certeza.</div></div>
+    <div class="card"><span class="hd">Sacá vos</span>
+      ${p.leads.map(x=>line(x,"LEAD","")).join("")}
+      ${p.back.map(x=>line(x,"BACK","b")).join("")}</div></div>
+  <div class="card d"><span class="hd">Por qué</span>
+    ${p.notes.length?p.notes.map(n=>`<div class="note">${esc(n)}</div>`).join("")
+      :`<div class="msg">Sin ejes marcados: es un cambio de golpes directo, priorizá daño y resistencia.</div>`}</div>`;
+}
+
+function hpBar(id,label,val){
+  const cls=val<=25?"crit":val<=50?"low":"";
+  return `<div class="hpbox ${cls}"><div class="hplab"><b>${esc(label)}</b><u>${val}%</u></div>
+    <div class="hpwrap"><div class="hpbg"><div class="hpfill" style="width:${val}%"></div></div>
+      <div class="knob" style="left:${val}%"></div>
+      <input type="range" min="1" max="100" step="1" value="${val}" data-hp="${id}"></div></div>`;
+}
+
+/* Modo compacto: tres bloques y nada más. Para los últimos 15 segundos. */
+function vCompact(){
+  const mine=(B.doubles?B.mine:[B.mine[0]]).filter(i=>MY[i]);
+  const foes=(B.doubles?B.foe:[B.foe[0]]).filter(i=>B.team[i]?.dex);
+  if(!mine.length||!foes.length)return `<div class="card"><div class="msg">Elegí los activos en CAMPO.</div></div>`;
+  const fi=Math.min(B.focus,mine.length-1);
+  const m=MY[mine[fi]];
+  const S1=suggest(mine[fi],fi,mine,foes);
+
+  // orden de velocidad reducido a lo esencial
+  const spd=[];
+  mine.forEach((mi,i)=>{const a=B.act["m"+i]||actNew();
+    spd.push({me:1,n:nm(myDex(MY[mi])),
+      v:effSpd(Math.floor(myStat(MY[mi],5)*(MY[mi].item==="Pañuelo Elección"?1.5:1)*stg((a.bo||[0,0,0,0,0])[4],0,1)),"me",a.sta)})});
+  foes.forEach((x,i)=>{const f=B.team[x],a=B.act["f"+i]||actNew();
+    spd.push({me:0,n:nm(f.dex),v:effSpd(Math.floor(spdRange(f).max*stg((a.bo||[0,0,0,0,0])[4],0,1)),"them",a.sta)})});
+  spd.sort((a,b)=>b.v-a.v);
+
+  // la amenaza más grande sobre el Pokémon enfocado
+  let worst=null;
+  foes.forEach((x,i)=>{const f=B.team[x];
+    const r=best(f.dex,myDex(m),{...ctxFor("them"),aItem:f.item,aAb:f.abil,
+      dStat:statsOf(m),dAb:m.abil},foeMoves(f));
+    if(r&&(!worst||r.R[15]>worst.r.R[15]))worst={r,f}});
+  const myHp=Math.floor(myStat(m,0)*(B.hp["m"+fi]??100)/100);
+  const wv=worst?verdict(worst.r,myHp):null;
+
+  return `<div class="card d" style="padding:6px">
+    <div class="pills">${mine.map((mi,i)=>
+      `<button class="p" data-fc="${i}" data-on="${i===fi?1:0}">${esc(nm(myDex(MY[mi])))}</button>`).join("")}
+      ${mine.map((mi,i)=>`<span class="p" style="background:none;padding:5px 4px">${B.hp["m"+i]??100}%</span>`).join("")}</div></div>
+  <div class="card"><span class="hd">Tirá</span>
+    ${S1.length?S1.map((x,i)=>`<div class="pl"><i class="${i?"b":""}">${i?i+1:"MEJOR"}</i>
+      <b>${esc(mvName(x.k))}${x.tgt?` <span style="color:var(--foe-row)">→ ${esc(x.tgt)}</span>`:""}<s>${esc(x.why)}</s></b>
+      <u class="${x.v>=100?"k":"ok"}">${x.dmg?verdict(x.dmg,x.cur).txt:"apoyo"}</u></div>`).join("")
+      :`<div class="msg">Cargá los movimientos de ${esc(nm(myDex(m)))} en MÍO.</div>`}</div>
+  <div class="cols">
+    <div class="card f" style="padding:8px"><span class="hd">Te hacen</span>
+      ${worst?`<div class="row"><b>${esc(nm(worst.f.dex))}<s>${esc(mvName(worst.r.move))}</s></b>
+        <u class="${wv.cls}">${wv.txt}<s>${wv.pct}</s></u></div>`:`<div class="msg">—</div>`}</div>
+    <div class="card d" style="padding:8px"><span class="hd">Orden</span>
+      ${spd.slice(0,4).map((x,i)=>`<div class="row" style="padding:4px 8px">
+        <b style="color:${x.me?"var(--pick)":"var(--foe-row)"}">${i+1}. ${esc(x.n)}</b>
+        <u>${Math.abs(x.v)}</u></div>`).join("")}</div></div>`;
+}
+
+function vField(){
+  const mine=(B.doubles?B.mine:[B.mine[0]]).filter(i=>MY[i]);
+  const foes=(B.doubles?B.foe:[B.foe[0]]).filter(i=>B.team[i]?.dex);
+  const A=k=>B.act[k]||actNew();
+  let h=`<div class="card d"><span class="hd">Turno ${B.turn}<em>${B.doubles?"dobles":"individual"}</em></span>
+    <div class="cols"><div><div class="cap">Tus activos</div>
+      ${(B.doubles?[0,1]:[0]).map(i=>`<div style="margin-bottom:3px">${
+        sel(MY.map((m,j)=>j),B.mine[i],j=>nm(myDex(MY[j])),v=>{B.mine[i]=+v;save()},"Tu activo")}</div>`).join("")}</div>
+    <div><div class="cap">Rivales</div>
+      ${(B.doubles?[0,1]:[0]).map(i=>`<div style="margin-bottom:3px">${
+        sel(B.team.map((f,j)=>j),B.foe[i],j=>nm(B.team[j].dex)+(B.team[j].out?" ✕":""),
+          v=>{B.foe[i]=+v;syncFoe();save()},"Rival en campo")}</div>`).join("")}</div></div></div>`;
+
+  h+=`<div class="cols">
+    <div class="card"><span class="hd">Tus PS</span>
+      ${mine.map((mi,i)=>hpBar("m"+i,nm(myDex(MY[mi])),B.hp["m"+i]??100)).join("")}</div>
+    <div class="card f"><span class="hd">PS rival</span>
+      ${foes.map((fi,i)=>hpBar("f"+i,nm(B.team[fi].dex),B.hp["f"+i]??100)).join("")}</div></div>`;
+
+  // estados y etapas del activo elegido
+  const keys=[...mine.map((mi,i)=>["m"+i,nm(myDex(MY[mi]))]),...foes.map((fi,i)=>["f"+i,nm(B.team[fi].dex)])];
+  const ak=keys.some(k=>k[0]===B.apick)?B.apick:(keys[0]?.[0]||"m0");
+  const a=A(ak);
+  h+=`<div class="card d"><span class="hd">Estado y etapas</span>
+    <div class="pills" style="margin-bottom:5px">${keys.map(([k,n])=>
+      `<button class="p" data-ap="${k}" data-on="${k===ak?1:0}">${esc(n)}</button>`).join("")}</div>
+    <div class="pills" style="margin-bottom:6px">${STATUS.map(s=>
+      `<button class="p" data-sta="${s}" data-on="${(a.sta||"—")===s?1:0}">${s}</button>`).join("")}</div>
+    <div class="cols">${BON.map((n,i)=>`<div class="bo"><b>${n}</b><div class="st">
+      <button data-bo="${i}" data-d="-1">−</button>
+      <u class="${a.bo[i]>0?"up":a.bo[i]<0?"dn":""}">${a.bo[i]>0?"+":""}${a.bo[i]}</u>
+      <button data-bo="${i}" data-d="1">+</button></div></div>`).join("")}</div>
+    ${a.sta==="quemado"?`<div class="msg w" style="margin-top:4px">Quemado: su daño físico va a la mitad.</div>`:""}
+    ${a.sta==="paralizado"?`<div class="msg w" style="margin-top:4px">Paralizado: velocidad a la mitad.</div>`:""}</div>`;
+
+  h+=`<div class="card"><span class="hd">Les hacés</span>`;
+  mine.forEach((mi,ai)=>foes.forEach((fi,di)=>{
+    const m=MY[mi],f=B.team[fi],am=A("m"+ai),df=A("f"+di);
+    const r=best(myDex(m),f.dex,{...ctxFor("me"),aStat:statsOf(m),aItem:m.item==="—"?null:m.item,
+      aAb:m.abil,aHp:B.hp["m"+ai]??100,aBo:am.bo,aSta:am.sta,
+      dHP:0,dSP:0,dItem:f.item,dAb:f.abil,dBo:df.bo},myMoves(m));
+    const cur=r?Math.floor(r.maxHP*(B.hp["f"+di]??100)/100):0;
+    h+=rowFx(`${nm(myDex(m))} → ${nm(f.dex)}`,r?mvName(r.move):"",verdict(r,cur),r,cur);
+  }));
+  h+=`</div><div class="card f"><span class="hd">Te hacen</span>`;
+  foes.forEach((fi,di)=>mine.forEach((mi,ai)=>{
+    const m=MY[mi],f=B.team[fi],am=A("m"+ai),df=A("f"+di);
+    const r=best(f.dex,myDex(m),{...ctxFor("them"),aItem:f.item,aAb:f.abil,aBo:df.bo,aSta:df.sta,
+      dStat:statsOf(m),dAb:m.abil,dHp:B.hp["m"+ai]??100,dBo:am.bo},foeMoves(f));
+    const cur=r?Math.floor(r.maxHP*(B.hp["m"+ai]??100)/100):0;
+    h+=rowFx(`${nm(f.dex)} → ${nm(myDex(m))}`,(r?mvName(r.move):"")+(f.moves.length?"":" · estimado"),
+      verdict(r,cur),r,cur);
+  }));
+  h+=`</div><div class="cols">
+    <div class="card d"><span class="hd">Velocidad</span>${vSpeed(mine,foes)}</div>
+    <div class="card d"><span class="hd">Campo</span>${vChips()}</div></div>`;
+  return h;
+}
+
+function rowFx(who,sub,v,r,cur){
+  let t="";
+  if(r&&r.e>0&&cur>0)t=`<div class="track">${r.R.map(x=>
+    `<div class="tick${x>=cur?" x":""}" style="left:${Math.min(99,x/cur*100)}%"></div>`).join("")}</div>`;
+  return `<div class="row"><b>${esc(who)}<s>${esc(sub)}</s>${t}</b>
+    <u class="${v.cls}">${v.txt}<s>${v.pct}</s></u></div>`;
+}
+
+function vSpeed(mine,foes){
+  const L=[];
+  mine.forEach((mi,i)=>{const m=MY[mi],a=B.act["m"+i]||actNew();
+    let v=myStat(m,5)*(m.item==="Pañuelo Elección"?1.5:1);
+    v=Math.floor(v*stg(a.bo[4],0,1));
+    L.push({k:"me",n:nm(myDex(m)),v:effSpd(v,"me",a.sta),sure:1,tag:a.sta==="paralizado"?"para":""})});
+  foes.forEach((fi,i)=>{const f=B.team[fi],a=B.act["f"+i]||actNew(),r=spdRange(f);
+    const lo=Math.floor(r.min*stg(a.bo[4],0,1)),hi=Math.floor(r.max*stg(a.bo[4],0,1));
+    L.push({k:"them",n:nm(f.dex),v:effSpd(hi,"them",a.sta),lo:effSpd(lo,"them",a.sta),
+      sure:f.spdSure||f.itemSure,tag:f.item==="Pañuelo Elección"?"Pañuelo":a.sta==="paralizado"?"para":""})});
+  L.sort((a,b)=>b.v-a.v);
+  return L.map((x,i)=>`<div class="row"><b style="flex:0 0 14px;color:var(--faint)">${i+1}</b>
+    <b style="color:${x.k==="me"?"var(--pick)":"var(--foe-row)"}">${esc(x.n)}</b>
+    <u class="${x.sure?"cf":""}">${x.lo!==undefined&&shown(x.lo)!==shown(x.v)?shown(x.lo)+"–"+shown(x.v):shown(x.v)}</u>
+    ${x.tag?`<span class="p" data-on="1" style="padding:2px 7px">${x.tag}</span>`:""}</div>`).join("")
+    +(B.tr>0?`<div class="msg w" style="margin-top:4px">Espacio Raro ${B.tr}: el lento va primero.</div>`:"");
+}
+
+function vChips(){
+  const c=(k,v,on,l)=>`<button class="p" data-${k}="${v}" data-on="${on?1:0}">${l}</button>`;
+  return `<div class="pills">
+    ${["sol","lluvia"].map(x=>c("w",x,B.weather===x,x+(B.weather===x?` <em>${B.wTurns}</em>`:""))).join("")}
+    ${["eléctrico","hierba","psíquico"].map(x=>c("t",x,B.terrain===x,x.slice(0,4)+(B.terrain===x?` <em>${B.tTurns}</em>`:""))).join("")}
+    ${c("tw","me",B.tw.me>0,"TW vos"+(B.tw.me>0?` <em>${B.tw.me}</em>`:""))}
+    ${c("tw","them",B.tw.them>0,"TW rival"+(B.tw.them>0?` <em>${B.tw.them}</em>`:""))}
+    ${c("tr","1",B.tr>0,"Esp. Raro"+(B.tr>0?` <em>${B.tr}</em>`:""))}
+    ${c("sc","me",B.screen.me>0,"Pant. vos"+(B.screen.me>0?` <em>${B.screen.me}</em>`:""))}
+    ${c("sc","them",B.screen.them>0,"Pant. rival"+(B.screen.them>0?` <em>${B.screen.them}</em>`:""))}</div>`;
+}
+
+function vFoe(){
+  const f=B.team[B.pick],sp=f?S(f.dex):null,m=f?metaOf(f.dex):null;
+  let h=`<div class="team">${B.team.map((x,i)=>
+    `<button class="mon" data-pick="${i}" data-on="${i===B.pick?1:0}" data-out="${x.out?1:0}">
+      <span class="fg">${x.shiny?"✦":x.confidence<.12?"⚠":x.itemSure?"●":""}</span>
+      <b>${esc(nm(x.dex))}</b><s>${S(x.dex)?S(x.dex).s[5]:"—"}</s></button>`).join("")}</div>`;
+  if(!f||!sp)return h+`<div class="card f"><div class="msg">Escaneá la vista previa con ↻.</div></div>`;
+  const r=spdRange(f);
+  h+=`<div class="cols"><div class="card f"><span class="hd">${esc(sp.n)}<em>${m?m.usage+"%":"sin datos"}</em></span>
+    ${f.shiny?`<div class="row"><b>Variocolor</b><u class="cf">✦</u></div>`:""}
+    <div class="row"><b>Velocidad</b><u class="${f.spdSure?"cf":""}">${r.min}–${r.max}</u></div>
+    <div class="row"><b>Objeto</b><u class="${f.itemSure?"cf":""}">${f.item?esc(itName(f.item)):"?"}</u></div>
+    <div class="row"><b>Habilidad</b><u class="${f.abil?"cf":""}">${f.abil?esc(f.abil):"?"}</u></div>
+    <div class="row"><b>Vistos</b><u>${f.moves.length?esc(f.moves.map(mvName).join(", ")):"—"}</u></div>
+    ${f.bulk?`<div class="row"><b>Resistencia deducida</b><u class="cf">PS ${f.bulk.hp[0]}–${f.bulk.hp[1]} · Def ${f.bulk.df[0]}–${f.bulk.df[1]}</u></div>`:""}</div>
+  <div class="card d"><span class="hd">Observar</span><div class="pills">
+      <button class="p" data-obs="fast">Se movió antes</button>
+      <button class="p" data-obs="slow">Se movió después</button>
+      <button class="p" data-obs="out">${f.out?"Revivir":"Debilitado"}</button></div>
+    <div class="cap" style="margin-top:7px">Confirmar por daño</div>
+    <div class="f3">${sel(MY.map((m,j)=>j),B.obs.a,j=>nm(myDex(MY[j])),v=>{B.obs.a=+v;save()},"Con cuál")}
+    ${sel(dmgPool(myDex(MY[B.obs.a]||MY[0])),B.obs.m,mvName,v=>{B.obs.m=v;save()},"Con qué movimiento",decoMove)}
+    ${sel([...Array(20).keys()].map(i=>(i+1)*5),B.obs.p,x=>x+"%",v=>{B.obs.p=+v;save()},"Cuánto le bajó")}</div>
+    <button class="btn" id="oGo" style="margin-top:5px">Deducir resistencia</button>
+    <div class="msg" id="oOut" style="margin-top:5px">El % real que le bajaste descarta repartos.</div></div></div>`;
+  h+=`<div class="card"><span class="hd">Habilidad<em>tocá la que confirmes</em></span><div class="pills">${
+    abilsOf(f.dex).map(ab=>`<button class="p" data-fab="${esc(ab)}" data-on="${f.abil===ab?1:0}">${esc(ab)}${
+      (m?.abilities||[]).find(x=>x[0]===ab)?`<em>${(m.abilities.find(x=>x[0]===ab))[1]}%</em>`:""}</button>`).join("")}</div>
+    ${f.abil==="Intimidación"?`<div class="msg w" style="margin-top:5px">Al entrar baja −1 el Ataque de tus dos activos. Marcalo en CAMPO → Estado y etapas.</div>`:""}</div>`;
+  if(m){
+    h+=`<div class="cols"><div class="card"><span class="hd">Objetos</span><div class="pills">${
+      m.items.map(([i,p])=>`<button class="p" data-item="${esc(i)}" data-on="${f.item===i?1:0}">${esc(i)}<em>${p}%</em></button>`).join("")}</div></div>
+    <div class="card"><span class="hd">Movimientos</span><div class="pills">${
+      m.moves.map(([i,p])=>`<button class="p" data-mvk="${esc(i)}" data-on="${f.moves.includes(i)?1:0}">${esc(i)}<em>${p}%</em></button>`).join("")}</div></div></div>
+    <div class="card"><span class="hd">Repartos habituales</span>${
+      m.spreads.map(s=>`<div class="row"><b>${esc(s.label)}<s>${esc(s.nat)}</s></b><u>${s.sp.join("/")}<s>${s.pct}%</s></u></div>`).join("")}</div>`;
+  }
+  return h;
+}
+
+function vMine(){
+  const m=MY[B.mpick],used=m.sp.reduce((a,b)=>a+b,0),left=SP_POOL-used;
+  let h=`<div class="team">${MY.map((x,i)=>
+    `<button class="mon" data-mp="${i}" data-on="${i===B.mpick?1:0}" style="background:var(--ally-2)">
+      <b>${esc(nm(myDex(x)))}</b><s>${x.item==="—"?"—":esc(itName(x.item).slice(0,10))}</s></button>`).join("")}</div>
+  <div class="cols"><div class="card"><span class="hd">Slot ${B.mpick+1}</span>
+    <div class="cap">Pokémon</div>${sel(DEXN,m.dex,x=>S(x).n,v=>{m.dex=+v;
+      if(!abilsOf(m.dex).includes(m.abil))m.abil=abilsOf(m.dex)[0];
+      if(!canMega(m))m.mega=false; saveMy()},"Pokémon")}
+    <div class="cap" style="margin-top:4px">Objeto</div>${sel(ITEMS_A(),m.item,itName,
+      v=>{m.item=v; if(!canMega(m))m.mega=false; saveMy()},"Objeto",decoItem)}
+    <div class="cap" style="margin-top:4px">Habilidad</div>${sel(abilsOf(m.dex),m.abil,x=>x,
+      v=>{m.abil=v;saveMy()},"Habilidad")}
+    ${canMega(m)?`<div class="pills" style="margin-top:5px">
+      <button class="p" data-mega="1" data-on="${m.mega?1:0}">${m.mega?"Megaevolucionado":"Sin megaevolucionar"}</button></div>
+      <div class="msg" style="margin-top:3px">Llevar la piedra no es haberla usado. Marcalo cuando megaevolucione de verdad.</div>`:""}
+    <div class="f2" style="margin-top:4px">
+      <div><div class="cap">Sube</div>${sel([1,2,3,4,5],m.up,i=>STN[i],
+        v=>{m.up=+v; if(m.dn===m.up)m.dn=m.up===1?2:1; saveMy()},"Stat que sube 10%")}</div>
+      <div><div class="cap">Baja</div>${sel([1,2,3,4,5],m.dn,i=>STN[i],
+        v=>{m.dn=+v; if(m.up===m.dn)m.up=m.dn===1?2:1; saveMy()},"Stat que baja 10%")}</div></div></div>
+  <div class="card d"><span class="hd">Stat Points<em id="spLeft">quedan ${left}</em></span>
+    ${[0,1,2,3,4,5].map(i=>`<div class="sp"><b>${STN[i]}</b>
+      <div class="bar"><div class="bg"><div class="fl" style="width:${m.sp[i]/SP_MAX*100}%"></div></div>
+        <input type="range" min="0" max="${SP_MAX}" step="1" value="${m.sp[i]}" data-sp="${i}"></div>
+      <u>${m.sp[i]} <s style="display:inline;text-decoration:none;color:var(--pick)">${myStat(m,i)}</s></u></div>`).join("")}
+    ${left===0?`<div class="msg" style="color:var(--pick)">Repartidos los 66.</div>`:""}</div></div>
+  <div class="card"><span class="hd">Movimientos</span>
+    <div class="cols">${[0,1,2,3].map(i=>
+      `<div style="margin-bottom:3px">${sel(["",...movePool(m.dex)],m.moves[i]||"",
+        x=>x?mvName(x):"— vacío —",v=>{m.moves[i]=v;saveMy()},
+        "Movimiento "+(i+1)+(learnable(m.dex)?" · solo los que aprende":""),decoMove)}</div>`).join("")}</div>
+    ${learnable(m.dex)?"":`<div class="msg" style="margin-top:5px">Sin dex.json cargado se
+      muestran todos los movimientos. Generalo con build_dex.py para que cada Pokémon
+      ofrezca solo los suyos.</div>`}</div>`;
+  return h;
+}
+
+function vCalc(){
+  const c=window.__c||(window.__c={atk:MY[0].dex,def:B.team[B.foe[0]]?.dex||445,move:"Terremoto",
+    aSP:32,dSP:0,dHP:0,aNat:1.1,dNat:1,crit:0,cur:100});
+  const r=calc({...c,...ctxFor("me"),doubles:B.doubles});
+  const cur=r?Math.floor(r.maxHP*c.cur/100):0;
+  return `<div class="cols">
+    <div class="card"><span class="hd">Atacante</span>
+      ${sel(DEXN,c.atk,x=>S(x).n,v=>c.atk=+v,"Atacante")}
+      <div style="margin-top:3px">${sel(dmgPool(c.atk),c.move,mvName,v=>c.move=v,"Movimiento",decoMove)}</div>
+      <div class="f2" style="margin-top:3px">
+        ${sel([...Array(33).keys()],c.aSP,x=>x+" SP",v=>c.aSP=+v,"SP ofensivo")}
+        ${sel([1.1,1,0.9],c.aNat,x=>x==1.1?"Sube":x==1?"Neutra":"Baja",v=>c.aNat=+v,"Alineación")}</div></div>
+    <div class="card f"><span class="hd">Defensor</span>
+      ${sel(DEXN,c.def,x=>S(x).n,v=>c.def=+v,"Defensor")}
+      <div class="f2" style="margin-top:3px">
+        ${sel([...Array(33).keys()],c.dHP,x=>"PS "+x,v=>c.dHP=+v,"SP en PS")}
+        ${sel([...Array(33).keys()],c.dSP,x=>"Def "+x,v=>c.dSP=+v,"SP defensivo")}</div>
+      <div style="margin-top:3px">${sel([1.1,1,0.9],c.dNat,x=>x==1.1?"Sube":x==1?"Neutra":"Baja",v=>c.dNat=+v,"Alineación")}</div></div></div>
+  <div class="card d"><span class="hd">Resultado</span>
+    ${hpBar("calc","PS del defensor",c.cur)}
+    ${rowFx(nm(c.atk)+" → "+nm(c.def),mvName(c.move),verdict(r,cur),r,cur)}
+    <div class="pills" style="margin-top:5px"><button class="p" data-c2="crit" data-on="${c.crit?1:0}">Crítico</button></div></div>`;
+}
+
+function vSet(){
+  return `<div class="cols">
+  <div class="card d"><span class="hd">Formato</span><div class="pills">
+    <button class="p" data-fmt="1" data-on="${B.doubles?1:0}">Dobles</button>
+    <button class="p" data-fmt="0" data-on="${B.doubles?0:1}">Individual</button></div>
+    <div class="cap" style="margin-top:8px">Idioma de ataques y objetos</div>
+    <div class="pills">
+      <button class="p" data-lang="en" data-on="${LANG==="en"?1:0}">English</button>
+      <button class="p" data-lang="es" data-on="${LANG==="es"?1:0}">Español</button></div>
+    <div class="msg" style="margin-top:4px">Poné el mismo que uses en el juego, así los
+      nombres coinciden con lo que ves en pantalla.</div>
+    <button class="btn" id="rt" style="margin-top:8px">Volver al turno 1</button>
+    <div class="msg" style="margin-top:6px"><b>T${B.turn}</b> avanza el turno y baja los
+      contadores de clima, Tailwind, pantallas y Espacio Raro; mantenelo presionado para
+      volver a T1. <b>◱</b> colapsa el HUD a lo esencial. <b>⇱</b> lo deja fijo para que
+      no se cierre solo a los 16 segundos. <b>↻</b> escanea al rival en la vista previa.</div>
+    <button class="btn g" id="rs" style="margin-top:8px">Combate nuevo</button>
+    <div class="msg" style="margin-top:5px">Borra turnos, revelados, estados y campo. Tu equipo no se toca.</div></div>
+  <div class="card"><span class="hd">Datos</span>
+    <div class="row"><b>Dex completo</b><u class="${DEX?"cf":"k"}">${DEX
+      ?Object.keys(DEX.species).length+" especies":"no cargado"}</u></div>
+    <div class="row"><b>Movimientos</b><u>${Object.keys(MV).length}</u></div>
+    <div class="row"><b>Learnsets</b><u class="${LEARN?"cf":"k"}">${LEARN?"sí":"no"}</u></div>
+    ${DEX?"":`<div class="msg w" style="margin-top:5px">Sin dex.json cada Pokémon ofrece
+      todos los movimientos. Corré build_dex.py y copiá el archivo a assets/.</div>`}</div>
+  <div class="card"><span class="hd">Meta</span>
+    <div class="row"><b>Regulación</b><u>${esc(META.regulation||"?")}</u></div>
+    <div class="row"><b>Actualizado</b><u>${esc(META.updated||"—")}</u></div>
+    <div class="row"><b>Especies</b><u>${Object.keys(META.species||{}).length}</u></div>
+    ${META.source==="estimado"?`<div class="msg w" style="margin-top:5px">Datos estimados, no de uso real.</div>`:""}
+    <div class="msg" style="margin-top:6px">Son los porcentajes de uso: qué objeto,
+      movimientos y reparto suele llevar cada Pokémon. El HUD los usa para estimar
+      al rival antes de que muestre nada. Los que vienen de fábrica son mi criterio,
+      no datos medidos — por eso dicen «estimados».</div>
+    <div class="msg" style="margin-top:5px">Si conseguís un meta.json real y lo subís
+      a algún lado (Drive con link directo, GitHub, lo que sea), pegá la URL acá y se
+      reemplaza sin recompilar. Si la descarga falla, se queda con el que tenía.</div>
+    <input type="text" id="mU" placeholder="https://…/meta.json" style="margin-top:5px">
+    <button class="btn" id="mGo" style="margin-top:4px">Descargar</button>
+    <div class="msg" id="mOut" style="margin-top:4px"></div></div></div>`;
+}
+
+/* ═════ EVENTOS ═════ */
+function wire(){
+  const on=(s,f)=>document.querySelectorAll(s).forEach(e=>e.onclick=()=>{keep();buzz(1);f(e);save();render()});
+  const ch=(s,f)=>document.querySelectorAll(s).forEach(e=>e.onchange=()=>{keep();f(e);save();render()});
+
+  // abrir la hoja de opciones
+  document.querySelectorAll("[data-sel]").forEach(e=>e.onclick=()=>{
+    keep();buzz(1);PICK=REG[e.dataset.sel];render()});
+  // elegir una opción
+  document.querySelectorAll("[data-op]").forEach(e=>e.onclick=()=>{
+    keep();buzz(1);
+    const P=PICK; if(!P)return;
+    const v=P.list[+e.dataset.op];
+    PICK=null; P.apply(v); render()});
+  document.querySelectorAll("[data-shx]").forEach(e=>e.onclick=()=>{
+    buzz(1);PICK=null;render()});
+  document.querySelectorAll("[data-jump]").forEach(e=>e.onclick=()=>{
+    buzz(0);
+    const t=document.querySelector(`[data-ini="${e.dataset.jump}"]`);
+    if(t)t.scrollIntoView({block:"start",behavior:"smooth"})});
+  on("[data-pick]",e=>B.pick=+e.dataset.pick);
+  on("[data-mp]",e=>B.mpick=+e.dataset.mp);
+  on("[data-mega]",()=>{MY[B.mpick].mega=!MY[B.mpick].mega;saveMy()});
+  on("[data-fc]",e=>B.focus=+e.dataset.fc);
+  on("[data-ap]",e=>B.apick=e.dataset.ap);
+  on("[data-sta]",e=>{const k=B.apick;B.act[k]=B.act[k]||actNew();
+    const v=e.dataset.sta;B.act[k].sta=v==="—"?null:v});
+  on("[data-bo]",e=>{const k=B.apick;B.act[k]=B.act[k]||actNew();
+    const i=+e.dataset.bo,d=+e.dataset.d;
+    B.act[k].bo[i]=Math.max(-6,Math.min(6,B.act[k].bo[i]+d))});
+
+  on("[data-w]",e=>{const v=e.dataset.w;B.weather=B.weather===v?null:v;B.wTurns=B.weather?5:0});
+  on("[data-t]",e=>{const v=e.dataset.t;B.terrain=B.terrain===v?null:v;B.tTurns=B.terrain?5:0});
+  on("[data-tw]",e=>{const s=e.dataset.tw;B.tw[s]=B.tw[s]>0?0:4});
+  on("[data-tr]",()=>B.tr=B.tr>0?0:5);
+  on("[data-sc]",e=>{const s=e.dataset.sc;B.screen[s]=B.screen[s]>0?0:5});
+  on("[data-fmt]",e=>{B.doubles=e.dataset.fmt==="1";syncFoe()});
+  on("[data-lang]",e=>{LANG=e.dataset.lang;try{localStorage.setItem("hudLang",LANG)}catch(x){}});
+  on("[data-item]",e=>{const f=B.team[B.pick],v=e.dataset.item;f.item=f.item===v?null:v;f.itemSure=!!f.item});
+  on("[data-fab]",e=>{const f=B.team[B.pick],v=e.dataset.fab;f.abil=f.abil===v?null:v});
+  on("[data-mvk]",e=>{const f=B.team[B.pick],v=e.dataset.mvk,i=f.moves.indexOf(v);
+    i<0?f.moves.push(v):f.moves.splice(i,1)});
+  on("[data-obs]",e=>{const f=B.team[B.pick],k=e.dataset.obs;
+    if(k==="out"){f.out=!f.out;syncFoe();return}
+    const m=MY[B.mine[0]];if(!m)return;
+    const a=B.act.m0||actNew();
+    observeOrder(f,effSpd(myStat(m,5),"me",a.sta),k==="fast")});
+
+
+  document.querySelectorAll("input[type=range]").forEach(inp=>{
+    let last=+inp.value;
+    inp.oninput=()=>{
+      let v=+inp.value;
+      // Tope duro de 66 SP en total: la barra se frena sola en lo que quede
+      // libre, así no hay que hacer la cuenta a mano.
+      if(inp.dataset.sp!==undefined){
+        const m=MY[B.mpick], i=+inp.dataset.sp;
+        const otros=m.sp.reduce((a,b,j)=>a+(j===i?0:b),0);
+        const techo=Math.min(SP_MAX,SP_POOL-otros);
+        if(v>techo){v=techo;inp.value=techo;if(last===techo)return;buzz(1)}
+      }
+      if(v===last)return;last=v;buzz(0);keep();
+      const box=inp.closest(".hpwrap"),spb=inp.closest(".bar");
+      if(box){box.querySelector(".hpfill").style.width=v+"%";
+        box.querySelector(".knob").style.left=v+"%";
+        const w=box.closest(".hpbox");w.querySelector(".hplab u").textContent=v+"%";
+        w.className="hpbox "+(v<=25?"crit":v<=50?"low":"")}
+      if(spb){spb.querySelector(".fl").style.width=(v/SP_MAX*100)+"%";
+        MY[B.mpick].sp[+inp.dataset.sp]=v;
+        const q=document.querySelector("#spLeft");
+        if(q)q.textContent="quedan "+(SP_POOL-MY[B.mpick].sp.reduce((a,b)=>a+b,0));
+        spb.parentElement.querySelector("u").innerHTML=
+          v+' <s style="display:inline;text-decoration:none;color:var(--pick)">'+myStat(MY[B.mpick],+inp.dataset.sp)+"</s>"}
+    };
+    inp.onchange=()=>{buzz(1);
+      if(inp.dataset.hp){const k=inp.dataset.hp;
+        if(k==="calc")window.__c.cur=+inp.value;else B.hp[k]=+inp.value;save();render()}
+      if(inp.dataset.sp){saveMy();render()}};
+  });
+
+  const g=$("#oGo");if(g)g.onclick=()=>{keep();buzz(1);
+    const f=B.team[B.pick],m=MY[B.obs.a]||MY[0];
+    const res=solveBulk(myDex(m),f.dex,B.obs.m,B.obs.p,
+      {...ctxFor("me"),doubles:B.doubles,aStat:statsOf(m),aItem:m.item==="—"?null:m.item,aAb:m.abil});
+    if(!res.ok)$("#oOut").textContent="Ningún reparto normal da ese número: sospechá de baya de resistencia, pantalla o crítico.";
+    else{ f.bulk=res;   // queda anclado: el HUD lo recuerda el resto del combate
+      $("#oOut").textContent=`${res.n} repartos posibles. PS ${res.hp[0]}–${res.hp[1]} SP, defensa ${res.df[0]}–${res.df[1]} SP. Anclado.`}
+    save()};
+
+  on("[data-c2]",e=>window.__c[e.dataset.c2]=window.__c[e.dataset.c2]?0:1);
+
+  const mg=$("#mGo");if(mg)mg.onclick=()=>{keep();buzz(1);
+    const u=$("#mU").value.trim();
+    if(!u){$("#mOut").textContent="Pegá una URL primero.";return}
+    $("#mOut").textContent="Descargando…";
+    has?Android.updateMeta(u):$("#mOut").textContent="Solo dentro de la app."};
+  const rt=$("#rt");if(rt)rt.onclick=()=>{keep();buzz(1);resetTurns()};
+  const rs=$("#rs");if(rs)rs.onclick=()=>{keep();buzz(1);
+    const t=B.team;B=NEW();B.team=t.map(f=>mkFoe(f.dex,f.confidence,f.shiny));syncFoe();
+    if(has)try{Android.clearBattle()}catch(e){} save();render()};
+}
+
+document.querySelectorAll(".rail .tab").forEach(b=>b.onclick=()=>{
+  keep();buzz(1);B.tab=b.dataset.tab;save();render()});
+$("#bTurn").onclick=()=>{keep();buzz(1);B.turn++;
+  const d=x=>Math.max(0,x-1);
+  B.wTurns=d(B.wTurns);if(!B.wTurns)B.weather=null;
+  B.tTurns=d(B.tTurns);if(!B.tTurns)B.terrain=null;
+  B.tw.me=d(B.tw.me);B.tw.them=d(B.tw.them);B.tr=d(B.tr);
+  B.screen.me=d(B.screen.me);B.screen.them=d(B.screen.them);
+  save();render()};
+$("#bZip").onclick=()=>{keep();buzz(1);B.compact=!B.compact;save();render()};
+$("#bPin").onclick=()=>{buzz(1);B.pinned=!B.pinned;
+  if(has)try{Android.pin(B.pinned)}catch(e){} save();render()};
+$("#bScan").onclick=()=>{keep();buzz(1);if(has)Android.rescan()};
+$("#bShut").onclick=()=>{buzz(1);if(has)try{Android.close()}catch(e){}};
+
+window.onScan=function(json){
+  let d;try{d=JSON.parse(json)}catch(e){return}
+  if(d.error){$("#body").insertAdjacentHTML("afterbegin",
+    `<div class="card f"><div class="msg w">${esc(d.error)}</div></div>`);return}
+  if(!d.team?.length)return;
+  B.team=d.team.map(x=>mkFoe(x.dex,x.confidence,x.shiny));
+  B.pick=0;B.foe=[0,1];syncFoe();buzz(1);save();
+  // Solo saltamos a PREVIA si la lectura vale la pena. Antes saltaba siempre,
+  // y parecía que había funcionado aunque hubiera leído tres borrones.
+  const flojos=B.team.filter(f=>f.confidence<0.15).length;
+  const q=d.quality||0;
+  const ok = B.team.length>=5 && flojos<=1 && q>=0.7;
+  B.tab = ok ? "pre" : "foe";
+  render();
+  if(!ok){$("#body").insertAdjacentHTML("afterbegin",
+    `<div class="card f"><span class="hd">Lectura dudosa</span><div class="msg w">
+     Leí ${B.team.length} de 6${flojos?`, ${flojos} con poca confianza`:""}${
+       q?` (calidad ${Math.round(q*100)}%)`:""}.
+     ${q<0.7?"No reconocí bien el panel: movés la burbuja fuera de la franja derecha."
+       :"Corregí a mano los que estén mal tocando cada uno."}
+     </div></div>`)}
+};
+window.onMetaUpdate=function(json){
+  let d;try{d=JSON.parse(json)}catch(e){return}
+  const o=$("#mOut");
+  if(d.ok){try{META=JSON.parse(Android.loadMeta())}catch(e){}
+    if(o)o.textContent=`Listo: ${d.count} especies, ${d.regulation}.`;render()}
+  else if(o)o.textContent="No se pudo: "+(d.error||"error");
+};
+document.body.addEventListener("touchstart",keep,{passive:true});
+boot();
+</script>
+</body>
+</html>

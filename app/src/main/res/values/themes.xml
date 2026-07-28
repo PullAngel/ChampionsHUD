@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.ChampionsHUD" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:statusBarColor">#0B0A14</item>
+        <item name="android:navigationBarColor">#0B0A14</item>
+    </style>
+</resources>
