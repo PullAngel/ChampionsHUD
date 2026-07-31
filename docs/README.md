@@ -20,13 +20,13 @@ Esta carpeta es la fuente de verdad del proyecto. Antes de diseñar o implementa
 1. ¿Está alineada con la filosofía de [`vision.md`](./vision.md)? (en particular: el copiloto informa, nunca decide por el jugador)
 2. ¿Contradice alguna decisión ya tomada en [`decisions.md`](./decisions.md)?
 3. ¿Dónde vive en la arquitectura de [`architecture.md`](./architecture.md)? Si no encaja en ninguna capa existente, es señal de alarma, no motivo para forzarla.
-4. ¿En qué fase del [`roadmap.md`](./roadmap.md) corresponde? Si la fase actual es Fase 0 (estabilización), la respuesta por defecto a "¿lo hacemos ahora?" es no.
+4. ¿En qué fase del [`roadmap.md`](./roadmap.md) corresponde? Verificá el estado actual ahí — no asumas que sigue siendo la misma fase que la última vez que se leyó este documento.
 
 **Cuando una decisión tenga impacto futuro** (arquitectura, dominio, persistencia o APIs), la regla del proyecto es: **preferir la solución escalable aunque hoy se use de forma simple**. Eso no significa sobre-construir — significa no cerrar puertas que cuesta reabrir (ver `architecture.md`, sección de puntos de extensión).
 
 ## Estado actual
 
-El proyecto está en **Fase 0 — Estabilización** (ver [`roadmap.md`](./roadmap.md)). Esto significa: no se agregan features nuevas hasta resolver los hallazgos de [`audit.md`](./audit.md). El roadmap incluye un checklist accionable, en orden de dependencia, pensado para ejecutarse con Claude Code — es el punto de partida recomendado para retomar el desarrollo.
+El proyecto completó la **Fase 0 — Estabilización** el 2026-07-31 y está ahora en **Fase 1 — Reducir la fricción crítica de uso** (ver [`roadmap.md`](./roadmap.md)). Los hallazgos de [`audit.md`](./audit.md) que describían comportamiento incorrecto están resueltos, con `validate_data.py` y `tests/run.js` protegiendo contra que se reintroduzcan en silencio.
 
 ## Convención de idioma
 

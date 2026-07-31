@@ -35,7 +35,7 @@ Preguntale a Angel antes de asumir. No se resuelve una ambigüedad de producto c
 
 ## Estado del código base
 
-Ver `docs/audit.md` para el detalle completo. En resumen: la lógica de combate vive en `hud.html` (JS plano, sin módulos todavía), el cascarón Android en Kotlin (`MainActivity`, `OverlayService`, `ScreenCapture`, `SpriteMatcher`, `ReconnectActivity`, `Storage`). Hay bugs confirmados pendientes de la Fase 0 — no asumir que el comportamiento actual es el deseado sin chequear `docs/audit.md`.
+Ver `docs/audit.md` para el detalle completo. En resumen: la lógica de combate vive en `hud.html` (JS plano, sin módulos — decisión deliberada, ver `docs/decisions.md` #18), el cascarón Android en Kotlin (`MainActivity`, `OverlayService`, `ScreenCapture`, `SpriteMatcher`, `Storage`). La Fase 0 (estabilización) se completó — no asumir que sigue vigente sin chequear `docs/roadmap.md`.
 
 ## Documentación
 
