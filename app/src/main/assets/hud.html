@@ -734,6 +734,51 @@ function solveBulk(atk,def,move,obsPct,ctx){
     df:[Math.min(...out.map(o=>o.df)),Math.max(...out.map(o=>o.df))]};
 }
 
+/* ═════ DEX COMPLETO ═════
+   Si assets/dex.json existe (lo genera build_dex.py con datos de Pokémon
+   Showdown), reemplaza las tablas mínimas de arriba: todas las especies de
+   Champions, todos sus movimientos y —lo que más importa— los learnsets, para
+   que cada Pokémon solo ofrezca lo que de verdad aprende.
+   Si no existe, la app sigue andando con las tablas embebidas.
+   Va antes que PREDICCIÓN porque PREDICCIÓN usa learnable(), definida acá
+   (audit.md §5.4 — el orden de lectura ahora coincide con el de dependencia). */
+let DEX=null, LEARN=null;
+function loadDex(){
+  if(!has)return false;
+  let raw=""; try{raw=Android.loadDex()}catch(e){return false}
+  if(!raw||raw.length<100)return false;
+  let d; try{d=JSON.parse(raw)}catch(e){return false}
+  if(!d.species||!d.moves)return false;
+
+  // especies: clave numérica igual que antes, para no romper nada
+  const byNum={};
+  for(const k in d.species){
+    const sp=d.species[k];
+    // la forma base gana el número limpio; las alternativas van a 9xxxxx
+    const key = byNum[sp.num] ? 900000+sp.num*10+(Object.keys(byNum).length%10) : sp.num;
+    byNum[key]=1;
+    SPD[key]=[sp.n,...sp.s,...sp.t];
+    ABIL[key]=sp.a.length?sp.a.map(slugify):["—"];
+    SLUG[key]=k;
+  }
+  // movimientos
+  for(const k in d.moves){
+    const m=d.moves[k];
+    MV[m.n]=[m.p,m.t,m.c,m.r,m.pr,m.ac,m.d,m.n];
+    MVKEY[k]=m.n;
+  }
+  LEARN=d.learnsets; DEX=d;
+  return true;
+}
+const SLUG={}, MVKEY={};
+/** Movimientos que ESTA especie puede aprender. Vacío = no sabemos, mostrar todos. */
+function learnable(dex){
+  if(!LEARN)return null;
+  const k=SLUG[dex]; if(!k||!LEARN[k])return null;
+  const out=LEARN[k].map(x=>MVKEY[x]).filter(x=>x&&MV[x]);
+  return out.length?out:null;
+}
+
 /* ═════ PREDICCIÓN DE TEAM PREVIEW ═════
    Razona como se razona en la previa: primero los ejes de partida (control de
    velocidad, clima, megas), después el intercambio de daño. */
@@ -847,49 +892,6 @@ function predict(){
   const back=bring.filter(x=>!leads.includes(x));
 
   return {theirLeads,theirBack,leads,back,notes};
-}
-
-/* ═════ DEX COMPLETO ═════
-   Si assets/dex.json existe (lo genera build_dex.py con datos de Pokémon
-   Showdown), reemplaza las tablas mínimas de arriba: todas las especies de
-   Champions, todos sus movimientos y —lo que más importa— los learnsets, para
-   que cada Pokémon solo ofrezca lo que de verdad aprende.
-   Si no existe, la app sigue andando con las tablas embebidas. */
-let DEX=null, LEARN=null;
-function loadDex(){
-  if(!has)return false;
-  let raw=""; try{raw=Android.loadDex()}catch(e){return false}
-  if(!raw||raw.length<100)return false;
-  let d; try{d=JSON.parse(raw)}catch(e){return false}
-  if(!d.species||!d.moves)return false;
-
-  // especies: clave numérica igual que antes, para no romper nada
-  const byNum={};
-  for(const k in d.species){
-    const sp=d.species[k];
-    // la forma base gana el número limpio; las alternativas van a 9xxxxx
-    const key = byNum[sp.num] ? 900000+sp.num*10+(Object.keys(byNum).length%10) : sp.num;
-    byNum[key]=1;
-    SPD[key]=[sp.n,...sp.s,...sp.t];
-    ABIL[key]=sp.a.length?sp.a.map(slugify):["—"];
-    SLUG[key]=k;
-  }
-  // movimientos
-  for(const k in d.moves){
-    const m=d.moves[k];
-    MV[m.n]=[m.p,m.t,m.c,m.r,m.pr,m.ac,m.d,m.n];
-    MVKEY[k]=m.n;
-  }
-  LEARN=d.learnsets; DEX=d;
-  return true;
-}
-const SLUG={}, MVKEY={};
-/** Movimientos que ESTA especie puede aprender. Vacío = no sabemos, mostrar todos. */
-function learnable(dex){
-  if(!LEARN)return null;
-  const k=SLUG[dex]; if(!k||!LEARN[k])return null;
-  const out=LEARN[k].map(x=>MVKEY[x]).filter(x=>x&&MV[x]);
-  return out.length?out:null;
 }
 
 /* ═════ RECOMENDADOR DE MOVIMIENTO ═════
