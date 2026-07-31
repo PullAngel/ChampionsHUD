@@ -1270,6 +1270,11 @@ function vFoe(){
   if(!f||!sp)return h+`<div class="card f"><div class="msg">Escaneá la vista previa con ↻.</div></div>`;
   const r=spdRange(f);
   h+=`<div class="cols"><div class="card f"><span class="hd">${esc(sp.n)}<em>${m?m.usage+"%":"sin datos"}</em></span>
+    <div class="cap" style="margin-top:2px">${f.confidence<.5?"¿Mal leído? Corregí acá":"Especie"}</div>
+    ${sel(DEXN,f.dex,x=>S(x).n,v=>{
+      f.dex=+v;f.confidence=1;f.item=null;f.itemSure=false;f.abil=null;f.moves=[];
+      f.spdMin=0;f.spdMax=9999;f.spdSure=false;f.bulk=null;syncFoe();save()
+    },"Corregir especie")}
     ${f.shiny?`<div class="row"><b>Variocolor</b><u class="cf">✦</u></div>`:""}
     <div class="row"><b>Velocidad</b><u class="${f.spdSure?"cf":""}">${r.min}–${r.max}</u></div>
     <div class="row"><b>Objeto</b><u class="${f.itemSure?"cf":""}">${f.item?esc(itName(f.item)):"?"}</u></div>
