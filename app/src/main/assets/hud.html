@@ -1016,6 +1016,122 @@ const myMoves=m=>(m.moves||[]).filter(x=>MV[x]);
 const foeMoves=f=>f.moves.length?f.moves.filter(x=>MV[x])
   :(metaOf(f.dex)?.moves?.map(x=>x[0]).filter(x=>MV[x])||null);
 
+/* ═════ IMPORTACIÓN DE EQUIPO POR TEXTO ═════
+   decisión #15 (decisions.md): pegar un teamlist es una funcionalidad de
+   primera clase, no una alternativa menor a la lectura automática. Formato
+   cercano al de Showdown, pero "Spread" en vez de "EVs": Champions reparte
+   0–32 por stat con un pool de 66 (confirmado contra capturas reales de la
+   pantalla de Stats del juego), no el 0–252/508 de los juegos principales
+   — usar la palabra "EVs" hubiera sido confuso. Nombres de especie/ítem/
+   habilidad/movimiento se resuelven en cualquiera de los dos idiomas del
+   selector, no solo el que esté activo en ese momento. */
+const TEAM_PASTE_PLACEHOLDER=`Sinistcha @ Colbur Berry
+Ability: Hospitality
+Nature: Calm
+Spread: 31/0/7/0/28/0
+- Rage Powder
+- Matcha Gotcha
+- Life Dew
+- Trick Room
+
+(línea en blanco entre cada Pokémon, hasta 6)`;
+const NATURES={hardy:[0,0],lonely:[1,2],brave:[1,5],adamant:[1,3],naughty:[1,4],
+  bold:[2,1],docile:[0,0],relaxed:[2,5],impish:[2,3],lax:[2,4],
+  timid:[5,1],hasty:[5,2],serious:[0,0],jolly:[5,3],naive:[5,4],
+  modest:[3,1],mild:[3,2],quiet:[3,5],bashful:[0,0],rash:[3,4],
+  calm:[4,1],gentle:[4,2],sassy:[4,5],careful:[4,3],quirky:[0,0]};
+const NAT_IDX={atk:1,def:2,spa:3,spd:4,spe:5};
+
+function findSpecies(name){
+  const t=name.trim().toLowerCase();
+  const norm=s=>s.toLowerCase().replace(/[^a-z0-9]/g,"");
+  return DEXN.find(d=>S(d).n.toLowerCase()===t) ??
+    DEXN.find(d=>norm(S(d).n)===norm(t));
+}
+function findItem(name){
+  const t=name.trim().toLowerCase();
+  const hit=IT.find(x=>x[0].toLowerCase()===t||x[1].toLowerCase()===t);
+  if(hit)return hit[0];
+  const meg=Object.keys(MEGA).find(k=>k.toLowerCase()===t);
+  return meg||null;
+}
+function findAbility(name){
+  const t=name.trim().toLowerCase();
+  for(const slug in ABIL_I18N){
+    const r=ABIL_I18N[slug];
+    if(r.en.toLowerCase()===t||r.es.toLowerCase()===t)return slug;
+  }
+  const s=slugify(name);
+  return ABIL_I18N[s]?s:null;
+}
+function findMove(name){
+  const t=name.trim().toLowerCase();
+  if(MV[name])return name;
+  const byKey=Object.keys(MV).find(k=>k.toLowerCase()===t);
+  if(byKey)return byKey;
+  const byEn=Object.keys(MV).find(k=>(MV[k][7]||"").toLowerCase()===t);
+  if(byEn)return byEn;
+  const esKey=Object.keys(ES_ALT).find(k=>ES_ALT[k].toLowerCase()===t);
+  return esKey||null;
+}
+
+/** Parsea el texto pegado. Devuelve {team:[...hasta 6 slots], errors:[...]}
+    — nunca tira una excepción: un Pokémon que no se pudo leer se salta y
+    queda en errors, no rompe el resto (fallo ruidoso, nunca silencioso). */
+function parseTeamText(text){
+  const blocks=String(text||"").split(/\n\s*\n/).map(b=>b.trim()).filter(Boolean);
+  const team=[],errors=[];
+  blocks.slice(0,6).forEach(block=>{
+    const lines=block.split("\n").map(l=>l.trim()).filter(Boolean);
+    if(!lines.length)return;
+    const head=lines[0].match(/^(.+?)(?:\s*@\s*(.+))?$/);
+    const speciesName=(head?head[1]:lines[0]).trim();
+    const dex=findSpecies(speciesName);
+    if(!dex){errors.push(`No reconozco el Pokémon "${speciesName}".`);return}
+    const s=slot(dex);
+    const label=S(dex).n;
+    if(head&&head[2]){
+      const it=findItem(head[2]);
+      if(it)s.item=it; else errors.push(`${label}: no reconozco el ítem "${head[2]}".`);
+    }
+    const learn=learnable(dex);
+    for(const line of lines.slice(1)){
+      let m;
+      if((m=line.match(/^Ability:\s*(.+)$/i))){
+        const ab=findAbility(m[1]);
+        if(ab)s.abil=ab; else errors.push(`${label}: no reconozco la habilidad "${m[1]}".`);
+      }else if((m=line.match(/^Nature:\s*(.+)$/i))){
+        const nt=m[1].trim().toLowerCase();
+        if(NATURES[nt]){[s.up,s.dn]=NATURES[nt]}
+        else{
+          const pm=m[1].match(/\+\s*(\w+)\s*-\s*(\w+)/);
+          if(pm&&NAT_IDX[pm[1].toLowerCase()]&&NAT_IDX[pm[2].toLowerCase()]){
+            s.up=NAT_IDX[pm[1].toLowerCase()];s.dn=NAT_IDX[pm[2].toLowerCase()];
+          }else if(nt!=="neutral"){errors.push(`${label}: no reconozco la naturaleza "${m[1]}".`)}
+        }
+      }else if((m=line.match(/^Spread:\s*([\d/\s]+)$/i))){
+        const nums=m[1].split("/").map(x=>+x.trim());
+        const sum=nums.reduce((a,b)=>a+(b||0),0);
+        if(nums.length!==6||nums.some(n=>isNaN(n)||n<0||n>SP_MAX))
+          errors.push(`${label}: el reparto tiene que ser 6 números 0–${SP_MAX} separados por "/" (PS/Atq/Def/AtqEsp/DefEsp/Vel).`);
+        else if(sum>SP_POOL)
+          errors.push(`${label}: el reparto suma ${sum}, el máximo es ${SP_POOL}.`);
+        else s.sp=nums;
+      }else if((m=line.match(/^-\s*(.+)$/))){
+        if(s.moves.filter(Boolean).length>=4){errors.push(`${label}: ya tiene 4 movimientos, ignoro "${m[1]}".`);continue}
+        const k=findMove(m[1]);
+        if(!k){errors.push(`${label}: no reconozco el movimiento "${m[1]}".`);continue}
+        if(learn&&!learn.includes(k))errors.push(`${label}: "${mvName(k)}" no está en su learnset según dex.json — lo cargué igual, revisalo.`);
+        const free=s.moves.indexOf("");
+        if(free>=0)s.moves[free]=k;
+      }
+    }
+    if(!canMega(s))s.mega=false;
+    team.push(s);
+  });
+  return {team,errors};
+}
+
 /* ═════ VISTAS ═════ */
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const nm=d=>S(d)?S(d).n:"—";
@@ -1316,6 +1432,12 @@ function vMine(){
   let h=`<div class="team">${MY.map((x,i)=>
     `<button class="mon" data-mp="${i}" data-on="${i===B.mpick?1:0}" style="background:var(--ally-2)">
       <b>${esc(nm(myDex(x)))}</b><s>${x.item==="—"?"—":esc(itName(x.item).slice(0,10))}</s></button>`).join("")}</div>
+  <div class="card"><span class="hd">Importar equipo<em>pegá hasta 6, reemplaza todo</em></span>
+    <textarea id="tPaste" rows="5" placeholder="${esc(TEAM_PASTE_PLACEHOLDER)}"
+      style="width:100%;background:rgba(0,0,0,.30);color:var(--cream);border:none;
+      border-radius:10px;padding:8px;font-family:inherit;font-size:11px;resize:vertical"></textarea>
+    <button class="btn" id="tGo" style="margin-top:5px">Reemplazar equipo</button>
+    <div class="msg" id="tOut" style="margin-top:5px"></div></div>
   <div class="cols"><div class="card"><span class="hd">Slot ${B.mpick+1}</span>
     <div class="cap">Pokémon</div>${sel(DEXN,m.dex,x=>S(x).n,v=>{m.dex=+v;
       if(!abilsOf(m.dex).includes(m.abil))m.abil=abilsOf(m.dex)[0];
@@ -1506,6 +1628,21 @@ function wire(){
 
   on("[data-c2]",e=>window.__c[e.dataset.c2]=window.__c[e.dataset.c2]?0:1);
 
+  const tg=$("#tGo");if(tg)tg.onclick=()=>{keep();buzz(1);
+    const raw=$("#tPaste").value;
+    if(!raw.trim()){$("#tOut").textContent="Pegá un equipo primero.";return}
+    const {team,errors}=parseTeamText(raw);
+    if(!team.length){$("#tOut").innerHTML=`<span style="color:var(--warn)">No pude leer ningún Pokémon.<br>${errors.map(esc).join("<br>")}</span>`;return}
+    MY=team.concat(MY.slice(team.length));
+    B.mpick=0; saveMy();
+    // render() reconstruye #body entero (limpia el textarea a propósito) —
+    // el mensaje de resultado hay que escribirlo DESPUÉS, sobre el DOM nuevo.
+    render();
+    const out=$("#tOut");
+    if(out)out.innerHTML=(errors.length
+      ?`<span style="color:var(--warn)">Cargué ${team.length}, con avisos:<br>${errors.map(esc).join("<br>")}</span>`
+      :`<span style="color:var(--pick)">Cargué ${team.length} Pokémon sin problemas.</span>`);
+    return};
   const mg=$("#mGo");if(mg)mg.onclick=()=>{keep();buzz(1);
     const u=$("#mU").value.trim();
     if(!u){$("#mOut").textContent="Pegá una URL primero.";return}
@@ -1562,6 +1699,13 @@ window.onMetaUpdate=function(json){
   else if(o)o.textContent="No se pudo: "+(d.error||"error");
 };
 document.body.addEventListener("touchstart",keep,{passive:true});
+/* El panel no roba foco por diseño (FLAG_NOT_FOCUSABLE), así que un campo de
+   texto real no dispara el teclado si no le pedimos a Android que lo permita
+   mientras dura el foco — ver OverlayService.Bridge.needsKeyboard(). */
+document.body.addEventListener("focusin",e=>{
+  if(/^(INPUT|TEXTAREA)$/.test(e.target.tagName)&&has)try{Android.needsKeyboard(true)}catch(x){}});
+document.body.addEventListener("focusout",e=>{
+  if(/^(INPUT|TEXTAREA)$/.test(e.target.tagName)&&has)try{Android.needsKeyboard(false)}catch(x){}});
 boot();
 </script>
 </body>

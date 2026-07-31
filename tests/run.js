@@ -2,13 +2,13 @@
 /**
  * Suite de pruebas mínima — Champions HUD (roadmap Fase 0, ítem 6).
  *
- * hud.html no está modularizado todavía (roadmap Fase 0, ítem 4: partir en
- * módulos queda pendiente), así que no se puede hacer `require()` del motor
+ * hud.html no está modularizado todavía (decisions.md #18: decisión
+ * deliberada de no hacerlo), así que no se puede hacer `require()` del motor
  * de daño directamente. En cambio, esta suite extrae el tramo del script que
- * va desde el inicio hasta el cierre de verdict() — todo lo que necesita el
- * motor de daño (tablas de tipos, MV, ABIL_I18N, calc(), verdict()) y nada
- * de lo que toca el DOM real (eso empieza más abajo, en INFERENCIA en
- * adelante) — y lo corre en un sandbox de Node con un localStorage falso.
+ * va desde el inicio hasta el cierre de la sección IMPORTACIÓN DE EQUIPO POR
+ * TEXTO, justo antes de VISTAS — todo lo que no toca el DOM real (motor de
+ * daño, tablas MV/ABIL_I18N, calc(), verdict(), el parser de teamlists) — y
+ * lo corre en un sandbox de Node con un localStorage falso.
  *
  * Cubre exactamente el patrón de bug de la auditoría (audit.md §5.2): que el
  * motor de daño reconozca habilidades por su slug canónico, no por un
@@ -46,19 +46,20 @@ function assertEqual(a, b, msg) {
 function loadEngine() {
   const html = fs.readFileSync(HUD_PATH, "utf-8");
   const start = html.indexOf("<script>") + "<script>".length;
-  const end = html.indexOf("/* ═════ INFERENCIA ═════ */");
+  const end = html.indexOf("/* ═════ VISTAS ═════ */");
   if (start < 0 || end < 0) throw new Error("no se encontraron los marcadores esperados en hud.html — ¿cambió la estructura del archivo?");
   let src = html.slice(start, end);
   // vm.runInContext solo expone declaraciones `function`/`var` como propiedades
-  // del sandbox — calc() ya queda expuesto así, pero abilName/slugify/ABIL_I18N
-  // son const/let (bindings léxicos, invisibles desde afuera). Este footer
-  // corre en el mismo scope léxico que el resto del script extraído, así que
-  // puede exponerlos explícitamente.
+  // del sandbox — calc()/parseTeamText() ya quedan expuestas así, pero
+  // abilName/slugify/ABIL_I18N/MY son const/let (bindings léxicos, invisibles
+  // desde afuera). Este footer corre en el mismo scope léxico que el resto
+  // del script extraído, así que puede exponerlos explícitamente.
   src += `
     this.abilName = abilName;
     this.slugify = slugify;
     this.ABIL_I18N = ABIL_I18N;
     this.setLang = function (v) { LANG = v; };
+    this.getMY = function () { return MY; };
   `;
 
   const sandbox = {
@@ -125,6 +126,45 @@ check("abilName() traduce el mismo slug distinto según LANG", () => {
 check("slugify() normaliza nombres de Showdown al mismo formato que ABIL_I18N", () => {
   assertEqual(E.slugify("Flash Fire"), "flashfire");
   assert(E.ABIL_I18N[E.slugify("Flash Fire")] !== undefined, "el slug generado no existe en ABIL_I18N");
+});
+
+// ── importación de equipo por texto (roadmap Fase 1) ──
+console.log("\nimportación de equipo por texto:");
+
+check("parseTeamText lee un set completo con ítem, habilidad, naturaleza y reparto", () => {
+  const { team, errors } = E.parseTeamText(
+    "Sinistcha @ Colbur Berry\nAbility: Hospitality\nNature: Calm\nSpread: 31/0/7/0/28/0\n" +
+    "- Rage Powder\n- Matcha Gotcha\n- Life Dew\n- Trick Room"
+  );
+  assertEqual(errors.length, 0, `no debería haber avisos: ${JSON.stringify(errors)}`);
+  assertEqual(team.length, 1, "debería leer un Pokémon");
+  const s = team[0];
+  assertEqual(s.dex, 1013, "dex de Sinistcha incorrecto");
+  assertEqual(s.item, "Baya Dillo", "el ítem tiene que resolver a su nombre canónico en español (Colbur Berry)");
+  assertEqual(s.abil, "hospitality", "la habilidad tiene que resolver al slug");
+  assertEqual(s.up, 4, "Calm sube DefEsp (índice 4)");
+  assertEqual(s.dn, 1, "Calm baja Atq (índice 1)");
+  assertEqual(s.sp.join(","), "31,0,7,0,28,0", "el reparto no se leyó igual");
+  assertEqual(s.moves.filter(Boolean).length, 4, "deberían cargarse los 4 movimientos");
+});
+
+check("parseTeamText resuelve nombres en español aunque el set esté en inglés", () => {
+  const { team, errors } = E.parseTeamText("Garchomp @ Pañuelo Elección\nAbility: Velo Arena\n- Terremoto");
+  assertEqual(errors.length, 0, `no debería haber avisos: ${JSON.stringify(errors)}`);
+  assertEqual(team[0].item, "Pañuelo Elección");
+  assertEqual(team[0].abil, "sandveil");
+});
+
+check("parseTeamText no tira excepción con basura y reporta el error", () => {
+  const { team, errors } = E.parseTeamText("Esto no es un Pokémon de verdad\n- tampoco esto es un movimiento");
+  assertEqual(team.length, 0, "no debería reconocer ningún Pokémon");
+  assert(errors.length > 0, "debería reportar al menos un error");
+});
+
+check("parseTeamText corta en 6 Pokémon aunque se peguen más", () => {
+  const eight = Array.from({ length: 8 }, () => "Sinistcha").join("\n\n");
+  const { team } = E.parseTeamText(eight);
+  assertEqual(team.length, 6, "no debería superar 6 Pokémon");
 });
 
 // ── validador de datos (roadmap Fase 0, ítem 5) ──

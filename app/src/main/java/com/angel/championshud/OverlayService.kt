@@ -63,6 +63,7 @@ class OverlayService : Service() {
     private lateinit var badge: TextView
 
     private var panel: FrameLayout? = null
+    private var panelLp: WindowManager.LayoutParams? = null
     private var web: WebView? = null
     private var ready = false          // el HTML ya cargo
     private var expanded = false
@@ -252,14 +253,14 @@ class OverlayService : Service() {
         }
         container.animate().alpha(1f).translationX(0f).setDuration(160).start()
 
-        panel = container; expanded = true
+        panel = container; panelLp = lp; expanded = true
         badge.text = "•"; bubble.alpha = 1f
         resetIdle()
     }
 
     private fun collapseNow() {
         val p = panel ?: run { expanded = false; return }
-        panel = null; expanded = false
+        panel = null; panelLp = null; expanded = false
         badge.text = "HUD"; bubble.alpha = 0.72f
         ui.removeCallbacks(autoClose)
         // El WebView sale del contenedor pero sigue vivo: no se pierde el estado.
@@ -359,6 +360,27 @@ class OverlayService : Service() {
             ioHandler.post {
                 val r = meta.update(url)
                 ui.post { emit("onMetaUpdate", r) }
+            }
+        }
+
+        /**
+         * El panel tiene FLAG_NOT_FOCUSABLE por diseño (no le roba foco al
+         * juego). Un campo de texto real (pegar equipo, URL de meta) necesita
+         * foco de ventana para que el teclado aparezca — si no, el usuario
+         * toca el campo y no pasa nada. hud.html llama a esto en focus/blur
+         * de cualquier <input>/<textarea>. Fuera de esos momentos (que solo
+         * ocurren en pantallas de preparación, no durante el combate) el
+         * panel vuelve a no robar foco.
+         */
+        @JavascriptInterface fun needsKeyboard(on: Boolean) {
+            ui.post {
+                val p = panel ?: return@post
+                val lp = panelLp ?: return@post
+                lp.flags = if (on) lp.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+                           else lp.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                lp.softInputMode = if (on) WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                                   else WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+                runCatching { wm.updateViewLayout(p, lp) }
             }
         }
     }
