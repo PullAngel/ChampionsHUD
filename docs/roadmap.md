@@ -29,10 +29,10 @@ Sin features nuevas. Objetivo: que la auditoría, si se re-ejecutara hoy, no enc
 
 ## Fase 1 — Reducir la fricción crítica de uso (fase actual)
 
-- Carga del equipo propio: lectura automática (OCR de la pantalla de detalles) o, si el costo no lo justifica todavía, importación por texto en menos de 30 segundos. Esta es la fricción #1 declarada del producto y precede en prioridad a cualquier mejora de inferencia.
-- Corrección de reconocimiento en 2 taps, sin teclado, en cualquier punto del flujo.
-- Rediseño de Presentación hacia una vista contextual única (según fase del combate) en vez de pestañas fijas, alineado con `product.md`.
-- Ajustar Glance para dejar de mostrar contadores de campo que el juego ya muestra (decisión #2), y priorizar orden de velocidad + alerta relevante.
+- Carga del equipo propio: lectura automática (OCR de la pantalla de detalles) o, si el costo no lo justifica todavía, importación por texto en menos de 30 segundos. Esta es la fricción #1 declarada del producto y precede en prioridad a cualquier mejora de inferencia. **En progreso.**
+- ~~Corrección de reconocimiento en 2 taps, sin teclado, en cualquier punto del flujo.~~ — **Hecho, 2026-07-31.** La especie del rival en team preview no tenía ninguna forma de corregirse manualmente (solo objeto/habilidad/movimientos la tenían). Agregado con el mismo patrón de selector de 2 taps que ya usaba el equipo propio.
+- Rediseño de Presentación hacia una vista contextual única (según fase del combate) en vez de pestañas fijas, alineado con `product.md`. **Sin abordar todavía.**
+- ~~Ajustar Glance para dejar de mostrar contadores de campo que el juego ya muestra~~ — **Verificado, 2026-07-31: el supuesto no se sostenía.** Glance (`vCompact()`) nunca mostró esos contadores — viven en `vField()` (Peek), que además es el mecanismo de entrada con el que el usuario le informa el estado a la app. En cambio se encontró y corrigió algo más grave en el mismo lugar: Glance seguía rankeando movimientos con la etiqueta "MEJOR", el modo `suggest()` que `decisions.md` #1 daba por descartado. Corregido y matizado en `decisions.md` #19 (mostrar el resultado calculado no es recomendar; ordenar o etiquetar "mejor" sí).
 
 **Criterio de salida:** un combate completo se juega con el presupuesto de interacción manual definido en `product.md`, salvo fallos puntuales de reconocimiento.
 
