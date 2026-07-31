@@ -898,12 +898,18 @@ function predict(){
    Evalúa cada movimiento tuyo contra cada objetivo y explica el porqué.
    La explicación importa más que el número: la idea es que aprendas a leer la
    posición, no que obedezcas una flecha. */
+/* Devuelve el resultado calculado de cada movimiento propio contra cada
+   rival en campo — información (daño, KO o no), nunca una jerarquía: no se
+   ordena ni se recorta por puntaje, y no hay ningún "mejor". Cada entrada
+   lleva `slot`, la posición real del movimiento en el set, para poder
+   mostrar un identificador neutral en vez de un ranking (decisions.md #19,
+   matiza la #1: mostrar el resultado no es recomendar, elegir por vos sí). */
 function suggest(mi,ai,mine,foes){
   const m=MY[mi],st=statsOf(m),am=B.act["m"+ai]||actNew();
   const pool=myMoves(m); if(!pool.length)return [];
   const out=[];
-  for(const k of pool){
-    const M=mv(k); if(!M)continue;
+  pool.forEach((k,slot)=>{
+    const M=mv(k); if(!M)return;
     // ── movimientos de estado: valor situacional, no daño ──
     if(M.c==="E"){
       let v=0,why="";
@@ -920,8 +926,8 @@ function suggest(mi,ai,mine,foes){
       else if(k==="Danza Espada"||k==="Danza Aleteo"){v=40;why="ganás potencia si aguantás el turno"}
       else if(k==="Rugido de Guerra"){v=52;why="baja el Ataque de los dos rivales"}
       else{v=30;why=M.note||"movimiento de apoyo"}
-      out.push({k,v,why,tgt:"",dmg:null});
-      continue;
+      out.push({k,slot,v,why,tgt:"",dmg:null});
+      return;
     }
     // ── movimientos de daño: contra cada rival en campo ──
     for(const [di,fi] of foes.entries()){
@@ -952,11 +958,10 @@ function suggest(mi,ai,mine,foes){
         if(mySpd>hisSpd&&kos===16){v+=45;why.push("y salís primero: lo matás antes de que te mate")}
         else why.push("ojo: te mata a vos");
       }
-      out.push({k,v,why:why.join(" · "),tgt:nm(f.dex),dmg:r,cur});
+      out.push({k,slot,v,why:why.join(" · "),tgt:nm(f.dex),dmg:r,cur});
     }
-  }
-  out.sort((a,b)=>b.v-a.v);
-  return out.slice(0,4);
+  });
+  return out;
 }
 
 /* ═════ ESTADO ═════ */
@@ -1149,10 +1154,10 @@ function vCompact(){
     <div class="pills">${mine.map((mi,i)=>
       `<button class="p" data-fc="${i}" data-on="${i===fi?1:0}">${esc(nm(myDex(MY[mi])))}</button>`).join("")}
       ${mine.map((mi,i)=>`<span class="p" style="background:none;padding:5px 4px">${B.hp["m"+i]??100}%</span>`).join("")}</div></div>
-  <div class="card"><span class="hd">Tirá</span>
-    ${S1.length?S1.map((x,i)=>`<div class="pl"><i class="${i?"b":""}">${i?i+1:"MEJOR"}</i>
+  <div class="card"><span class="hd">Tus movimientos<em>por resultado, no por orden</em></span>
+    ${S1.length?S1.map(x=>{const vd=x.dmg?verdict(x.dmg,x.cur):null;return`<div class="pl"><i class="b">${x.slot+1}</i>
       <b>${esc(mvName(x.k))}${x.tgt?` <span style="color:var(--foe-row)">→ ${esc(x.tgt)}</span>`:""}<s>${esc(x.why)}</s></b>
-      <u class="${x.v>=100?"k":"ok"}">${x.dmg?verdict(x.dmg,x.cur).txt:"apoyo"}</u></div>`).join("")
+      <u class="${vd?vd.cls:"no"}">${vd?vd.txt:"apoyo"}</u></div>`}).join("")
       :`<div class="msg">Cargá los movimientos de ${esc(nm(myDex(m)))} en MÍO.</div>`}</div>
   <div class="cols">
     <div class="card f" style="padding:8px"><span class="hd">Te hacen</span>
