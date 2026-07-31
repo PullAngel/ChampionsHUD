@@ -1,222 +1,1845 @@
 {
   "regulation": "M-B",
   "format": "doubles",
-  "updated": "2026-07-23",
+  "updated": "2026-07-31",
   "source": "estimado",
-  "note": "Datos de arranque basados en criterio competitivo general, NO en uso real. Corré build_meta.py para reemplazarlos por datos de una base pública y que el HUD deje de mostrar el aviso de 'estimado'.",
+  "note": "Datos de arranque basados en criterio competitivo general y en equipos reales observados por Angel, NO en uso real agregado. Corre build_meta.py para reemplazarlos por datos de una base publica y que el HUD deje de mostrar el aviso de 'estimado'.",
   "species": {
-    "445": {"usage": 11.2,
-      "items": [["Pañuelo Elección", 31], ["Vidasfera", 26], ["Cinta Elección", 18], ["Banda Focus", 12]],
-      "moves": [["Terremoto", 94], ["Garra Dragón", 71], ["Tajo Umbrío", 44], ["Protección", 38], ["Roca Afilada", 31]],
-      "abilities": [["Arena Fuerte", 63], ["Rugosidad", 37]],
+    "1013": {
+      "usage": 10.5,
+      "items": [
+        [
+          "Baya Baribá",
+          100
+        ]
+      ],
+      "moves": [
+        [
+          "Rage Powder",
+          88
+        ],
+        [
+          "Matcha Gotcha",
+          81
+        ],
+        [
+          "Life Dew",
+          74
+        ],
+        [
+          "Espacio Raro",
+          66
+        ]
+      ],
+      "abilities": [
+        [
+          "hospitality",
+          100
+        ]
+      ],
       "spreads": [
-        {"label": "Ofensivo rápido", "sp": [0, 32, 0, 0, 2, 32], "nat": "sube Vel", "pct": 58},
-        {"label": "Resistente", "sp": [20, 32, 6, 0, 0, 8], "nat": "sube Atq", "pct": 24}]},
-    "910": {"usage": 9.8,
-      "items": [["Baya Occa", 29], ["Refuerzo", 24], ["Vidasfera", 21], ["Restos", 14]],
-      "moves": [["Golpe Bajo", 89], ["Cabeza de Hierro", 74], ["Tajo Umbrío", 52], ["Protección", 47], ["Danza Espada", 33]],
-      "abilities": [["Ovación Fúnebre", 71], ["Robaembeleso", 29]],
+        {
+          "label": "Soporte Espacio Raro",
+          "sp": [
+            31,
+            0,
+            7,
+            0,
+            28,
+            0
+          ],
+          "nat": "sube DefEsp",
+          "pct": 70
+        }
+      ]
+    },
+    "1018": {
+      "usage": 9.5,
+      "items": [
+        [
+          "Restos",
+          62
+        ],
+        [
+          "Cinta Aguante",
+          24
+        ],
+        [
+          "Baya Yecana",
+          14
+        ]
+      ],
+      "moves": [
+        [
+          "Pulso Dragón",
+          84
+        ],
+        [
+          "Flash Cannon",
+          71
+        ],
+        [
+          "Electro Shot",
+          58
+        ],
+        [
+          "Protección",
+          91
+        ]
+      ],
+      "abilities": [
+        [
+          "stamina",
+          68
+        ],
+        [
+          "sturdy",
+          32
+        ]
+      ],
       "spreads": [
-        {"label": "Tanque físico", "sp": [32, 32, 2, 0, 0, 0], "nat": "sube Atq", "pct": 61},
-        {"label": "Especial-defensivo", "sp": [32, 24, 0, 0, 10, 0], "nat": "sube DefEsp", "pct": 22}]},
-    "1004": {"usage": 8.4,
-      "items": [["Anteojos Elección", 38], ["Vidasfera", 27], ["Bota Gruesa", 16]],
-      "moves": [["Llamarada", 91], ["Pulso Umbrío", 84], ["Protección", 41], ["Onda Ígnea", 29], ["Rayo Hielo", 22]],
-      "abilities": [["Sartén Vudú", 100]],
+        {
+          "label": "Muro físico",
+          "sp": [
+            18,
+            0,
+            1,
+            25,
+            0,
+            11
+          ],
+          "nat": "baja Atq",
+          "pct": 66
+        }
+      ]
+    },
+    "260": {
+      "usage": 8.8,
+      "items": [
+        [
+          "Swampertite",
+          100
+        ]
+      ],
+      "moves": [
+        [
+          "Wave Crash",
+          87
+        ],
+        [
+          "High Horsepower",
+          74
+        ],
+        [
+          "Puño Hielo",
+          61
+        ],
+        [
+          "Protección",
+          88
+        ]
+      ],
+      "abilities": [
+        [
+          "damp",
+          100
+        ]
+      ],
       "spreads": [
-        {"label": "Máximo ataque especial", "sp": [0, 0, 0, 32, 2, 32], "nat": "sube Vel", "pct": 66},
-        {"label": "Con vida", "sp": [24, 0, 0, 32, 0, 10], "nat": "sube AtqEsp", "pct": 20}]},
-    "987": {"usage": 8.1,
-      "items": [["Bota Gruesa", 33], ["Anteojos Elección", 25], ["Vidasfera", 22]],
-      "moves": [["Rayo Fantasma", 88], ["Vozarrón", 81], ["Protección", 66], ["Truco Defensa", 34], ["Viento Feérico", 27]],
-      "abilities": [["Buenos Ánimos", 100]],
+        {
+          "label": "Mega físico",
+          "sp": [
+            3,
+            32,
+            0,
+            0,
+            1,
+            32
+          ],
+          "nat": "sube Vel",
+          "pct": 72
+        }
+      ]
+    },
+    "302": {
+      "usage": 8.0,
+      "items": [
+        [
+          "Refleluz",
+          100
+        ]
+      ],
+      "moves": [
+        [
+          "Taunt",
+          79
+        ],
+        [
+          "Reflejo",
+          91
+        ],
+        [
+          "Pantalla de Luz",
+          91
+        ],
+        [
+          "Danza Lluvia",
+          34
+        ]
+      ],
+      "abilities": [
+        [
+          "prankster",
+          100
+        ]
+      ],
       "spreads": [
-        {"label": "Rápido frágil", "sp": [0, 0, 0, 32, 2, 32], "nat": "sube Vel", "pct": 54},
-        {"label": "Semi-resistente", "sp": [20, 0, 0, 32, 4, 10], "nat": "sube AtqEsp", "pct": 28}]},
-    "727": {"usage": 7.6,
-      "items": [["Baya Zidra", 34], ["Chaleco Asalto", 26], ["Restos", 19], ["Cinta Elección", 11]],
-      "moves": [["Golpe Bajo", 86], ["Represalia", 68], ["Sofoco", 57], ["Rugido de Guerra", 44], ["Protección", 41]],
-      "abilities": [["Intimidación", 92], ["Mar Llamas", 8]],
+        {
+          "label": "Pantallas Bromista",
+          "sp": [
+            32,
+            0,
+            14,
+            0,
+            14,
+            0
+          ],
+          "nat": "sube Def",
+          "pct": 81
+        }
+      ]
+    },
+    "26": {
+      "usage": 3.5,
+      "items": [
+        [
+          "Pañuelo Elección",
+          44
+        ],
+        [
+          "Bola Luminosa",
+          31
+        ],
+        [
+          "Baya Gualot",
+          17
+        ]
+      ],
+      "moves": [
+        [
+          "Trueno",
+          78
+        ],
+        [
+          "Rayo Carga",
+          62
+        ],
+        [
+          "Ida y Vuelta",
+          41
+        ],
+        [
+          "Protección",
+          47
+        ]
+      ],
+      "abilities": [
+        [
+          "lightningrod",
+          71
+        ],
+        [
+          "static",
+          29
+        ]
+      ],
       "spreads": [
-        {"label": "Soporte resistente", "sp": [32, 12, 8, 0, 14, 0], "nat": "sube DefEsp", "pct": 63},
-        {"label": "Ofensivo", "sp": [16, 32, 0, 0, 6, 12], "nat": "sube Atq", "pct": 21}]},
-    "812": {"usage": 7.2,
-      "items": [["Restos", 31], ["Semilla Hierba", 24], ["Chaleco Asalto", 21], ["Vidasfera", 14]],
-      "moves": [["Tamborileo", 93], ["Puño Certero", 62], ["Protección", 58], ["Ida y Vuelta", 47], ["Antojo", 26]],
-      "abilities": [["Herbogénesis", 89], ["Defensa Hoja", 11]],
+        {
+          "label": "Pañuelo rápido",
+          "sp": [
+            4,
+            0,
+            0,
+            32,
+            0,
+            30
+          ],
+          "nat": "sube Vel",
+          "pct": 66
+        }
+      ]
+    },
+    "350": {
+      "usage": 7.0,
+      "items": [
+        [
+          "Restos",
+          47
+        ],
+        [
+          "Baya Zidra",
+          28
+        ],
+        [
+          "Hierba Mental",
+          17
+        ]
+      ],
+      "moves": [
+        [
+          "Surf",
+          74
+        ],
+        [
+          "Rayo Hielo",
+          58
+        ],
+        [
+          "Fuerza Lunar",
+          34
+        ],
+        [
+          "Danza Aleteo",
+          41
+        ]
+      ],
+      "abilities": [
+        [
+          "marvelscale",
+          62
+        ],
+        [
+          "competitive",
+          38
+        ]
+      ],
       "spreads": [
-        {"label": "Resistente", "sp": [32, 24, 6, 0, 4, 0], "nat": "sube Atq", "pct": 55},
-        {"label": "Rápido", "sp": [8, 32, 0, 0, 0, 26], "nat": "sube Vel", "pct": 27}]},
-    "591": {"usage": 6.9,
-      "items": [["Restos", 41], ["Chaleco Asalto", 22], ["Gafas Aisladoras", 17], ["Mental Herb", 12]],
-      "moves": [["Espora", 96], ["Bomba Germen", 71], ["Protección", 68], ["Bilis", 54], ["Rayo Solar", 12]],
-      "abilities": [["Regeneración", 88], ["Efecto Espora", 12]],
+        {
+          "label": "Muro especial",
+          "sp": [
+            32,
+            0,
+            4,
+            20,
+            20,
+            0
+          ],
+          "nat": "sube DefEsp",
+          "pct": 74
+        }
+      ]
+    },
+    "937": {
+      "usage": 6.0,
+      "items": [
+        [
+          "Baya Pomaro",
+          38
+        ],
+        [
+          "Cinta Fuerte",
+          27
+        ],
+        [
+          "Baya Zidra",
+          21
+        ]
+      ],
+      "moves": [
+        [
+          "Golpe Oscuro",
+          82
+        ],
+        [
+          "Sombra Vil",
+          68
+        ],
+        [
+          "Golpe Bajo",
+          44
+        ],
+        [
+          "Protección",
+          71
+        ]
+      ],
+      "abilities": [
+        [
+          "flashfire",
+          100
+        ]
+      ],
       "spreads": [
-        {"label": "Muro mixto", "sp": [32, 0, 16, 0, 18, 0], "nat": "sube Def", "pct": 71}]},
-    "645": {"usage": 6.5,
-      "items": [["Bota Gruesa", 29], ["Pañuelo Elección", 24], ["Roca Suave", 16], ["Vidasfera", 15]],
-      "moves": [["Vendaval", 82], ["Terremoto", 74], ["Protección", 61], ["Roca Afilada", 39], ["Golpe Bajo", 24]],
-      "abilities": [["Intimidación", 84], ["Bromista", 16]],
+        {
+          "label": "Físico rápido",
+          "sp": [
+            4,
+            32,
+            0,
+            0,
+            0,
+            30
+          ],
+          "nat": "sube Vel",
+          "pct": 69
+        }
+      ]
+    },
+    "534": {
+      "usage": 3.0,
+      "items": [
+        [
+          "Cinta Aguante",
+          34
+        ],
+        [
+          "Baya Zidra",
+          28
+        ],
+        [
+          "Bola Férrea",
+          17
+        ]
+      ],
+      "moves": [
+        [
+          "Puño Certero",
+          84
+        ],
+        [
+          "A Bocajarro",
+          71
+        ],
+        [
+          "Golpe Bajo",
+          41
+        ],
+        [
+          "Protección",
+          58
+        ]
+      ],
+      "abilities": [
+        [
+          "guts",
+          61
+        ],
+        [
+          "ironfist",
+          39
+        ]
+      ],
       "spreads": [
-        {"label": "Intimidador rápido", "sp": [16, 32, 0, 0, 6, 12], "nat": "sube Vel", "pct": 49},
-        {"label": "Resistente", "sp": [32, 20, 8, 0, 6, 0], "nat": "sube Def", "pct": 31}]},
-    "1000": {"usage": 6.1,
-      "items": [["Restos", 34], ["Anteojos Elección", 27], ["Mental Herb", 14]],
-      "moves": [["Golpe Fantasma", 91], ["Tumba Rocas", 44], ["Protección", 58], ["Truco", 31], ["Onda Trueno", 27]],
-      "abilities": [["Cuerpo Áureo", 100]],
+        {
+          "label": "Ofensivo resistente",
+          "sp": [
+            24,
+            32,
+            0,
+            0,
+            4,
+            0
+          ],
+          "nat": "sube Atq",
+          "pct": 68
+        }
+      ]
+    },
+    "450": {
+      "usage": 2.5,
+      "items": [
+        [
+          "Roca Suave",
+          41
+        ],
+        [
+          "Restos",
+          27
+        ],
+        [
+          "Baya Acardo",
+          17
+        ]
+      ],
+      "moves": [
+        [
+          "Terremoto",
+          91
+        ],
+        [
+          "Roca Afilada",
+          58
+        ],
+        [
+          "Protección",
+          84
+        ],
+        [
+          "Bostezo",
+          24
+        ]
+      ],
+      "abilities": [
+        [
+          "sandstream",
+          88
+        ],
+        [
+          "sandforce",
+          12
+        ]
+      ],
       "spreads": [
-        {"label": "Balanceado", "sp": [26, 0, 4, 32, 0, 4], "nat": "sube AtqEsp", "pct": 52},
-        {"label": "Rápido", "sp": [4, 0, 0, 32, 0, 30], "nat": "sube Vel", "pct": 30}]},
-    "991": {"usage": 5.8,
-      "items": [["Chaleco Asalto", 43], ["Baya Zidra", 24], ["Cinta Elección", 15]],
-      "moves": [["Puño Trueno", 88], ["Golpe Bajo", 79], ["Palmeo Doble", 54], ["Protección", 48], ["Puño Hielo", 32]],
-      "abilities": [["Impulso Químico", 100]],
+        {
+          "label": "Arena resistente",
+          "sp": [
+            32,
+            20,
+            10,
+            0,
+            10,
+            0
+          ],
+          "nat": "sube Def",
+          "pct": 72
+        }
+      ]
+    },
+    "134": {
+      "usage": 2.2,
+      "items": [
+        [
+          "Restos",
+          44
+        ],
+        [
+          "Baya Zidra",
+          27
+        ],
+        [
+          "Baya Gualot",
+          14
+        ]
+      ],
+      "moves": [
+        [
+          "Surf",
+          68
+        ],
+        [
+          "Hidrobomba",
+          54
+        ],
+        [
+          "Protección",
+          74
+        ],
+        [
+          "Rayo Aurora",
+          27
+        ]
+      ],
+      "abilities": [
+        [
+          "waterabsorb",
+          71
+        ],
+        [
+          "hydration",
+          29
+        ]
+      ],
       "spreads": [
-        {"label": "Chaleco masivo", "sp": [12, 32, 0, 0, 22, 0], "nat": "sube Atq", "pct": 64}]},
-    "547": {"usage": 5.4,
-      "items": [["Banda Focus", 38], ["Gafas Aisladoras", 24], ["Restos", 18]],
-      "moves": [["Danza Aleteo", 74], ["Antojo", 68], ["Viento Feérico", 51], ["Protección", 46], ["Paralizador", 34]],
-      "abilities": [["Bromista", 94], ["Manto Frondoso", 6]],
+        {
+          "label": "Muro acuático",
+          "sp": [
+            32,
+            0,
+            6,
+            14,
+            20,
+            0
+          ],
+          "nat": "sube DefEsp",
+          "pct": 66
+        }
+      ]
+    },
+    "445": {
+      "usage": 11.2,
+      "items": [
+        [
+          "Pañuelo Elección",
+          31
+        ],
+        [
+          "Vidasfera",
+          26
+        ],
+        [
+          "Baya Kouba",
+          18
+        ],
+        [
+          "Cinta Aguante",
+          12
+        ]
+      ],
+      "moves": [
+        [
+          "Terremoto",
+          94
+        ],
+        [
+          "Garra Dragón",
+          71
+        ],
+        [
+          "Tajo Umbrío",
+          44
+        ],
+        [
+          "Protección",
+          38
+        ],
+        [
+          "Roca Afilada",
+          31
+        ]
+      ],
+      "abilities": [
+        [
+          "roughskin",
+          63
+        ],
+        [
+          "sandveil",
+          37
+        ]
+      ],
       "spreads": [
-        {"label": "Soporte con Bromista", "sp": [32, 0, 12, 0, 10, 12], "nat": "sube Def", "pct": 68}]},
-    "861": {"usage": 5.0,
-      "items": [["Gafas Aisladoras", 41], ["Banda Focus", 22], ["Restos", 17]],
-      "moves": [["Reflejo", 76], ["Pantalla de Luz", 74], ["Bola Sombra", 44], ["Golpe Bajo", 38], ["Espacio Raro", 21]],
-      "abilities": [["Bromista", 89], ["Sombra Trampa", 11]],
+        {
+          "label": "Ofensivo rápido",
+          "sp": [
+            0,
+            32,
+            0,
+            0,
+            2,
+            32
+          ],
+          "nat": "sube Vel",
+          "pct": 58
+        },
+        {
+          "label": "Resistente",
+          "sp": [
+            20,
+            32,
+            6,
+            0,
+            0,
+            8
+          ],
+          "nat": "sube Atq",
+          "pct": 24
+        }
+      ]
+    },
+    "727": {
+      "usage": 7.6,
+      "items": [
+        [
+          "Baya Zidra",
+          38
+        ],
+        [
+          "Restos",
+          26
+        ],
+        [
+          "Cinta Aguante",
+          20
+        ],
+        [
+          "Pañuelo Elección",
+          16
+        ]
+      ],
+      "moves": [
+        [
+          "Golpe Bajo",
+          86
+        ],
+        [
+          "Represalia",
+          68
+        ],
+        [
+          "Sofoco",
+          57
+        ],
+        [
+          "Rugido de Guerra",
+          44
+        ],
+        [
+          "Protección",
+          41
+        ]
+      ],
+      "abilities": [
+        [
+          "intimidate",
+          92
+        ],
+        [
+          "blaze",
+          8
+        ]
+      ],
       "spreads": [
-        {"label": "Pantallas", "sp": [32, 0, 16, 0, 18, 0], "nat": "sube Def", "pct": 73}]},
-    "150": {"usage": 4.7,
-      "items": [["Vidasfera", 32], ["Anteojos Elección", 28], ["Bota Gruesa", 16]],
-      "moves": [["Psíquico", 84], ["Bola Sombra", 61], ["Rayo Hielo", 47], ["Protección", 44], ["Onda Ígnea", 26]],
-      "abilities": [["Presión", 71], ["Nerviosismo", 29]],
+        {
+          "label": "Soporte resistente",
+          "sp": [
+            32,
+            12,
+            8,
+            0,
+            14,
+            0
+          ],
+          "nat": "sube DefEsp",
+          "pct": 63
+        },
+        {
+          "label": "Ofensivo",
+          "sp": [
+            16,
+            32,
+            0,
+            0,
+            6,
+            12
+          ],
+          "nat": "sube Atq",
+          "pct": 21
+        }
+      ]
+    },
+    "1000": {
+      "usage": 8.6,
+      "items": [
+        [
+          "Pañuelo Elección",
+          58
+        ],
+        [
+          "Restos",
+          24
+        ],
+        [
+          "Baya Anjiro",
+          18
+        ]
+      ],
+      "moves": [
+        [
+          "Make It Rain",
+          82
+        ],
+        [
+          "Trick",
+          61
+        ],
+        [
+          "Bola Sombra",
+          47
+        ],
+        [
+          "Trueno",
+          44
+        ]
+      ],
+      "abilities": [
+        [
+          "goodasgold",
+          100
+        ]
+      ],
       "spreads": [
-        {"label": "Máxima velocidad", "sp": [0, 0, 0, 32, 2, 32], "nat": "sube Vel", "pct": 74}]},
-    "6": {"usage": 4.4,
-      "items": [["Charizardita Y", 46], ["Charizardita X", 31], ["Bota Gruesa", 12]],
-      "moves": [["Llamarada", 87], ["Rayo Solar", 52], ["Protección", 61], ["Onda Ígnea", 38], ["Garra Dragón", 24]],
-      "abilities": [["Mar Llamas", 68], ["Poder Solar", 32]],
+        {
+          "label": "Pañuelo (confirmado)",
+          "sp": [
+            26,
+            0,
+            4,
+            32,
+            0,
+            4
+          ],
+          "nat": "sube AtqEsp",
+          "pct": 52
+        },
+        {
+          "label": "Rápido",
+          "sp": [
+            4,
+            0,
+            0,
+            32,
+            0,
+            30
+          ],
+          "nat": "sube Vel",
+          "pct": 30
+        }
+      ]
+    },
+    "547": {
+      "usage": 5.4,
+      "items": [
+        [
+          "Cinta Aguante",
+          38
+        ],
+        [
+          "Refleluz",
+          24
+        ],
+        [
+          "Restos",
+          18
+        ]
+      ],
+      "moves": [
+        [
+          "Danza Aleteo",
+          74
+        ],
+        [
+          "Antojo",
+          68
+        ],
+        [
+          "Viento Feérico",
+          51
+        ],
+        [
+          "Protección",
+          46
+        ],
+        [
+          "Paralizador",
+          34
+        ]
+      ],
+      "abilities": [
+        [
+          "prankster",
+          94
+        ],
+        [
+          "infiltrator",
+          6
+        ]
+      ],
       "spreads": [
-        {"label": "Mega Y solar", "sp": [4, 0, 0, 32, 0, 30], "nat": "sube Vel", "pct": 57},
-        {"label": "Mega X físico", "sp": [8, 32, 0, 0, 0, 26], "nat": "sube Vel", "pct": 29}]},
-    "9": {"usage": 3.1,
-      "items": [["Blastoisita", 52], ["Chaleco Asalto", 21], ["Restos", 14]],
-      "moves": [["Hidrobomba", 74], ["Rayo Aurora", 61], ["Protección", 48], ["Rayo Hielo", 44], ["Rapidez", 27]],
-      "abilities": [["Torrente", 62], ["Chorro Potente", 38]],
+        {
+          "label": "Soporte con Bromista",
+          "sp": [
+            32,
+            0,
+            12,
+            0,
+            10,
+            12
+          ],
+          "nat": "sube Def",
+          "pct": 68
+        }
+      ]
+    },
+    "861": {
+      "usage": 5.0,
+      "items": [
+        [
+          "Refleluz",
+          41
+        ],
+        [
+          "Cinta Aguante",
+          22
+        ],
+        [
+          "Restos",
+          17
+        ]
+      ],
+      "moves": [
+        [
+          "Reflejo",
+          76
+        ],
+        [
+          "Pantalla de Luz",
+          74
+        ],
+        [
+          "Bola Sombra",
+          44
+        ],
+        [
+          "Golpe Bajo",
+          38
+        ],
+        [
+          "Espacio Raro",
+          21
+        ]
+      ],
+      "abilities": [
+        [
+          "prankster",
+          71
+        ],
+        [
+          "frisk",
+          29
+        ]
+      ],
       "spreads": [
-        {"label": "Mega con Chorro Potente", "sp": [24, 0, 4, 32, 4, 2], "nat": "sube AtqEsp", "pct": 61}]},
-    "887": {"usage": 4.1,
-      "items": [["Pañuelo Elección", 34], ["Vidasfera", 29], ["Banda Focus", 14]],
-      "moves": [["Dracoflechas", 92], ["Bola Sombra", 57], ["Protección", 44], ["Ida y Vuelta", 38], ["Vuelo Silente", 27]],
-      "abilities": [["Cuerpo Maldito", 58], ["Infiltrador", 42]],
+        {
+          "label": "Pantallas",
+          "sp": [
+            32,
+            0,
+            16,
+            0,
+            18,
+            0
+          ],
+          "nat": "sube Def",
+          "pct": 73
+        }
+      ]
+    },
+    "6": {
+      "usage": 4.4,
+      "items": [
+        [
+          "Charizardita Y",
+          46
+        ],
+        [
+          "Charizardita X",
+          31
+        ],
+        [
+          "Baya Anjiro",
+          12
+        ]
+      ],
+      "moves": [
+        [
+          "Llamarada",
+          87
+        ],
+        [
+          "Rayo Solar",
+          52
+        ],
+        [
+          "Protección",
+          61
+        ],
+        [
+          "Onda Ígnea",
+          38
+        ],
+        [
+          "Garra Dragón",
+          24
+        ]
+      ],
+      "abilities": [
+        [
+          "blaze",
+          68
+        ],
+        [
+          "solarpower",
+          32
+        ]
+      ],
       "spreads": [
-        {"label": "Máxima velocidad", "sp": [0, 32, 0, 0, 2, 32], "nat": "sube Vel", "pct": 78}]},
-    "892": {"usage": 3.9,
-      "items": [["Banda Focus", 31], ["Cinta Elección", 27], ["Vidasfera", 22]],
-      "moves": [["Golpe Oscuro", 91], ["Golpe Bajo", 74], ["Protección", 52], ["Ida y Vuelta", 34]],
-      "abilities": [["Máquina Fuerte", 100]],
+        {
+          "label": "Mega Y solar",
+          "sp": [
+            4,
+            0,
+            0,
+            32,
+            0,
+            30
+          ],
+          "nat": "sube Vel",
+          "pct": 57
+        },
+        {
+          "label": "Mega X físico",
+          "sp": [
+            8,
+            32,
+            0,
+            0,
+            0,
+            26
+          ],
+          "nat": "sube Vel",
+          "pct": 29
+        }
+      ]
+    },
+    "9": {
+      "usage": 3.1,
+      "items": [
+        [
+          "Blastoisita",
+          52
+        ],
+        [
+          "Baya Gualot",
+          21
+        ],
+        [
+          "Restos",
+          14
+        ]
+      ],
+      "moves": [
+        [
+          "Hidrobomba",
+          74
+        ],
+        [
+          "Rayo Aurora",
+          61
+        ],
+        [
+          "Protección",
+          48
+        ],
+        [
+          "Rayo Hielo",
+          44
+        ],
+        [
+          "Ataque Rápido",
+          27
+        ]
+      ],
+      "abilities": [
+        [
+          "torrent",
+          62
+        ],
+        [
+          "raindish",
+          38
+        ]
+      ],
       "spreads": [
-        {"label": "Ofensivo", "sp": [8, 32, 0, 0, 0, 26], "nat": "sube Vel", "pct": 62}]},
-    "279": {"usage": 3.6,
-      "items": [["Roca Humedad", 58], ["Bota Gruesa", 18], ["Gafas Aisladoras", 12]],
-      "moves": [["Vendaval", 86], ["Danza Lluvia", 41], ["Protección", 68], ["Chorro de Agua", 47], ["Viento Afín", 34]],
-      "abilities": [["Llovizna", 96]],
+        {
+          "label": "Mega bulk mixto",
+          "sp": [
+            24,
+            0,
+            4,
+            32,
+            4,
+            2
+          ],
+          "nat": "sube AtqEsp",
+          "pct": 61
+        }
+      ]
+    },
+    "887": {
+      "usage": 4.1,
+      "items": [
+        [
+          "Pañuelo Elección",
+          34
+        ],
+        [
+          "Vidasfera",
+          29
+        ],
+        [
+          "Cinta Aguante",
+          14
+        ]
+      ],
+      "moves": [
+        [
+          "Dracoflechas",
+          92
+        ],
+        [
+          "Bola Sombra",
+          57
+        ],
+        [
+          "Protección",
+          44
+        ],
+        [
+          "Ida y Vuelta",
+          38
+        ]
+      ],
+      "abilities": [
+        [
+          "cursedbody",
+          58
+        ],
+        [
+          "infiltrator",
+          42
+        ]
+      ],
       "spreads": [
-        {"label": "Soporte lluvia", "sp": [32, 0, 14, 0, 14, 6], "nat": "sube Def", "pct": 70}]},
-    "324": {"usage": 3.3,
-      "items": [["Roca Calor", 61], ["Restos", 17], ["Gafas Aisladoras", 11]],
-      "moves": [["Erupción", 84], ["Onda Ígnea", 66], ["Protección", 71], ["Espacio Raro", 38], ["Bostezo", 24]],
-      "abilities": [["Sequía", 97]],
+        {
+          "label": "Máxima velocidad",
+          "sp": [
+            0,
+            32,
+            0,
+            0,
+            2,
+            32
+          ],
+          "nat": "sube Vel",
+          "pct": 78
+        }
+      ]
+    },
+    "279": {
+      "usage": 3.6,
+      "items": [
+        [
+          "Roca Lluvia",
+          58
+        ],
+        [
+          "Baya Zidra",
+          18
+        ],
+        [
+          "Refleluz",
+          12
+        ]
+      ],
+      "moves": [
+        [
+          "Vendaval",
+          86
+        ],
+        [
+          "Danza Lluvia",
+          41
+        ],
+        [
+          "Protección",
+          68
+        ],
+        [
+          "Surf",
+          47
+        ],
+        [
+          "Viento Afín",
+          34
+        ]
+      ],
+      "abilities": [
+        [
+          "drizzle",
+          96
+        ],
+        [
+          "keeneye",
+          4
+        ]
+      ],
       "spreads": [
-        {"label": "Sol lento", "sp": [32, 0, 8, 26, 0, 0], "nat": "baja Vel", "pct": 74}]},
-    "901": {"usage": 3.0,
-      "items": [["Vidasfera", 34], ["Restos", 24], ["Cinta Elección", 19]],
-      "moves": [["Golpe Umbrío", 78], ["Ataque Óseo", 64], ["Protección", 54], ["Puño Trueno", 31]],
-      "abilities": [["Guts", 62], ["Sebo", 38]],
+        {
+          "label": "Soporte lluvia",
+          "sp": [
+            32,
+            0,
+            14,
+            0,
+            14,
+            6
+          ],
+          "nat": "sube Def",
+          "pct": 70
+        }
+      ]
+    },
+    "324": {
+      "usage": 3.3,
+      "items": [
+        [
+          "Roca Calor",
+          61
+        ],
+        [
+          "Restos",
+          17
+        ],
+        [
+          "Refleluz",
+          11
+        ]
+      ],
+      "moves": [
+        [
+          "Erupción Ígnea",
+          84
+        ],
+        [
+          "Onda Ígnea",
+          66
+        ],
+        [
+          "Protección",
+          71
+        ],
+        [
+          "Espacio Raro",
+          38
+        ],
+        [
+          "Bostezo",
+          24
+        ]
+      ],
+      "abilities": [
+        [
+          "drought",
+          97
+        ],
+        [
+          "shellarmor",
+          3
+        ]
+      ],
       "spreads": [
-        {"label": "Espacio Raro", "sp": [32, 32, 2, 0, 0, 0], "nat": "baja Vel", "pct": 66}]},
-    "981": {"usage": 2.8,
-      "items": [["Restos", 38], ["Chaleco Asalto", 27], ["Mental Herb", 14]],
-      "moves": [["Espacio Raro", 71], ["Psíquico", 64], ["Protección", 58], ["Bostezo", 34], ["Vozarrón", 27]],
-      "abilities": [["Cuello Armadura", 84], ["Sebo", 16]],
+        {
+          "label": "Sol lento",
+          "sp": [
+            32,
+            0,
+            8,
+            26,
+            0,
+            0
+          ],
+          "nat": "baja Vel",
+          "pct": 74
+        }
+      ]
+    },
+    "981": {
+      "usage": 2.8,
+      "items": [
+        [
+          "Restos",
+          38
+        ],
+        [
+          "Refleluz",
+          27
+        ],
+        [
+          "Hierba Mental",
+          14
+        ]
+      ],
+      "moves": [
+        [
+          "Espacio Raro",
+          71
+        ],
+        [
+          "Psíquico",
+          64
+        ],
+        [
+          "Protección",
+          58
+        ],
+        [
+          "Bostezo",
+          34
+        ],
+        [
+          "Vozarrón",
+          27
+        ]
+      ],
+      "abilities": [
+        [
+          "armortail",
+          84
+        ],
+        [
+          "sapsipper",
+          16
+        ]
+      ],
       "spreads": [
-        {"label": "Muro especial", "sp": [32, 0, 8, 12, 14, 0], "nat": "baja Vel", "pct": 69}]},
-    "876": {"usage": 2.7,
-      "items": [["Gafas Aisladoras", 44], ["Restos", 24], ["Mental Herb", 16]],
-      "moves": [["Campo Psíquico", 62], ["Onda Trueno", 51], ["Protección", 57], ["Vozarrón", 44], ["Alivio", 34]],
-      "abilities": [["Cura Psíquica", 78], ["Ritmo Propio", 22]],
+        {
+          "label": "Muro especial",
+          "sp": [
+            32,
+            0,
+            8,
+            12,
+            14,
+            0
+          ],
+          "nat": "baja Vel",
+          "pct": 69
+        }
+      ]
+    },
+    "700": {
+      "usage": 2.3,
+      "items": [
+        [
+          "Restos",
+          34
+        ],
+        [
+          "Refleluz",
+          24
+        ],
+        [
+          "Baya Zidra",
+          18
+        ]
+      ],
+      "moves": [
+        [
+          "Voz Cautivadora",
+          88
+        ],
+        [
+          "Vozarrón",
+          54
+        ],
+        [
+          "Protección",
+          61
+        ],
+        [
+          "Deseo Cura",
+          38
+        ],
+        [
+          "Refuerzo",
+          27
+        ]
+      ],
+      "abilities": [
+        [
+          "pixilate",
+          91
+        ]
+      ],
       "spreads": [
-        {"label": "Soporte", "sp": [32, 0, 12, 0, 16, 6], "nat": "sube Def", "pct": 67}]},
-    "998": {"usage": 2.5,
-      "items": [["Cinta Elección", 32], ["Vidasfera", 28], ["Restos", 16]],
-      "moves": [["Diente Gélido", 82], ["Garra Dragón", 74], ["Protección", 47], ["Danza Espada", 31]],
-      "abilities": [["Termovoraz", 71], ["Mudar", 29]],
+        {
+          "label": "Especial resistente",
+          "sp": [
+            32,
+            0,
+            4,
+            26,
+            4,
+            0
+          ],
+          "nat": "sube AtqEsp",
+          "pct": 62
+        }
+      ]
+    },
+    "823": {
+      "usage": 2.0,
+      "items": [
+        [
+          "Restos",
+          44
+        ],
+        [
+          "Refleluz",
+          21
+        ],
+        [
+          "Baya Zidra",
+          15
+        ]
+      ],
+      "moves": [
+        [
+          "Ave Brava",
+          78
+        ],
+        [
+          "Cuerpo Pesado",
+          62
+        ],
+        [
+          "Protección",
+          58
+        ],
+        [
+          "Rugido de Guerra",
+          41
+        ]
+      ],
+      "abilities": [
+        [
+          "pressure",
+          58
+        ],
+        [
+          "mirrorarmor",
+          42
+        ]
+      ],
       "spreads": [
-        {"label": "Ofensivo", "sp": [8, 32, 0, 0, 0, 26], "nat": "sube Vel", "pct": 64}]},
-    "700": {"usage": 2.3,
-      "items": [["Restos", 34], ["Gafas Aisladoras", 24], ["Chaleco Asalto", 18]],
-      "moves": [["Voz Cautivadora", 88], ["Vozarrón", 54], ["Protección", 61], ["Deseo Cura", 38], ["Refuerzo", 27]],
-      "abilities": [["Piel Feérica", 91]],
+        {
+          "label": "Muro físico",
+          "sp": [
+            32,
+            8,
+            18,
+            0,
+            8,
+            0
+          ],
+          "nat": "sube Def",
+          "pct": 71
+        }
+      ]
+    },
+    "248": {
+      "usage": 1.9,
+      "items": [
+        [
+          "Tyranitarita",
+          41
+        ],
+        [
+          "Baya Zidra",
+          24
+        ],
+        [
+          "Roca Suave",
+          14
+        ]
+      ],
+      "moves": [
+        [
+          "Roca Afilada",
+          81
+        ],
+        [
+          "Triturar",
+          72
+        ],
+        [
+          "Protección",
+          54
+        ],
+        [
+          "Puño Fuego",
+          31
+        ]
+      ],
+      "abilities": [
+        [
+          "sandstream",
+          100
+        ]
+      ],
       "spreads": [
-        {"label": "Especial resistente", "sp": [32, 0, 4, 26, 4, 0], "nat": "sube AtqEsp", "pct": 62}]},
-    "468": {"usage": 2.1,
-      "items": [["Restos", 41], ["Gafas Aisladoras", 22], ["Vidasfera", 17]],
-      "moves": [["Fuerza Lunar", 76], ["Vendaval", 58], ["Protección", 64], ["Deseo Cura", 34], ["Aromaterapia", 21]],
-      "abilities": [["Dicha", 68], ["Fuerte Afecto", 32]],
+        {
+          "label": "Arena",
+          "sp": [
+            32,
+            26,
+            6,
+            0,
+            2,
+            0
+          ],
+          "nat": "sube Atq",
+          "pct": 63
+        }
+      ]
+    },
+    "149": {
+      "usage": 1.8,
+      "items": [
+        [
+          "Cinta Aguante",
+          32
+        ],
+        [
+          "Vidasfera",
+          27
+        ],
+        [
+          "Restos",
+          19
+        ]
+      ],
+      "moves": [
+        [
+          "Fuerza Bruta",
+          74
+        ],
+        [
+          "Vendaval",
+          61
+        ],
+        [
+          "Protección",
+          57
+        ],
+        [
+          "Ida y Vuelta",
+          34
+        ]
+      ],
+      "abilities": [
+        [
+          "multiscale",
+          84
+        ],
+        [
+          "innerfocus",
+          16
+        ]
+      ],
       "spreads": [
-        {"label": "Soporte", "sp": [32, 0, 10, 14, 10, 0], "nat": "sube Def", "pct": 64}]},
-    "823": {"usage": 2.0,
-      "items": [["Restos", 44], ["Gafas Aisladoras", 21], ["Chaleco Asalto", 15]],
-      "moves": [["Ave Brava", 78], ["Cuerpo Pesado", 62], ["Protección", 58], ["Rugido de Guerra", 41]],
-      "abilities": [["Presión", 58], ["Espejo Mágico", 42]],
+        {
+          "label": "Ofensivo",
+          "sp": [
+            12,
+            32,
+            0,
+            0,
+            0,
+            22
+          ],
+          "nat": "sube Vel",
+          "pct": 58
+        }
+      ]
+    },
+    "663": {
+      "usage": 1.6,
+      "items": [
+        [
+          "Cinta Aguante",
+          38
+        ],
+        [
+          "Baya Gualot",
+          22
+        ],
+        [
+          "Vidasfera",
+          16
+        ]
+      ],
+      "moves": [
+        [
+          "Ave Brava",
+          74
+        ],
+        [
+          "Ataque Rápido",
+          51
+        ],
+        [
+          "Viento Afín",
+          68
+        ],
+        [
+          "Protección",
+          44
+        ]
+      ],
+      "abilities": [
+        [
+          "flamebody",
+          62
+        ],
+        [
+          "galewings",
+          38
+        ]
+      ],
       "spreads": [
-        {"label": "Muro físico", "sp": [32, 8, 18, 0, 8, 0], "nat": "sube Def", "pct": 71}]},
-    "248": {"usage": 1.9,
-      "items": [["Tyranitarita", 41], ["Chaleco Asalto", 24], ["Roca Suave", 14]],
-      "moves": [["Roca Afilada", 81], ["Triturar", 72], ["Protección", 54], ["Puño Fuego", 31]],
-      "abilities": [["Chorro Arena", 88]],
+        {
+          "label": "Viento Afín",
+          "sp": [
+            16,
+            24,
+            0,
+            0,
+            0,
+            26
+          ],
+          "nat": "sube Vel",
+          "pct": 61
+        }
+      ]
+    },
+    "934": {
+      "usage": 1.5,
+      "items": [
+        [
+          "Restos",
+          47
+        ],
+        [
+          "Baya Zidra",
+          22
+        ]
+      ],
+      "moves": [
+        [
+          "Roca Afilada",
+          68
+        ],
+        [
+          "Protección",
+          61
+        ],
+        [
+          "Fuerza Bruta",
+          34
+        ]
+      ],
+      "abilities": [
+        [
+          "purifyingsalt",
+          88
+        ],
+        [
+          "sturdy",
+          12
+        ]
+      ],
       "spreads": [
-        {"label": "Arena", "sp": [32, 26, 6, 0, 2, 0], "nat": "sube Atq", "pct": 63}]},
-    "149": {"usage": 1.8,
-      "items": [["Bota Gruesa", 32], ["Vidasfera", 27], ["Restos", 19]],
-      "moves": [["Enfado", 74], ["Vendaval", 61], ["Protección", 57], ["Ida y Vuelta", 34]],
-      "abilities": [["Multiescamas", 84], ["Fuerza Interior", 16]],
+        {
+          "label": "Muro",
+          "sp": [
+            32,
+            6,
+            16,
+            0,
+            12,
+            0
+          ],
+          "nat": "sube DefEsp",
+          "pct": 74
+        }
+      ]
+    },
+    "479": {
+      "usage": 1.3,
+      "items": [
+        [
+          "Restos",
+          41
+        ],
+        [
+          "Refleluz",
+          24
+        ],
+        [
+          "Vidasfera",
+          17
+        ]
+      ],
+      "moves": [
+        [
+          "Hidropulso",
+          74
+        ],
+        [
+          "Rayo Carga",
+          62
+        ],
+        [
+          "Protección",
+          58
+        ],
+        [
+          "Onda Trueno",
+          41
+        ]
+      ],
+      "abilities": [
+        [
+          "levitate",
+          100
+        ]
+      ],
       "spreads": [
-        {"label": "Ofensivo", "sp": [12, 32, 0, 0, 0, 22], "nat": "sube Vel", "pct": 58}]},
-    "663": {"usage": 1.6,
-      "items": [["Bota Gruesa", 38], ["Banda Focus", 22], ["Vidasfera", 16]],
-      "moves": [["Ave Brava", 74], ["Nitrocarga", 51], ["Viento Afín", 68], ["Protección", 44]],
-      "abilities": [["Cuerpo Llama", 62], ["Chispa", 38]],
+        {
+          "label": "Rotom-Lavado resistente",
+          "sp": [
+            32,
+            0,
+            8,
+            20,
+            6,
+            0
+          ],
+          "nat": "sube Def",
+          "pct": 66
+        }
+      ]
+    },
+    "500": {
+      "usage": 1.1,
+      "items": [
+        [
+          "Cinta Aguante",
+          34
+        ],
+        [
+          "Vidasfera",
+          28
+        ],
+        [
+          "Baya Zidra",
+          17
+        ]
+      ],
+      "moves": [
+        [
+          "Envite Ígneo",
+          78
+        ],
+        [
+          "A Bocajarro",
+          71
+        ],
+        [
+          "Protección",
+          44
+        ],
+        [
+          "Golpe Bajo",
+          31
+        ]
+      ],
+      "abilities": [
+        [
+          "blaze",
+          62
+        ],
+        [
+          "reckless",
+          38
+        ]
+      ],
       "spreads": [
-        {"label": "Viento Afín", "sp": [16, 24, 0, 0, 0, 26], "nat": "sube Vel", "pct": 61}]},
-    "934": {"usage": 1.5,
-      "items": [["Restos", 47], ["Chaleco Asalto", 22]],
-      "moves": [["Sal Cura", 84], ["Roca Afilada", 68], ["Protección", 61], ["Fuerza Bruta", 34]],
-      "abilities": [["Purificasal", 88]],
+        {
+          "label": "Ofensivo lento",
+          "sp": [
+            24,
+            32,
+            0,
+            0,
+            6,
+            4
+          ],
+          "nat": "sube Atq",
+          "pct": 61
+        }
+      ]
+    },
+    "902": {
+      "usage": 1.0,
+      "items": [
+        [
+          "Pañuelo Elección",
+          44
+        ],
+        [
+          "Vidasfera",
+          24
+        ],
+        [
+          "Cinta Aguante",
+          16
+        ]
+      ],
+      "moves": [
+        [
+          "Colmillo Marino",
+          81
+        ],
+        [
+          "Última Baza",
+          68
+        ],
+        [
+          "Protección",
+          41
+        ],
+        [
+          "Ida y Vuelta",
+          27
+        ]
+      ],
+      "abilities": [
+        [
+          "adaptability",
+          58
+        ],
+        [
+          "moldbreaker",
+          42
+        ]
+      ],
       "spreads": [
-        {"label": "Muro", "sp": [32, 6, 16, 0, 12, 0], "nat": "sube DefEsp", "pct": 74}]},
-    "1006": {"usage": 1.4,
-      "items": [["Banda Focus", 34], ["Vidasfera", 29], ["Cinta Elección", 18]],
-      "moves": [["Fuerza Lunar", 68], ["Puño Certero", 61], ["Protección", 48], ["Onda Trueno", 27]],
-      "abilities": [["Impulso Químico", 100]],
-      "spreads": [
-        {"label": "Mixto rápido", "sp": [0, 26, 0, 20, 0, 20], "nat": "sube Vel", "pct": 52}]},
-    "479": {"usage": 1.3,
-      "items": [["Restos", 41], ["Gafas Aisladoras", 24], ["Vidasfera", 17]],
-      "moves": [["Hidropulso", 74], ["Rayo Carga", 62], ["Protección", 58], ["Onda Trueno", 41]],
-      "abilities": [["Levitación", 100]],
-      "spreads": [
-        {"label": "Rotom-Lavado resistente", "sp": [32, 0, 8, 20, 6, 0], "nat": "sube Def", "pct": 66}]},
-    "500": {"usage": 1.1,
-      "items": [["Cinta Elección", 34], ["Vidasfera", 28], ["Chaleco Asalto", 17]],
-      "moves": [["Envite Ígneo", 78], ["A Bocajarro", 71], ["Protección", 44], ["Golpe Bajo", 31]],
-      "abilities": [["Mar Llamas", 62], ["Impulso", 38]],
-      "spreads": [
-        {"label": "Ofensivo lento", "sp": [24, 32, 0, 0, 6, 4], "nat": "sube Atq", "pct": 61}]},
-    "902": {"usage": 1.0,
-      "items": [["Pañuelo Elección", 44], ["Vidasfera", 24], ["Cinta Elección", 16]],
-      "moves": [["Colmillo Marino", 81], ["Última Baza", 68], ["Protección", 41], ["Ida y Vuelta", 27]],
-      "abilities": [["Nerviosismo", 58], ["Rompemoldes", 42]],
-      "spreads": [
-        {"label": "Pañuelo", "sp": [4, 32, 0, 0, 0, 30], "nat": "sube Vel", "pct": 68}]}
+        {
+          "label": "Pañuelo",
+          "sp": [
+            4,
+            32,
+            0,
+            0,
+            0,
+            30
+          ],
+          "nat": "sube Vel",
+          "pct": 68
+        }
+      ]
+    }
   }
 }
