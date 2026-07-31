@@ -74,6 +74,8 @@ Nota aparte: `meta.json` trae metadatos honestos (`"source": "estimado"`, con un
 ### 5.5 i18n — **PEOR DE LO REPORTADO: no existe, no "parcialmente adoptado"**
 El reporte anterior decía que de 146 claves de texto definidas en una tabla `STRINGS`, `vMine()` usaba `t()` de forma consistente y el resto tenía literales hardcodeados. **Verificado 2026-07-31: no existe ninguna tabla `STRINGS` ni función `t()` en todo `hud.html`.** Cero ocurrencias de ambas cadenas en el archivo completo, incluida `vMine()`. La capa de presentación/i18n que exige la decisión #7 (`decisions.md`) y la sección 5 de `architecture.md` no está construida — no es una adopción parcial, es una ausencia total. Todo el texto visible está hardcodeado en español directamente en las funciones `vX()`.
 
+**Actualización de la misma fecha (decisión #17):** al revisar capturas reales del juego se confirmó que el juego de Angel corre en inglés, no en español — fijar el HUD en español asumía un idioma que no coincide con la pantalla real. Se decidió que el HUD tiene selector de idioma explícito (inglés/español como mínimo), y que este hallazgo se resuelve junto con §5.2 como un solo trabajo: slugs canónicos + tabla de traducción. Ver `decisions.md` #17 y `roadmap.md` Fase 0, ítem 1.
+
 ### 5.6 Dependencia declarada sin uso — **CONFIRMADO VIGENTE, 2026-07-31**
 `kotlinx-coroutines-android:1.8.1` sigue en `app/build.gradle.kts`; cero imports de `kotlinx.coroutines` en cualquier archivo `.kt`. El proyecto sigue usando `HandlerThread`/`Handler` para el hilo secundario (ver `ScreenCapture.kt`).
 
