@@ -473,6 +473,69 @@ const mvName=k=>LANG==="en"?(MV[k]?MV[k][7]||k:k):(ES_ALT[k]||k);
 const itName=it=>{const r=IT.find(x=>x[0]===it||x[1]===it);
   return r?(LANG==="en"?r[1]:r[0]):it};
 const ITEMS=IT.map(x=>x[0]);   // clave interna siempre en español
+
+/* Traducción de habilidades: slug canónico (formato Showdown, en inglés) ->
+   nombre mostrado. Los slugs vienen de PokeAPI/Pokémon Showdown, no de una
+   traducción a mano — evita el bug de la auditoría (calc() comparaba contra
+   literales en español que dex.json nunca produce). Dos habilidades nuevas de
+   Champions (eelevate, firemane) todavía no tienen nombre oficial en español
+   publicado en ningún lado: se muestran en inglés en los dos idiomas hasta
+   que exista una traducción oficial que citar. */
+const slugify=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
+const ABIL_I18N={
+adaptability:{en:"Adaptability",es:"Adaptable"},aerilate:{en:"Aerilate",es:"Piel Celeste"},aftermath:{en:"Aftermath",es:"Detonación"},analytic:{en:"Analytic",es:"Cálculo Final"},
+angerpoint:{en:"Anger Point",es:"Irascible"},anticipation:{en:"Anticipation",es:"Anticipación"},armortail:{en:"Armor Tail",es:"Cola Armadura"},aromaveil:{en:"Aroma Veil",es:"Velo Aroma"},
+battlearmor:{en:"Battle Armor",es:"Armadura Batalla"},battlebond:{en:"Battle Bond",es:"Fuerte Afecto"},berserk:{en:"Berserk",es:"Cólera"},bigpecks:{en:"Big Pecks",es:"Sacapecho"},
+blaze:{en:"Blaze",es:"Mar Llamas"},bulletproof:{en:"Bulletproof",es:"Antibalas"},cheekpouch:{en:"Cheek Pouch",es:"Carrillo"},chlorophyll:{en:"Chlorophyll",es:"Clorofila"},
+clearbody:{en:"Clear Body",es:"Cuerpo Puro"},cloudnine:{en:"Cloud Nine",es:"Aclimatación"},competitive:{en:"Competitive",es:"Tenacidad"},compoundeyes:{en:"Compound Eyes",es:"Ojo Compuesto"},
+contrary:{en:"Contrary",es:"Respondón"},corrosion:{en:"Corrosion",es:"Corrosión"},cudchew:{en:"Cud Chew",es:"Rumia"},curiousmedicine:{en:"Curious Medicine",es:"Medicina Extraña"},
+cursedbody:{en:"Cursed Body",es:"Cuerpo Maldito"},cutecharm:{en:"Cute Charm",es:"Gran Encanto"},damp:{en:"Damp",es:"Humedad"},defiant:{en:"Defiant",es:"Competitivo"},
+disguise:{en:"Disguise",es:"Disfraz"},dragonize:{en:"Dragonize",es:"Piel Dragontina"},drizzle:{en:"Drizzle",es:"Llovizna"},drought:{en:"Drought",es:"Sequía"},
+dryskin:{en:"Dry Skin",es:"Piel Seca"},earlybird:{en:"Early Bird",es:"Madrugar"},eartheater:{en:"Earth Eater",es:"Geofagia"},eelevate:{en:"Eelevate",es:"Eelevate"},
+effectspore:{en:"Effect Spore",es:"Efecto Espora"},electricsurge:{en:"Electric Surge",es:"Electrogénesis"},electromorphosis:{en:"Electromorphosis",es:"Dinamo"},
+fairyaura:{en:"Fairy Aura",es:"Aura Feérica"},filter:{en:"Filter",es:"Filtro"},firemane:{en:"Fire Mane",es:"Fire Mane"},flamebody:{en:"Flame Body",es:"Cuerpo Llama"},
+flashfire:{en:"Flash Fire",es:"Absorbe Fuego"},flowerveil:{en:"Flower Veil",es:"Velo Flor"},fluffy:{en:"Fluffy",es:"Peluche"},forecast:{en:"Forecast",es:"Predicción"},
+forewarn:{en:"Forewarn",es:"Alerta"},friendguard:{en:"Friend Guard",es:"Compiescolta"},frisk:{en:"Frisk",es:"Cacheo"},furcoat:{en:"Fur Coat",es:"Pelaje Recio"},
+galewings:{en:"Gale Wings",es:"Alas Vendaval"},gluttony:{en:"Gluttony",es:"Gula"},goodasgold:{en:"Good as Gold",es:"Cuerpo Áureo"},gooey:{en:"Gooey",es:"Baba"},
+guts:{en:"Guts",es:"Agallas"},harvest:{en:"Harvest",es:"Cosecha"},healer:{en:"Healer",es:"Alma Cura"},heatproof:{en:"Heatproof",es:"Ignífugo"},heavymetal:{en:"Heavy Metal",es:"Metal Pesado"},
+hospitality:{en:"Hospitality",es:"Hospitalidad"},hugepower:{en:"Huge Power",es:"Potencia"},hungerswitch:{en:"Hunger Switch",es:"Mutapetito"},hustle:{en:"Hustle",es:"Entusiasmo"},
+hydration:{en:"Hydration",es:"Hidratación"},hypercutter:{en:"Hyper Cutter",es:"Corte Fuerte"},icebody:{en:"Ice Body",es:"Gélido"},illuminate:{en:"Illuminate",es:"Iluminación"},
+illusion:{en:"Illusion",es:"Ilusión"},immunity:{en:"Immunity",es:"Inmunidad"},imposter:{en:"Imposter",es:"Impostor"},infiltrator:{en:"Infiltrator",es:"Allanamiento"},
+innardsout:{en:"Innards Out",es:"Revés"},innerfocus:{en:"Inner Focus",es:"Fuerza Mental"},insomnia:{en:"Insomnia",es:"Insomnio"},intimidate:{en:"Intimidate",es:"Intimidación"},
+ironfist:{en:"Iron Fist",es:"Puño Férreo"},justified:{en:"Justified",es:"Justiciero"},keeneye:{en:"Keen Eye",es:"Vista Lince"},klutz:{en:"Klutz",es:"Zoquete"},
+leafguard:{en:"Leaf Guard",es:"Defensa Hoja"},levitate:{en:"Levitate",es:"Levitación"},lightmetal:{en:"Light Metal",es:"Metal Liviano"},lightningrod:{en:"Lightning Rod",es:"Pararrayos"},
+limber:{en:"Limber",es:"Flexibilidad"},liquidvoice:{en:"Liquid Voice",es:"Voz Fluida"},longreach:{en:"Long Reach",es:"Remoto"},magicbounce:{en:"Magic Bounce",es:"Espejo Mágico"},
+magicguard:{en:"Magic Guard",es:"Muro Mágico"},magician:{en:"Magician",es:"Prestidigitador"},magmaarmor:{en:"Magma Armor",es:"Escudo Magma"},marvelscale:{en:"Marvel Scale",es:"Escama Especial"},
+megalauncher:{en:"Mega Launcher",es:"Megadisparador"},megasol:{en:"Mega Sol",es:"Megasolar"},merciless:{en:"Merciless",es:"Ensañamiento"},mimicry:{en:"Mimicry",es:"Mimetismo"},
+minus:{en:"Minus",es:"Menos"},mirrorarmor:{en:"Mirror Armor",es:"Coraza Reflejo"},moldbreaker:{en:"Mold Breaker",es:"Rompemoldes"},moody:{en:"Moody",es:"Veleta"},
+motordrive:{en:"Motor Drive",es:"Electromotor"},moxie:{en:"Moxie",es:"Autoestima"},multiscale:{en:"Multiscale",es:"Multiescamas"},mummy:{en:"Mummy",es:"Momia"},
+naturalcure:{en:"Natural Cure",es:"Cura Natural"},noguard:{en:"No Guard",es:"Indefenso"},oblivious:{en:"Oblivious",es:"Despiste"},opportunist:{en:"Opportunist",es:"Oportunista"},
+overcoat:{en:"Overcoat",es:"Funda"},overgrow:{en:"Overgrow",es:"Espesura"},owntempo:{en:"Own Tempo",es:"Ritmo Propio"},parentalbond:{en:"Parental Bond",es:"Amor Filial"},
+pickpocket:{en:"Pickpocket",es:"Hurto"},pickup:{en:"Pickup",es:"Recogida"},piercingdrill:{en:"Piercing Drill",es:"Turbotaladro"},pixilate:{en:"Pixilate",es:"Piel Feérica"},
+plus:{en:"Plus",es:"Más"},poisonheal:{en:"Poison Heal",es:"Antídoto"},poisonpoint:{en:"Poison Point",es:"Punto Tóxico"},poisontouch:{en:"Poison Touch",es:"Toque Tóxico"},
+prankster:{en:"Prankster",es:"Bromista"},pressure:{en:"Pressure",es:"Presión"},protean:{en:"Protean",es:"Mutatipo"},purepower:{en:"Pure Power",es:"Energía Pura"},
+purifyingsalt:{en:"Purifying Salt",es:"Sal Purificadora"},queenlymajesty:{en:"Queenly Majesty",es:"Regia Presencia"},quickdraw:{en:"Quick Draw",es:"Mano Rápida"},
+quickfeet:{en:"Quick Feet",es:"Pies Rápidos"},raindish:{en:"Rain Dish",es:"Cura Lluvia"},receiver:{en:"Receiver",es:"Receptor"},reckless:{en:"Reckless",es:"Audaz"},
+refrigerate:{en:"Refrigerate",es:"Piel Helada"},regenerator:{en:"Regenerator",es:"Regeneración"},ripen:{en:"Ripen",es:"Maduración"},rivalry:{en:"Rivalry",es:"Rivalidad"},
+rockhead:{en:"Rock Head",es:"Cabeza Roca"},roughskin:{en:"Rough Skin",es:"Piel Tosca"},sandforce:{en:"Sand Force",es:"Poder Arena"},sandrush:{en:"Sand Rush",es:"Ímpetu Arena"},
+sandspit:{en:"Sand Spit",es:"Expulsarena"},sandstream:{en:"Sand Stream",es:"Chorro Arena"},sandveil:{en:"Sand Veil",es:"Velo Arena"},sapsipper:{en:"Sap Sipper",es:"Herbívoro"},
+scrappy:{en:"Scrappy",es:"Intrépido"},screencleaner:{en:"Screen Cleaner",es:"Antibarrera"},shadowtag:{en:"Shadow Tag",es:"Sombra Trampa"},sharpness:{en:"Sharpness",es:"Cortante"},
+shedskin:{en:"Shed Skin",es:"Mudar"},sheerforce:{en:"Sheer Force",es:"Potencia Bruta"},shellarmor:{en:"Shell Armor",es:"Caparazón"},shielddust:{en:"Shield Dust",es:"Polvo Escudo"},
+skilllink:{en:"Skill Link",es:"Encadenado"},slushrush:{en:"Slush Rush",es:"Quitanieves"},sniper:{en:"Sniper",es:"Francotirador"},snowcloak:{en:"Snow Cloak",es:"Manto Níveo"},
+snowwarning:{en:"Snow Warning",es:"Nevada"},solarpower:{en:"Solar Power",es:"Poder Solar"},solidrock:{en:"Solid Rock",es:"Roca Sólida"},soundproof:{en:"Soundproof",es:"Insonorizar"},
+speedboost:{en:"Speed Boost",es:"Impulso"},spicyspray:{en:"Spicy Spray",es:"Salpicante"},stall:{en:"Stall",es:"Rezagado"},stalwart:{en:"Stalwart",es:"Acérrimo"},
+stamina:{en:"Stamina",es:"Firmeza"},stancechange:{en:"Stance Change",es:"Cambio Táctico"},static:{en:"Static",es:"Electricidad Estática"},steadfast:{en:"Steadfast",es:"Impasible"},
+stench:{en:"Stench",es:"Hedor"},stickyhold:{en:"Sticky Hold",es:"Viscosidad"},strongjaw:{en:"Strong Jaw",es:"Mandíbula Fuerte"},sturdy:{en:"Sturdy",es:"Robustez"},
+suctioncups:{en:"Suction Cups",es:"Ventosas"},superluck:{en:"Super Luck",es:"Afortunado"},supersweetsyrup:{en:"Supersweet Syrup",es:"Néctar Dulce"},supremeoverlord:{en:"Supreme Overlord",es:"General Supremo"},
+surgesurfer:{en:"Surge Surfer",es:"Cola Surf"},swarm:{en:"Swarm",es:"Enjambre"},sweetveil:{en:"Sweet Veil",es:"Velo Dulce"},swiftswim:{en:"Swift Swim",es:"Nado Rápido"},
+symbiosis:{en:"Symbiosis",es:"Simbiosis"},synchronize:{en:"Synchronize",es:"Sincronía"},tangledfeet:{en:"Tangled Feet",es:"Tumbos"},technician:{en:"Technician",es:"Experto"},
+telepathy:{en:"Telepathy",es:"Telepatía"},thickfat:{en:"Thick Fat",es:"Sebo"},torrent:{en:"Torrent",es:"Torrente"},toughclaws:{en:"Tough Claws",es:"Garra Dura"},
+toxicdebris:{en:"Toxic Debris",es:"Capa Tóxica"},trace:{en:"Trace",es:"Calco"},unaware:{en:"Unaware",es:"Ignorante"},unburden:{en:"Unburden",es:"Liviano"},
+unnerve:{en:"Unnerve",es:"Nerviosismo"},unseenfist:{en:"Unseen Fist",es:"Puño Invisible"},vitalspirit:{en:"Vital Spirit",es:"Espíritu Vital"},voltabsorb:{en:"Volt Absorb",es:"Absorbe Electricidad"},
+wanderingspirit:{en:"Wandering Spirit",es:"Alma Errante"},waterabsorb:{en:"Water Absorb",es:"Absorbe Agua"},waterbubble:{en:"Water Bubble",es:"Pompa"},weakarmor:{en:"Weak Armor",es:"Armadura Frágil"},
+whitesmoke:{en:"White Smoke",es:"Humo Blanco"},zerotohero:{en:"Zero to Hero",es:"Cambio Heroico"}
+};
+const abilName=slug=>{const r=ABIL_I18N[slug];return r?(LANG==="en"?r.en:r.es):slug};
 const mv=k=>{const m=MV[k];return m?{p:m[0],t:m[1],c:m[2],
   sp:m[3]===1||m[3]===2,self:m[3]===2,pri:m[4],acc:m[5],note:m[6]}:null};
 /** Solo los que hacen daño sirven para calcular. */
@@ -487,37 +550,27 @@ const dmgPool=dex=>{const L=(typeof learnable==="function")&&learnable(dex);
   return sortByName((L||MOVES).filter(k=>MV[k]&&MV[k][2]!=="E"&&MV[k][0]>0))};
 const ITEMS_A=()=>["—",...ITEMS.filter(x=>x!=="—").sort((a,b)=>itName(a).localeCompare(itName(b)))];
 
-/* Habilidades por especie. El HUD modela las que cambian el daño; el resto
-   figura para que quede documentado en tu equipo. */
+/* Habilidades por especie, como slugs (ver ABIL_I18N para el nombre mostrado).
+   Fallback chico para cuando no hay dex.json — solo las especies del roster
+   embebido de arriba (SPD) que siguen siendo legales hoy en Champions, según
+   sprite_index.json. Generado desde dex.json (Pokémon Showdown), no a mano:
+   la tabla vieja tenía habilidades de generaciones viejas para especies como
+   Gengar (Levitación, retirada desde la gen 8) — ver audit.md.
+   17 dex# del roster viejo (Mewtwo, Salamence, Togekiss, Landorus-T, Rillaboom,
+   Indeedee, Urshifu, Ursaluna, Kingambit, Flutter Mane, Iron Hands, Baxcalibur,
+   Chi-Yu, Iron Valiant, Amoonguss, Ferrothorn, Magnezone) no están en el pool
+   legal actual y se sacaron de esta tabla — quedan pendientes de revisión en
+   la tabla SPD de arriba, que sí los sigue listando (deuda técnica separada). */
 const ABIL={
-6:["Mar Llamas","Poder Solar"],9:["Torrente","Cabeza Roca"],94:["Levitación","Sombra Trampa"],
-130:["Intimidación","Nerviosismo"],149:["Fuerte Afecto","Multiescamas"],
-150:["Presión","Nerviosismo"],248:["Chorro Arena","Antibarrera"],
-257:["Mar Llamas","Impulso"],279:["Vista Lince","Llovizna"],
-324:["Caparazón","Sequía"],373:["Intimidación","Aerodinámico"],
-376:["Fuerza Bruta","Alma Cautiva"],445:["Arena Fuerte","Rugosidad"],
-448:["Impasible","Foco Interno","Justiciero"],468:["Dicha","Fuerte Afecto","Fortaleza"],
-479:["Levitación"],500:["Mar Llamas","Impulso"],
-547:["Bromista","Infiltrador","Manto Frondoso"],591:["Efecto Espora","Regeneración"],
-645:["Intimidación"],655:["Mar Llamas","Cuerpo Ígneo"],
-663:["Chispa","Alas Vendaval","Cuerpo Llama"],700:["Piel Feérica","Cura Floral"],
-727:["Mar Llamas","Intimidación"],730:["Torrente","Piel Líquida"],
-812:["Herbogénesis","Defensa Hoja"],823:["Presión","Espejo Mágico","Fuerza Bruta"],
-861:["Bromista","Sombra Trampa"],876:["Cura Psíquica","Sincronía","Ritmo Propio"],
-887:["Cuerpo Maldito","Cacheo","Infiltrador"],892:["Máquina Fuerte"],
-901:["Agallas","Sebo"],902:["Nerviosismo","Adaptable","Rompemoldes"],
-910:["Competitividad","Comandante Supremo","Presión"],
-934:["Purificasal","Robustez","Aguante"],981:["Cuello Armadura","Sebo","Alma Cautiva"],
-987:["Buenos Ánimos"],991:["Carga Quark"],998:["Termovoraz","Mudar"],
-1000:["Cuerpo Áureo"],1004:["Sartén Vudú"],1006:["Carga Quark"],
-260:["Torrente","Damp"],302:["Robaembeleso","Bromista"],350:["Escama Especial","Piel Milagro","Cura Floral"],
-303:["Hiperconcentración","Intimidación","Fuerza Bruta"],
-1018:["Firmeza"],1013:["Hospitalidad","Cura Herbal"],
-186:["Absorbe Agua","Nado Rápido","Llovizna"],598:["Barrera Férrea","Anticipación"],
-784:["Insonorizar","Antisonido","Impasible"],38:["Absorbe Fuego","Sequía"],
-609:["Absorbe Fuego","Cuerpo Llama","Infiltrador"],
-184:["Absorbe Agua","Impasible","Dedos Húmedos"],
-462:["Imán","Robustez","Analítico"],763:["Hoja Guardián","Sacapecho","Ritmo Propio"]};
+6:["blaze","solarpower"],9:["raindish","torrent"],38:["drought","flashfire"],94:["cursedbody"],130:["intimidate","moxie"],
+149:["innerfocus","multiscale"],184:["hugepower","sapsipper","thickfat"],186:["damp","drizzle","waterabsorb"],248:["sandstream","unnerve"],257:["blaze","speedboost"],
+260:["damp","torrent"],279:["drizzle","keeneye","raindish"],302:["keeneye","prankster","stall"],303:["hypercutter","intimidate","sheerforce"],324:["drought","shellarmor","whitesmoke"],
+350:["competitive","cutecharm","marvelscale"],376:["clearbody","lightmetal"],445:["roughskin","sandveil"],448:["innerfocus","justified","steadfast"],479:["levitate"],
+500:["blaze","reckless"],547:["chlorophyll","infiltrator","prankster"],609:["flamebody","flashfire","infiltrator"],655:["blaze","magician"],663:["flamebody","galewings"],
+700:["cutecharm","pixilate"],727:["blaze","intimidate"],730:["liquidvoice","torrent"],763:["leafguard","queenlymajesty","sweetveil"],784:["bulletproof","overcoat","soundproof"],
+823:["mirrorarmor","pressure","unnerve"],861:["frisk","pickpocket","prankster"],887:["clearbody","cursedbody","infiltrator"],902:["adaptability","moldbreaker","swiftswim"],934:["clearbody","purifyingsalt","sturdy"],
+981:["armortail","cudchew","sapsipper"],1000:["goodasgold"],1013:["heatproof","hospitality"],1018:["stalwart","stamina","sturdy"]
+};
 
 const abilsOf=d=>ABIL[d]||ABIL[Object.values(MEGA).find(g=>g[0]===d)?.[1]]||["—"];
 
@@ -525,9 +578,9 @@ const abilsOf=d=>ABIL[d]||ABIL[Object.values(MEGA).find(g=>g[0]===d)?.[1]]||["�
 const ROLE_MV={"Viento Afín":"tailwind","Espacio Raro":"trickroom","Danza Lluvia":"rain",
 "Reflejo":"pantallas","Pantalla de Luz":"pantallas","Onda Trueno":"estado","Espora":"estado",
 "Paralizador":"estado","Bostezo":"estado","Campo Psíquico":"prioridad"};
-const ROLE_AB={"Sequía":"sol","Llovizna":"lluvia","Chorro Arena":"arena","Bromista":"bromista",
-"Intimidación":"intimida","Cura Psíquica":"prioridad","Herbogénesis":"campo",
-"Hospitalidad":"apoyo","Comandante Supremo":"escala"};
+const ROLE_AB={drought:"sol",drizzle:"lluvia",sandstream:"arena",prankster:"bromista",
+intimidate:"intimida",psychicsurge:"prioridad",grassysurge:"campo",
+hospitality:"apoyo",supremeoverlord:"escala"};
 const isMega=i=>/ita( |$)|ita[XY]?$/i.test(i||"");
 
 const TY=["NOR","FIR","WAT","ELE","GRA","ICE","FIG","POI","GRO","FLY","PSY","BUG","ROC","GHO","DRA","DAR","STE","FAI"];
@@ -562,7 +615,7 @@ function calc(o){
     :stOf(phys?D.s[2]:D.s[4],o.dSP??0,o.dNat??1);
   let a=aRaw*stg(aB,o.crit,1);
   let d=dRaw*stg(dB,o.crit,-1);
-  if(o.dAb==="Escama Especial"&&!phys)d*=1.5;
+  if(o.dAb==="marvelscale"&&!phys)d*=1.5;
   // Champions no tiene Cinta ni Anteojos Elección: los multiplicadores de
   // objeto son más chicos y van todos en post.
   const maxHP=o.dStat?o.dStat[0]:hpOf(D.s[0],o.dHP??0);
@@ -574,16 +627,16 @@ function calc(o){
   if(o.crit)pre*=1.5;
   // ── habilidades del atacante ──
   let mType=m.t;
-  if(o.aAb==="Piel Feérica"&&mType==="NOR")mType="FAI";
-  const stab=A.t.includes(mType)?(o.aAb==="Adaptable"?2:1.5)
-    :(o.aAb==="Piel Feérica"&&m.t==="NOR"?1.2:1);
+  if(o.aAb==="pixilate"&&mType==="NOR")mType="FAI";
+  const stab=A.t.includes(mType)?(o.aAb==="adaptability"?2:1.5)
+    :(o.aAb==="pixilate"&&m.t==="NOR"?1.2:1);
   let e=EFF(mType,D.t);
   // ── inmunidades por habilidad del defensor ──
-  if(o.dAb==="Levitación"&&mType==="GRO")e=0;
-  if(o.dAb==="Absorbe Fuego"&&mType==="FIR")e=0;
-  if(o.dAb==="Escama Especial"&&!phys)e=e;   // sube DefEsp: se refleja abajo
-  if(o.dAb==="Absorbe Agua"&&mType==="WAT")e=0;
-  if((o.dAb==="Pararrayos"||o.dAb==="Motor Eléctrico")&&mType==="ELE")e=0;
+  if(o.dAb==="levitate"&&mType==="GRO")e=0;
+  if(o.dAb==="flashfire"&&mType==="FIR")e=0;
+  if(o.dAb==="marvelscale"&&!phys)e=e;   // sube DefEsp: se refleja abajo
+  if(o.dAb==="waterabsorb"&&mType==="WAT")e=0;
+  if((o.dAb==="lightningrod"||o.dAb==="motordrive")&&mType==="ELE")e=0;
   let post=1;
   if(o.screen&&!o.crit)post*= o.doubles?(2/3):.5;
   // objetos del atacante
@@ -594,20 +647,20 @@ function calc(o){
   if(TYPE_ITEM[o.aItem]===mType)post*=1.2;
   // objetos del defensor
   if(RES_BERRY[o.dItem]===mType&&e>1)post*=.5;
-  if(o.aSta==="quemado"&&phys&&o.aAb!=="Agallas")post*=.5;   // la quemadura baja SOLO el daño físico
+  if(o.aSta==="quemado"&&phys&&o.aAb!=="guts")post*=.5;   // la quemadura baja SOLO el daño físico
   // atacante
-  if(o.aAb==="Poder Solar"&&!phys&&o.weather==="sol")post*=1.5;
-  if(o.aAb==="Chorro Potente"&&mType==="WAT")post*=2;
-  if(o.aAb==="Sartén Vudú"&&mType==="FIR"&&!phys)post*=1.33;
-  if(o.aAb==="Agallas"&&phys&&o.aSta&&o.aSta!=="—")post*=1.5;
+  if(o.aAb==="solarpower"&&!phys&&o.weather==="sol")post*=1.5;
+  if(o.aAb==="waterbubble"&&mType==="WAT")post*=2;
+  if(o.aAb==="Sartén Vudú"&&mType==="FIR"&&!phys)post*=1.33;   // TODO: no se pudo identificar contra datos de Showdown/PokeAPI, ver audit.md §5.2
+  if(o.aAb==="guts"&&phys&&o.aSta&&o.aSta!=="—")post*=1.5;
   // habilidades de apuro: se activan por debajo de un tercio de PS
-  const pinch={"Torrente":"WAT","Mar Llamas":"FIR","Espesura":"GRA","Enjambre":"BUG"}[o.aAb];
+  const pinch={torrent:"WAT",blaze:"FIR",overgrow:"GRA",swarm:"BUG"}[o.aAb];
   if(pinch&&mType===pinch&&(o.aHp??100)<=33)post*=1.5;
   // defensor
-  if(o.dAb==="Multiescamas"&&(o.dHp??100)>=100)post*=.5;
-  if(o.dAb==="Barrera Férrea"&&e>1)post*=.75;
-  if((o.dAb==="Filtro"||o.dAb==="Solidez"||o.dAb==="Coraza Filtro")&&e>1)post*=.75;
-  if(o.dAb==="Robustez"&&e>1)post*=.75;
+  if(o.dAb==="multiscale"&&(o.dHp??100)>=100)post*=.5;
+  if(o.dAb==="Barrera Férrea"&&e>1)post*=.75;   // TODO: no se pudo identificar contra datos de Showdown/PokeAPI, ver audit.md §5.2
+  if((o.dAb==="filter"||o.dAb==="solidrock"||o.dAb==="prismarmor")&&e>1)post*=.75;
+  if(o.dAb==="sturdy"&&e>1)post*=.75;   // TODO: este efecto no es el de Sturdy real (sobrevivir un OHKO) — parece una confusión de diseño previa, ver audit.md §5.2
   const fly=D.t.includes("FLY");
   if(o.terrain==="eléctrico"&&m.t==="ELE"&&!fly)post*=1.3;
   if(o.terrain==="psíquico"&&m.t==="PSY"&&!fly)post*=1.3;
@@ -818,7 +871,7 @@ function loadDex(){
     const key = byNum[sp.num] ? 900000+sp.num*10+(Object.keys(byNum).length%10) : sp.num;
     byNum[key]=1;
     SPD[key]=[sp.n,...sp.s,...sp.t];
-    ABIL[key]=sp.a.length?sp.a:["—"];
+    ABIL[key]=sp.a.length?sp.a.map(slugify):["—"];
     SLUG[key]=k;
   }
   // movimientos
@@ -1218,7 +1271,7 @@ function vFoe(){
     ${f.shiny?`<div class="row"><b>Variocolor</b><u class="cf">✦</u></div>`:""}
     <div class="row"><b>Velocidad</b><u class="${f.spdSure?"cf":""}">${r.min}–${r.max}</u></div>
     <div class="row"><b>Objeto</b><u class="${f.itemSure?"cf":""}">${f.item?esc(itName(f.item)):"?"}</u></div>
-    <div class="row"><b>Habilidad</b><u class="${f.abil?"cf":""}">${f.abil?esc(f.abil):"?"}</u></div>
+    <div class="row"><b>Habilidad</b><u class="${f.abil?"cf":""}">${f.abil?esc(abilName(f.abil)):"?"}</u></div>
     <div class="row"><b>Vistos</b><u>${f.moves.length?esc(f.moves.map(mvName).join(", ")):"—"}</u></div>
     ${f.bulk?`<div class="row"><b>Resistencia deducida</b><u class="cf">PS ${f.bulk.hp[0]}–${f.bulk.hp[1]} · Def ${f.bulk.df[0]}–${f.bulk.df[1]}</u></div>`:""}</div>
   <div class="card d"><span class="hd">Observar</span><div class="pills">
@@ -1232,9 +1285,9 @@ function vFoe(){
     <button class="btn" id="oGo" style="margin-top:5px">Deducir resistencia</button>
     <div class="msg" id="oOut" style="margin-top:5px">El % real que le bajaste descarta repartos.</div></div></div>`;
   h+=`<div class="card"><span class="hd">Habilidad<em>tocá la que confirmes</em></span><div class="pills">${
-    abilsOf(f.dex).map(ab=>`<button class="p" data-fab="${esc(ab)}" data-on="${f.abil===ab?1:0}">${esc(ab)}${
+    abilsOf(f.dex).map(ab=>`<button class="p" data-fab="${esc(ab)}" data-on="${f.abil===ab?1:0}">${esc(abilName(ab))}${
       (m?.abilities||[]).find(x=>x[0]===ab)?`<em>${(m.abilities.find(x=>x[0]===ab))[1]}%</em>`:""}</button>`).join("")}</div>
-    ${f.abil==="Intimidación"?`<div class="msg w" style="margin-top:5px">Al entrar baja −1 el Ataque de tus dos activos. Marcalo en CAMPO → Estado y etapas.</div>`:""}</div>`;
+    ${f.abil==="intimidate"?`<div class="msg w" style="margin-top:5px">Al entrar baja −1 el Ataque de tus dos activos. Marcalo en CAMPO → Estado y etapas.</div>`:""}</div>`;
   if(m){
     h+=`<div class="cols"><div class="card"><span class="hd">Objetos</span><div class="pills">${
       m.items.map(([i,p])=>`<button class="p" data-item="${esc(i)}" data-on="${f.item===i?1:0}">${esc(i)}<em>${p}%</em></button>`).join("")}</div></div>
@@ -1257,7 +1310,7 @@ function vMine(){
       if(!canMega(m))m.mega=false; saveMy()},"Pokémon")}
     <div class="cap" style="margin-top:4px">Objeto</div>${sel(ITEMS_A(),m.item,itName,
       v=>{m.item=v; if(!canMega(m))m.mega=false; saveMy()},"Objeto",decoItem)}
-    <div class="cap" style="margin-top:4px">Habilidad</div>${sel(abilsOf(m.dex),m.abil,x=>x,
+    <div class="cap" style="margin-top:4px">Habilidad</div>${sel(abilsOf(m.dex),m.abil,abilName,
       v=>{m.abil=v;saveMy()},"Habilidad")}
     ${canMega(m)?`<div class="pills" style="margin-top:5px">
       <button class="p" data-mega="1" data-on="${m.mega?1:0}">${m.mega?"Megaevolucionado":"Sin megaevolucionar"}</button></div>
