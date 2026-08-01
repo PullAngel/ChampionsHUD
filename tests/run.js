@@ -75,6 +75,9 @@ function loadEngine() {
     this.mkFoe = mkFoe;
     this.slot = slot;
     this.broughtFoes = broughtFoes;
+    this.syncActiveFoe = syncActiveFoe;
+    this.syncActiveMine = syncActiveMine;
+    this.stripIconPrefix = stripIconPrefix;
     this.clusterCards = clusterCards;
     this.parseMovesCard = parseMovesCard;
     this.parseStatsCard = parseStatsCard;
@@ -283,6 +286,45 @@ check("mkFoe() arranca con brought:false", () => {
   assertEqual(E.mkFoe(6, 0.9).brought, false);
 });
 
+check("syncActiveFoe() lleva a los activos el rival recién marcado, sin pisar al que ya estaba confirmado", () => {
+  // bug real reportado por Angel: marcar los rivales en "Quién entra" no
+  // cambiaba "Rivales" (B.foe) — se quedaba en el default [0,1] aunque el
+  // usuario hubiera marcado otros dos.
+  const B = E.getB();
+  B.doubles = true;
+  B.team = [6, 445, 9, 700].map((d) => E.mkFoe(d, 0.9));
+  B.foe = [0, 1]; // default, ninguno marcado todavía
+  B.team[2].brought = true;
+  B.team[3].brought = true;
+  E.syncActiveFoe();
+  assertEqual(B.foe.slice().sort().join(","), "2,3", "los 2 activos tienen que pasar a ser los recién marcados");
+
+  // si ahora se marca un tercero (revelado más tarde en el combate), no
+  // debería desplazar a los 2 que ya están activos y confirmados.
+  B.team[0].brought = true;
+  E.syncActiveFoe();
+  assertEqual(B.foe.slice().sort().join(","), "2,3", "no pisa un activo que ya era un rival confirmado");
+});
+
+check("syncActiveMine() lleva a los activos los propios recién marcados en 'Quién entra'", () => {
+  const B = E.getB();
+  B.doubles = true;
+  B.mine = [0, 1];
+  B.myBrought = [2, 3];
+  E.syncActiveMine();
+  assertEqual(B.mine.slice().sort().join(","), "2,3");
+});
+
+check("syncActiveFoe() en individual solo sincroniza 1 activo, no 2", () => {
+  const B = E.getB();
+  B.doubles = false;
+  B.team = [6, 445].map((d) => E.mkFoe(d, 0.9));
+  B.foe = [0, 1];
+  B.team[1].brought = true;
+  E.syncActiveFoe();
+  assertEqual(B.foe[0], 1, "el único activo pasa a ser el rival marcado");
+});
+
 // ── OCR del equipo propio (Fase 1, Parte D) ──
 console.log("\nOCR del equipo propio:");
 
@@ -314,6 +356,41 @@ check("clusterCards() ordena cada card por Y (orden de lectura)", () => {
   ];
   const cards = E.clusterCards(lines, 1000, 600);
   assertEqual(cards[0].map((l) => l.t).join(","), "primera,segunda,tercera");
+});
+
+check("clusterCards() no confunde el nombre de equipo/entrenador con la especie de la tarjeta 1/2", () => {
+  // bug real reportado por Angel: "Team 9" (nombre de su equipo) y "Wayne6"
+  // (su nombre de entrenador) — texto del header, arriba de la grilla —
+  // se leyeron como si fueran la especie de las tarjetas 1 y 2. El header
+  // vive arriba de las pestañas "Moves & More"/"Stats"; usarlas de ancla
+  // saca el header del cálculo en vez de asumir que la grilla ocupa toda
+  // la altura de la imagen (1000x2000, mismo aspecto que una captura real).
+  const lines = [
+    { t: "Team 9", x: 100, y: 20, w: 80, h: 20 },
+    { t: "Wayne6", x: 700, y: 20, w: 80, h: 20 },
+    { t: "Moves & More", x: 350, y: 60, w: 150, h: 20 },
+    { t: "Stats", x: 550, y: 60, w: 60, h: 20 },
+    { t: "Venusaur", x: 50, y: 200, w: 100, h: 20 },
+    { t: "Swampert", x: 600, y: 200, w: 100, h: 20 },
+    { t: "Grimmsnarl", x: 50, y: 900, w: 100, h: 20 },
+    { t: "Pelipper", x: 600, y: 900, w: 100, h: 20 },
+    { t: "Archaludon", x: 50, y: 1600, w: 100, h: 20 },
+    { t: "Hydreigon", x: 600, y: 1600, w: 100, h: 20 },
+  ];
+  const cards = E.clusterCards(lines, 1000, 2000);
+  assertEqual(cards[0].map((l) => l.t).join(","), "Venusaur", "tarjeta 1: solo la especie, sin el header");
+  assertEqual(cards[1].map((l) => l.t).join(","), "Swampert", "tarjeta 2: solo la especie, sin el header");
+  assert(!cards.flat().some((l) => l.t === "Team 9" || l.t === "Wayne6"),
+    "el nombre de equipo/entrenador no debería caer en ninguna tarjeta");
+});
+
+check("clusterCards() cae al comportamiento anterior si no reconoce las pestañas", () => {
+  const lines = [
+    { t: "A", x: 50, y: 50, w: 40, h: 20 },
+    { t: "B", x: 600, y: 50, w: 40, h: 20 },
+  ];
+  const cards = E.clusterCards(lines, 1000, 600);
+  assertEqual(cards[0][0].t, "A", "sin pestañas reconocidas, sigue agrupando por tercios de toda la imagen");
 });
 
 check("parseMovesCard() lee especie/habilidad/ítem/movimientos en orden, ignora ruido de 1 carácter", () => {
@@ -404,6 +481,25 @@ check("findAbility() tolera un carácter mal leído", () => {
 
 check("findMove() tolera un carácter mal leído en el nombre en inglés", () => {
   assertEqual(E.findMove("Wave Crush"), "Wave Crash", "typo de 1 letra en un nombre en inglés");
+});
+
+check("findMove() ignora un carácter suelto pegado adelante (ícono de tipo leído como letra)", () => {
+  // caso real de Angel: el ícono de tipo Normal (un círculo liso) al lado
+  // de "Protect" se leyó como "O Protect".
+  assertEqual(E.findMove("O Protect"), E.findMove("Protect"), "el prefijo del ícono no debería cambiar el resultado");
+  assertEqual(E.findMove("Protect"), "Protección");
+});
+
+check("findItem() ignora un carácter suelto pegado adelante (ícono de objeto leído como letra)", () => {
+  // caso real de Angel: el ícono de objeto al lado de "Choice Scarf" se
+  // leyó como "T Choice Scarf".
+  assertEqual(E.findItem("T Choice Scarf"), E.findItem("Choice Scarf"), "el prefijo del ícono no debería cambiar el resultado");
+  assertEqual(E.findItem("Choice Scarf"), "Pañuelo Elección");
+});
+
+check("stripIconPrefix() no altera nombres reales de una sola palabra", () => {
+  assertEqual(E.stripIconPrefix("Protect"), null, "sin espacio, no hay nada que sacar");
+  assertEqual(E.stripIconPrefix("Choice Scarf"), null, "ya empieza con una palabra real, no con una letra suelta");
 });
 
 check("closestMatch() no matchea cualquier cosa con nombres cortos", () => {

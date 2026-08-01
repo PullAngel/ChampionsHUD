@@ -56,21 +56,31 @@ Sin features nuevas. Objetivo: que la auditoría, si se re-ejecutara hoy, no enc
 - Revisado el resto de `wire()`, `vField()`/`vBrought()`, `vPre()`, `expandNow()`/`collapseNow()`, y el pipeline completo de `ScreenCapture.kt` (compartido entre el escaneo del rival, que ya funciona, y la captura propia nueva) — sin hallazgos adicionales.
 - Ningún cambio de esta tercera vuelta es una feature nueva ni un cambio de comportamiento pedido — todo es corrección de bugs encontrados por lectura de código y refuerzo de casos ya cubiertos por tests.
 
+**Cuarta vuelta, mismo día (2026-08-01), con capturas reales de Angel de "Quién entra" y de la captura de equipo:**
+- **"Quién entra" no cambiaba el campo:** marcar rivales/propios en el panel de arriba no actualizaba los selectores "Tus activos"/"Rivales" — se quedaban en el default (índices 0/1). Nuevas `syncActiveFoe()`/`syncActiveMine()`: al marcar, si el slot activo correspondiente todavía no apunta a alguien confirmado, se completa solo con lo recién marcado — pero nunca pisa un activo que ya era un rival/propio confirmado (para no revertir un cambio real de en medio del combate cuando se revela un cuarto/quinto Pokémon más adelante).
+- **Captura de equipo: leyó 2 de 6 y mal.** Causa encontrada por lectura de la captura que mandó Angel: `clusterCards()` asumía que la grilla de 6 tarjetas ocupa toda la altura de la imagen, pero el nombre de equipo/entrenador (`"Team 9"` / su nombre de entrenador) y las pestañas "Moves & More"/"Stats" viven arriba de la grilla — ese header caía en el primer tercio y se leía como si fuera la especie de las tarjetas 1 y 2. Corregido: ahora se busca el texto de las pestañas (siempre presente, texto fijo del juego) y se usa su posición como corte real de dónde empieza la grilla, en vez de una fracción fija de toda la imagen. Si no se reconocen las pestañas, cae al comportamiento anterior en vez de romper.
+- **"O Protect" / "T Choice Scarf":** Angel identificó la causa exacta — el ícono de tipo Normal (un círculo liso) y el ícono de objeto se leen como una letra suelta pegada adelante del nombre real. `findMove()`/`findItem()` ahora reintentan sin ese prefijo como último recurso (solo si nada más matcheó — ningún movimiento u objeto real empieza con una letra sola seguida de espacio).
+- **"Importar equipo" (pegar texto)** bajó al final de la pestaña MÍO — sigue disponible, pero ya no compite por atención con la captura automática, que es el flujo principal ahora.
+- 9 tests nuevos (55 en total) cubren los tres fixes de arriba con datos sintéticos que reproducen los casos reales que mandó Angel.
+
+**Deuda técnica reportada, explícitamente pospuesta — no para el próximo sprint:**
+- El HUD consume aproximadamente **3 veces más batería** que el propio juego de Pokémon Champions corriendo solo. No investigado todavía; sospechosos razonables para cuando se retome: el WebView redibujando aunque no haya cambios, la resolución de la captura de pantalla, o el polling de conexión con el overlay — nada de esto se confirmó, es punto de partida para una futura sesión dedicada a perfilar batería.
+- El permiso de captura de pantalla (`MediaProjection`) se pierde solo después de un rato sin usarlo — aproximadamente entre 1 y 2 combates de inactividad. Ya hay manejo explícito del caso (`ScreenCapture.kt`: `dead=true` da un mensaje claro en vez de fallar en silencio, `audit.md` §5.8), pero no hay renovación automática del permiso; el usuario tiene que volver a `MainActivity` y autorizar de nuevo. Automatizar esa re-solicitud queda pendiente.
+
 ### Checklist para probar en el dispositivo real (lo que dejó esta sesión)
 
 En orden, de lo más rápido a lo que más tiempo lleva:
 
-1. **Botón de captura del equipo propio** (el bug principal de esta vuelta): abrí "View Details" de un Pokémon propio en la pestaña Moves & More, tocá "Capturar equipo" en MÍO. Si el fix fue correcto, ahora debería pasar algo (mostrar cuántas líneas leyó, aunque la lectura salga mal) en vez de no hacer nada.
-2. Si el paso 1 muestra texto reconocido pero mal agrupado en las 6 tarjetas: es el layout asumido por `clusterCards()` (grilla 2×3 por posición relativa) el que puede no coincidir con la pantalla real — avisame qué agrupó mal y lo ajusto en `hud.html` sin recompilar.
-3. Segunda pasada: cambiá a la pestaña Stats en el juego y volvé a tocar el botón (ahora dice "Ahora tocá Stats..."). Fijate si arma un equipo nuevo razonable en MÍO, o si `parseStatsCard()` no matchea el formato real de los números.
-4. **Campo → "Quién entra":** marcá los 2 rivales y tus 4 elegidos en orden. Debería quedarse arriba hasta completar los 6 toques, no bajar después del primero.
-5. **Previa → orden de velocidad:** si algún propio lleva piedra de mega y no mega-evolucionó, debería aparecer la velocidad hipotética post-mega al lado del nombre.
-6. **Tamaño del panel:** confirmá que no tapa el panel nativo de equipo rival en team preview, y que ahora entra más info sin cortarse.
-7. **Previa → "Va a sacar"/"Sacá vos"/"Por qué":** deberían estar al fondo de la pestaña, marcados como predicción poco fiable, sin estorbar el resto.
+1. **Botón de captura del equipo propio:** abrí "View Details" de un Pokémon propio en la pestaña Moves & More, tocá "Capturar equipo" en MÍO. Debería agrupar bien las 6 tarjetas ahora (antes leía el nombre de equipo/entrenador como si fuera una especie).
+2. Si sigue agrupando mal: mandame el mensaje de diagnóstico (cuántas líneas leyó, sample por tarjeta) — con eso alcanza para ajustar sin que compiles de nuevo.
+3. Segunda pasada: cambiá a Stats, volvé a tocar. Fijate si "O Protect"/"T [objeto]" ya se leen bien como "Protect"/"[objeto]".
+4. **Campo → "Quién entra":** marcá los 2 rivales y tus 4 elegidos en orden. Debería quedarse arriba hasta completar los 6 toques, y ahora "Tus activos"/"Rivales" deberían mostrar justo lo que marcaste, no el default.
+5. **Previa → orden de velocidad:** velocidad post-mega al lado del nombre si corresponde.
+6. **Tamaño del panel** y **Previa → predicción al fondo** (ya confirmados en la vuelta anterior, revalidar si tocás algo cerca).
 
-Si algo de los pasos 1–3 sigue sin andar bien, lo más útil que podés mandar son capturas de pantalla del resultado (el mensaje de diagnóstico que muestra cuántas líneas leyó y qué texto crudo salió por tarjeta) — con eso alcanza para corregir sin que compiles de nuevo, salvo que el problema esté del lado de Kotlin.
+Si algo sigue sin andar bien, lo más útil que podés mandar son capturas de pantalla del resultado — con eso alcanza para corregir sin que compiles de nuevo, salvo que el problema esté del lado de Kotlin.
 
-**Fuera de esta fase todavía:** detección de naturaleza por color en la captura de Stats (por ahora queda neutral, corrección manual); rediseño de Presentación a vista contextual única (ítem sin abordar, arriba).
+**Fuera de esta fase todavía:** detección de naturaleza por color en la captura de Stats (por ahora queda neutral, corrección manual); rediseño de Presentación a vista contextual única (ítem sin abordar, arriba); batería y renovación automática del permiso de captura (ver deuda técnica arriba).
 
 **Criterio de salida:** un combate completo se juega con el presupuesto de interacción manual definido en `product.md`, salvo fallos puntuales de reconocimiento.
 

@@ -982,6 +982,33 @@ const mkFoe=(dex,c,sh)=>({dex,confidence:c,shiny:!!sh,item:null,itemSure:false,a
     preview (que muestra los 6). */
 const broughtFoes=()=>B.team.map((f,i)=>i).filter(i=>B.team[i]?.brought);
 
+/** Al marcar quién entró (Campo), los selectores "Tus activos"/"Rivales" se
+    quedaban en el default (índices 0/1) aunque el usuario ya hubiera
+    marcado otros — Angel lo reportó tras probar el HUD real: marcar los 2
+    rivales y los 4 propios no cambiaba "los pokémon que hay en campo".
+    Estas dos funciones completan, sin pisar, cualquier slot activo que
+    todavía no apunte a alguien ya confirmado — así el primer toque deja
+    listo el campo, pero un cambio de activo posterior en pleno combate
+    (con más de needed ya confirmados) no se revierte solo. */
+function syncActiveFoe(){
+  const need=B.doubles?2:1;
+  for(let k=0;k<need;k++){
+    if(!B.team[B.foe[k]]?.brought){
+      const free=broughtFoes().find(i=>!B.foe.slice(0,need).includes(i));
+      if(free!==undefined)B.foe[k]=free;
+    }
+  }
+}
+function syncActiveMine(){
+  const need=B.doubles?2:1;
+  for(let k=0;k<need;k++){
+    if(!B.myBrought.includes(B.mine[k])){
+      const free=B.myBrought.find(i=>!B.mine.slice(0,need).includes(i));
+      if(free!==undefined)B.mine[k]=free;
+    }
+  }
+}
+
 let B=NEW(), MY=[slot(445),slot(910),slot(727),slot(547),slot(591),slot(1000)];
 let META={species:{},source:"?",regulation:"?"};
 const has=typeof Android!=="undefined";
@@ -1103,6 +1130,16 @@ function findSpecies(name){
     DEXN.find(d=>norm(S(d).n)===norm(t)) ??
     closestMatch(name,DEXN.map(d=>({key:d,label:S(d).n})));
 }
+/** El ícono de tipo/objeto que el juego dibuja pegado al texto a veces se
+    lee como un carácter suelto antes de la palabra real — ej. el ícono de
+    tipo Normal (un círculo liso) se leyó como "O Protect", un ícono de
+    objeto como "T Choice Scarf" (capturas reales de Angel). Se prueba
+    recién como último recurso, si nada más matcheó — ningún movimiento u
+    objeto real empieza con una letra suelta seguida de espacio. */
+const stripIconPrefix=s=>{
+  const m=/^[A-Za-z]\s+(\S.*)$/.exec((s||"").trim());
+  return m?m[1]:null;
+};
 function findItem(name){
   const t=name.trim().toLowerCase();
   const hit=IT.find(x=>x[0].toLowerCase()===t||x[1].toLowerCase()===t);
@@ -1111,7 +1148,10 @@ function findItem(name){
   if(meg)return meg;
   const entries=IT.flatMap(x=>[{key:x[0],label:x[0]},{key:x[0],label:x[1]}])
     .concat(Object.keys(MEGA).map(k=>({key:k,label:k})));
-  return closestMatch(name,entries);
+  const direct=closestMatch(name,entries);
+  if(direct)return direct;
+  const stripped=stripIconPrefix(name);
+  return stripped?findItem(stripped):null;
 }
 function findAbility(name){
   const t=name.trim().toLowerCase();
@@ -1138,7 +1178,10 @@ function findMove(name){
     const en=MV[k][7];
     return en?[{key:k,label:k},{key:k,label:en}]:[{key:k,label:k}];
   });
-  return closestMatch(name,entries);
+  const direct=closestMatch(name,entries);
+  if(direct)return direct;
+  const stripped=stripIconPrefix(name);
+  return stripped?findMove(stripped):null;
 }
 
 /** Parsea el texto pegado. Devuelve {team:[...hasta 6 slots], errors:[...]}
@@ -1214,12 +1257,30 @@ let OCR_PHASE=0, OCR_DRAFT=[null,null];
     filas, la que se ve en las capturas de referencia de Angel). Usa
     posición relativa al ancho/alto de la captura, no coordenadas fijas, así
     tolera que cambie la resolución del dispositivo. Cada card queda
-    ordenada por Y — el orden de lectura natural de arriba a abajo. */
+    ordenada por Y — el orden de lectura natural de arriba a abajo.
+
+    El nombre de equipo/entrenador y las pestañas "Moves & More"/"Stats"
+    viven arriba de la grilla — asumir que la grilla ocupa toda la altura
+    de la captura (0..h) hacía que ese header cayera en el primer tercio y
+    se leyera como si fuera la especie de la tarjeta 1/2 (bug real: "Team 9"
+    y el nombre de entrenador de Angel se leyeron como especies). Las
+    pestañas son texto fijo del juego, siempre presente en esta pantalla —
+    se usan como ancla real de dónde empieza la grilla en vez de una
+    fracción fija de la imagen completa. Si no se reconocen (ML Kit no las
+    leyó), se cae al comportamiento anterior en vez de romper todo. */
 function clusterCards(lines,w,h){
   const cards=Array.from({length:6},()=>[]);
-  for(const ln of (lines||[])){
+  const tabRe=/^(moves\s*&?\s*more|stats)$/i;
+  const all=(lines||[]).filter(l=>l&&l.t&&!tabRe.test(l.t.trim()));
+  const tabs=(lines||[]).filter(l=>l&&l.t&&tabRe.test(l.t.trim()));
+  const topCut=tabs.length?Math.max(...tabs.map(l=>l.y+(l.h||0))):0;
+  const grid=topCut?all.filter(l=>(l.y+(l.h||0)/2)>topCut):[];
+  const use=grid.length>=6?grid:all;
+  const y0=use===grid?topCut:0;
+  for(const ln of use){
     if(!w||!h)continue;
-    const cx=(ln.x+ln.w/2)/w, cy=(ln.y+ln.h/2)/h;
+    const gh=h-y0; if(gh<=0)continue;
+    const cx=(ln.x+ln.w/2)/w, cy=Math.max(0,(ln.y+ln.h/2)-y0)/gh;
     const col=cx<0.5?0:1;
     const row=cy<1/3?0:cy<2/3?1:2;
     cards[row*2+col].push(ln);
@@ -1745,12 +1806,6 @@ function vMine(){
   <div class="team">${MY.map((x,i)=>
     `<button class="mon" data-mp="${i}" data-on="${i===B.mpick?1:0}" style="background:var(--ally-2)">
       <b>${esc(nm(myDex(x)))}</b><s>${x.item==="—"?"—":esc(itName(x.item).slice(0,10))}</s></button>`).join("")}</div>
-  <div class="card"><span class="hd">Importar equipo<em>pegá hasta 6, reemplaza el equipo activo</em></span>
-    <textarea id="tPaste" rows="5" placeholder="${esc(TEAM_PASTE_PLACEHOLDER)}"
-      style="width:100%;background:rgba(0,0,0,.30);color:var(--cream);border:none;
-      border-radius:10px;padding:8px;font-family:inherit;font-size:11px;resize:vertical"></textarea>
-    <button class="btn" id="tGo" style="margin-top:5px">Reemplazar equipo</button>
-    <div class="msg" id="tOut" style="margin-top:5px"></div></div>
   <div class="card${OCR_PHASE?" f":""}"><span class="hd">Capturar equipo<em>${OCR_PHASE?"paso 2 de 2":"lee la pantalla del juego"}</em></span>
     <button class="btn" id="tOcr" style="margin-top:5px">${OCR_PHASE===0
       ?"Capturar — abrí View Details, pestaña Moves & More"
@@ -1786,6 +1841,12 @@ function vMine(){
     ${learnable(m.dex)?"":`<div class="msg" style="margin-top:5px">Sin dex.json cargado se
       muestran todos los movimientos. Generalo con build_dex.py para que cada Pokémon
       ofrezca solo los suyos.</div>`}</div>`;
+  h+=`<div class="card"><span class="hd">Importar equipo<em>pegá hasta 6, reemplaza el equipo activo</em></span>
+    <textarea id="tPaste" rows="5" placeholder="${esc(TEAM_PASTE_PLACEHOLDER)}"
+      style="width:100%;background:rgba(0,0,0,.30);color:var(--cream);border:none;
+      border-radius:10px;padding:8px;font-family:inherit;font-size:11px;resize:vertical"></textarea>
+    <button class="btn" id="tGo" style="margin-top:5px">Reemplazar equipo</button>
+    <div class="msg" id="tOut" style="margin-top:5px"></div></div>`;
   return h;
 }
 
@@ -1895,10 +1956,11 @@ function wire(){
   on("[data-lang]",e=>{LANG=e.dataset.lang;try{localStorage.setItem("hudLang",LANG)}catch(x){}});
   on("[data-item]",e=>{const f=B.team[B.pick],v=e.dataset.item;f.item=f.item===v?null:v;f.itemSure=!!f.item});
   on("[data-fab]",e=>{const f=B.team[B.pick],v=e.dataset.fab;f.abil=f.abil===v?null:v});
-  on("[data-brf]",e=>{const f=B.team[+e.dataset.brf];f.brought=!f.brought});
+  on("[data-brf]",e=>{const f=B.team[+e.dataset.brf];f.brought=!f.brought;syncActiveFoe()});
   on("[data-brm]",e=>{const i=+e.dataset.brm,p=B.myBrought.indexOf(i);
     if(p>=0)B.myBrought.splice(p,1);
-    else if(B.myBrought.length<4)B.myBrought.push(i);});
+    else if(B.myBrought.length<4)B.myBrought.push(i);
+    syncActiveMine()});
   on("[data-mvk]",e=>{const f=B.team[B.pick],v=e.dataset.mvk,i=f.moves.indexOf(v);
     i<0?f.moves.push(v):f.moves.splice(i,1)});
   on("[data-obs]",e=>{const f=B.team[B.pick],k=e.dataset.obs;
