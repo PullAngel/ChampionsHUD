@@ -86,6 +86,8 @@ function loadEngine() {
     this.findAbility = findAbility;
     this.findItem = findItem;
     this.findMove = findMove;
+    this.megaSpeed = megaSpeed;
+    this.canMega = canMega;
   `;
 
   const sandbox = {
@@ -379,6 +381,40 @@ check("closestMatch() no matchea cualquier cosa con nombres cortos", () => {
 check("closestMatch() devuelve null con texto vacío, no explota", () => {
   assertEqual(E.closestMatch("", [{ key: "a", label: "Algo" }]), null);
   assertEqual(E.closestMatch("algo", []), null);
+});
+
+// ── velocidad post-mega en Previa (feedback real de Angel) ──
+console.log("\nvelocidad post-mega:");
+
+check("megaSpeed() da un valor mayor que la base cuando lleva la piedra y no mega-evolucionó todavía", () => {
+  const m = E.slot(260); // Swampert
+  m.item = "Swampertite";
+  assert(E.canMega(m), "tiene que poder mega-evolucionar con la piedra puesta");
+  const mv = E.megaSpeed(m);
+  assert(mv !== null, "no debería ser null si lleva la piedra y no mega-evolucionó");
+  assert(mv > 0, "tiene que ser un valor de velocidad real");
+});
+
+check("megaSpeed() es null si ya está mega-evolucionado (myStat ya lo refleja solo)", () => {
+  const m = E.slot(260);
+  m.item = "Swampertite"; m.mega = true;
+  assertEqual(E.megaSpeed(m), null);
+});
+
+check("megaSpeed() es null si no lleva piedra de mega", () => {
+  const m = E.slot(260);
+  assertEqual(E.megaSpeed(m), null);
+});
+
+check("fullSpeedOrder() incluye megaV solo para el propio con piedra sin mega-evolucionar", () => {
+  const B = E.getB();
+  B.team = [6].map((d) => E.mkFoe(d, 0.9));
+  const my = E.getMY();
+  my[0].item = "Swampertite"; my[0].dex = 260; my[0].mega = false;
+  const order = E.fullSpeedOrder();
+  const swampert = order.find((x) => x.me && x.n === "Swampert");
+  assert(swampert, "tiene que estar Swampert en el orden");
+  assert(swampert.megaV > swampert.v, "la velocidad mega tiene que ser mayor a la base para Swampert");
 });
 
 // ── validador de datos (roadmap Fase 0, ítem 5) ──

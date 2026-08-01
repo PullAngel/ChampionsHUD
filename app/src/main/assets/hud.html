@@ -1392,10 +1392,19 @@ function renderInner(){
    hay (vision.md, "confianza calibrada"). Se ordena por el máximo del rango:
    la lectura conservadora es asumir que puede ser tan rápido como el rango
    permite. */
+/** Velocidad que tendría m si mega-evolucionara, aunque todavía no lo haya
+    hecho (m.mega en false) — null si no lleva piedra o ya está megaevolucionado
+    (ahí myStat() ya refleja el cambio solo, vía myDex()). */
+const megaSpeed=m=>{
+  if(m.mega)return null;
+  const md=canMega(m); if(!md)return null;
+  return stOf(S(md).s[5],m.sp[5],natMul(5,m.up,m.dn));
+};
 function fullSpeedOrder(){
-  const mine=MY.filter(m=>m.dex&&S(m.dex)).map(m=>({me:1,n:nm(myDex(m)),v:myStat(m,5),lo:null,hi:null}));
+  const mine=MY.filter(m=>m.dex&&S(m.dex)).map(m=>
+    ({me:1,n:nm(myDex(m)),v:myStat(m,5),lo:null,hi:null,megaV:megaSpeed(m)}));
   const foes=B.team.filter(f=>f.dex&&S(f.dex)).map(f=>{const r=spdRange(f);
-    return {me:0,n:nm(f.dex),v:r.max,lo:r.min,hi:r.max}});
+    return {me:0,n:nm(f.dex),v:r.max,lo:r.min,hi:r.max,megaV:null}});
   return [...mine,...foes].sort((a,b)=>b.v-a.v);
 }
 
@@ -1439,7 +1448,8 @@ function vPre(){
       :`<div class="msg">Sin ejes marcados: es un cambio de golpes directo, priorizá daño y resistencia.</div>`}</div>
   <div class="card"><span class="hd">Orden de velocidad<em>los 12, sin modificadores de turno</em></span>
     ${so.map((x,i)=>`<div class="row" style="padding:4px 8px">
-      <b style="color:${x.me?"var(--pick)":"var(--foe-row)"}">${i+1}. ${esc(x.n)}</b>
+      <b style="color:${x.me?"var(--pick)":"var(--foe-row)"}">${i+1}. ${esc(x.n)}${
+        x.megaV?`<s>si megaevoluciona: ${x.megaV}</s>`:""}</b>
       <u>${x.me?x.v:x.lo+"–"+x.hi}</u></div>`).join("")}</div>
   <div class="card f"><span class="hd">Mayores amenazas<em>su mejor golpe, contra tu peor respuesta</em></span>
     ${th.length?th.map(t=>{const vd=verdict(t.r,t.r.maxHP);
@@ -1532,7 +1542,12 @@ function vField(){
   const actFor=(idx,arr,prefix)=>{const p=arr.indexOf(idx);return p>=0?A(prefix+p):actNew()};
 
   const brought=vBrought();
-  const showBroughtOnTop=!B.myBrought.length&&!broughtFoes().length;
+  // Se queda arriba hasta completar los 2 rivales (1 en individual) Y los 4
+  // propios — no apenas se toca el primero. Angel lo pidió así después de
+  // probarlo: bajarlo de golpe al primer toque interrumpe el flujo de
+  // marcar los 6 seguidos.
+  const needFoes=B.doubles?2:1;
+  const showBroughtOnTop=broughtFoes().length<needFoes||B.myBrought.length<4;
   let h=showBroughtOnTop?brought:"";
 
   h+=`<div class="card d"><span class="hd">Turno ${B.turn}<em>${B.doubles?"dobles":"individual"}</em></span>
