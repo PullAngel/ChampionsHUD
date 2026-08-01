@@ -219,7 +219,12 @@ class OverlayService : Service() {
         // En horizontal el alto es el recurso escaso: lo usamos casi entero y
         // dejamos el centro del campo libre.
         val land = sw > sh
-        val panelW = min((sw * (if (land) 0.42f else 0.62f)).toInt(), (460 * dp).toInt())
+        // ~60% más ancho que antes (0.42 -> 0.67) — pedido explícito de Angel
+        // después de probarlo, con el límite de no tapar el panel de equipo
+        // rival nativo del juego en team preview (vive a la derecha de la
+        // pantalla; 0.67 deja ~33% libre, que en las capturas que mandó
+        // alcanza de sobra). Sin verificar en pantalla real todavía.
+        val panelW = min((sw * (if (land) 0.67f else 0.62f)).toInt(), (740 * dp).toInt())
         val panelH = (sh * (if (land) 0.94f else 0.80f)).toInt()
         val gap = (8 * dp).toInt()
 
