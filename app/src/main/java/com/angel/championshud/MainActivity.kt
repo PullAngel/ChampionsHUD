@@ -112,7 +112,7 @@ class MainActivity : AppCompatActivity() {
             !canNotify() -> "Paso 2 de 3 — permitir notificaciones. Android las exige para " +
                 "mantener viva la captura de pantalla."
             else -> "Paso 3 de 3 — autorizar la captura de pantalla. El HUD la usa solo para " +
-                "leer la vista previa del rival; nada sale del teléfono."
+                "leer el equipo rival y el tuyo desde la pantalla del juego; nada sale del teléfono."
         }
         launch.text = if (canOverlay() && canNotify()) "Activar HUD" else "Dar permiso"
     }
