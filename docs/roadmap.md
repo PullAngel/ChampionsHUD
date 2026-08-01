@@ -46,7 +46,29 @@ Sin features nuevas. Objetivo: que la auditoría, si se re-ejecutara hoy, no enc
 - Panel del HUD agrandado ~60% en horizontal (con el límite de no tapar el panel nativo de equipo rival en team preview).
 - La predicción de "quién va a sacar" (`predict()`) resultó poco fiable en uso real — bajada al fondo de Previa, sin estorbar; rediseñar el algoritmo queda documentado en `future.md` para más adelante, no es una corrección rápida.
 
-**Sigue pendiente de verificar en dispositivo real:** el resto de la captura OCR (si `clusterCards()` agrupa bien contra el layout real más allá de las 2 capturas de referencia, si el regex de `parseStatsCard()` matchea lo que ML Kit realmente devuelve), y todos los cambios de esta segunda vuelta (panel más grande, "Quién entra" corregido, velocidad post-mega). La lógica está testeada con datos sintéticos (`tests/run.js`, 36 casos), pero eso no reemplaza probarlo contra el juego.
+**Sigue pendiente de verificar en dispositivo real:** el resto de la captura OCR (si `clusterCards()` agrupa bien contra el layout real más allá de las 2 capturas de referencia, si el regex de `parseStatsCard()` matchea lo que ML Kit realmente devuelve), y todos los cambios de esta segunda vuelta (panel más grande, "Quién entra" corregido, velocidad post-mega). La lógica está testeada con datos sintéticos (`tests/run.js`, 46 casos), pero eso no reemplaza probarlo contra el juego.
+
+**Tercera vuelta, mismo día (2026-08-01), sesión larga sin supervisión mientras Angel dormía — QA propio, sin nuevos reportes de Angel:** con los 6 ítems de la segunda vuelta ya corregidos, se dedicó el resto de la sesión a revisar el código de las Partes A/B/C/D en busca de bugs latentes (nada de esto vino de un reporte nuevo, es revisión propia):
+- Encontrado y corregido el bug de colisión de nombres `scanOwnTeam()` descripto arriba — probablemente la causa real de que el botón de captura no hiciera nada.
+- Encontrado y corregido un bug propio en `parseStatsCard()`: agrupaba por Y antes de separar columnas (mezclaba filas de tarjetas distintas).
+- Endurecido `parseMovesCard()` para exigir al menos una letra por línea.
+- `parseStatsCard()`: el corte entre columna izquierda/derecha pasó de "por mediana de X" a "por el mayor salto entre valores de X consecutivos" — la mediana fallaba si ML Kit fragmentaba más líneas de un lado que del otro.
+- Revisado el resto de `wire()`, `vField()`/`vBrought()`, `vPre()`, `expandNow()`/`collapseNow()`, y el pipeline completo de `ScreenCapture.kt` (compartido entre el escaneo del rival, que ya funciona, y la captura propia nueva) — sin hallazgos adicionales.
+- Ningún cambio de esta tercera vuelta es una feature nueva ni un cambio de comportamiento pedido — todo es corrección de bugs encontrados por lectura de código y refuerzo de casos ya cubiertos por tests.
+
+### Checklist para probar en el dispositivo real (lo que dejó esta sesión)
+
+En orden, de lo más rápido a lo que más tiempo lleva:
+
+1. **Botón de captura del equipo propio** (el bug principal de esta vuelta): abrí "View Details" de un Pokémon propio en la pestaña Moves & More, tocá "Capturar equipo" en MÍO. Si el fix fue correcto, ahora debería pasar algo (mostrar cuántas líneas leyó, aunque la lectura salga mal) en vez de no hacer nada.
+2. Si el paso 1 muestra texto reconocido pero mal agrupado en las 6 tarjetas: es el layout asumido por `clusterCards()` (grilla 2×3 por posición relativa) el que puede no coincidir con la pantalla real — avisame qué agrupó mal y lo ajusto en `hud.html` sin recompilar.
+3. Segunda pasada: cambiá a la pestaña Stats en el juego y volvé a tocar el botón (ahora dice "Ahora tocá Stats..."). Fijate si arma un equipo nuevo razonable en MÍO, o si `parseStatsCard()` no matchea el formato real de los números.
+4. **Campo → "Quién entra":** marcá los 2 rivales y tus 4 elegidos en orden. Debería quedarse arriba hasta completar los 6 toques, no bajar después del primero.
+5. **Previa → orden de velocidad:** si algún propio lleva piedra de mega y no mega-evolucionó, debería aparecer la velocidad hipotética post-mega al lado del nombre.
+6. **Tamaño del panel:** confirmá que no tapa el panel nativo de equipo rival en team preview, y que ahora entra más info sin cortarse.
+7. **Previa → "Va a sacar"/"Sacá vos"/"Por qué":** deberían estar al fondo de la pestaña, marcados como predicción poco fiable, sin estorbar el resto.
+
+Si algo de los pasos 1–3 sigue sin andar bien, lo más útil que podés mandar son capturas de pantalla del resultado (el mensaje de diagnóstico que muestra cuántas líneas leyó y qué texto crudo salió por tarjeta) — con eso alcanza para corregir sin que compiles de nuevo, salvo que el problema esté del lado de Kotlin.
 
 **Fuera de esta fase todavía:** detección de naturaleza por color en la captura de Stats (por ahora queda neutral, corrección manual); rediseño de Presentación a vista contextual única (ítem sin abordar, arriba).
 
