@@ -1250,16 +1250,36 @@ function parseMovesCard(lines){
     al menos 6 líneas numéricas o algún valor queda fuera de 0–SP_MAX,
     devuelve null en vez de arriesgar una lectura a medias — fallo ruidoso,
     lo termina completando la corrección manual. */
+/** Agrupa líneas de una misma sub-columna por Y — tolera que ML Kit devuelva
+    "155 — 0" como una sola línea O la parta en dos ("155" y "— 0") si hay
+    espacio de sobra entre el valor y la inversión. Solo se llama DESPUÉS de
+    separar por sub-columna (izq/der): agrupar por Y antes de eso juntaría
+    líneas de columnas distintas que caen a la misma altura por casualidad
+    (HP y AtqEsp son la fila 1 de cada columna, mismo Y, texto distinto). */
+function groupRows(items){
+  const sorted=items.slice().sort((a,b)=>a.y-b.y);
+  const rows=[];
+  for(const ln of sorted){
+    const last=rows[rows.length-1];
+    if(last&&Math.abs(ln.y-last.y0)<(ln.h||14)*0.6)last.items.push(ln);
+    else rows.push({y0:ln.y,items:[ln]});
+  }
+  return rows;
+}
 function parseStatsCard(lines){
   const clean=(lines||[]).filter(l=>l.t&&/\d/.test(l.t));
   if(clean.length<6)return null;
   const xs=clean.map(l=>l.x).sort((a,b)=>a-b);
   const midX=xs[Math.floor(xs.length/2)];
-  const left=clean.filter(l=>l.x<midX).sort((a,b)=>a.y-b.y).slice(0,3);
-  const right=clean.filter(l=>l.x>=midX).sort((a,b)=>a.y-b.y).slice(0,3);
+  const left=groupRows(clean.filter(l=>l.x<midX)).slice(0,3);
+  const right=groupRows(clean.filter(l=>l.x>=midX)).slice(0,3);
   if(left.length<3||right.length<3)return null;
-  const extract=l=>{const nums=l.t.match(/\d+/g);return nums&&nums.length?+nums[nums.length-1]:null};
-  const sp=[...left,...right].map(extract);
+  const rowNum=r=>{
+    const text=r.items.slice().sort((a,b)=>a.x-b.x).map(l=>l.t).join(" ");
+    const nums=text.match(/\d+/g);
+    return nums&&nums.length?+nums[nums.length-1]:null;
+  };
+  const sp=[...left,...right].map(rowNum);
   return sp.length===6&&sp.every(n=>n!==null&&n>=0&&n<=SP_MAX)?sp:null;
 }
 

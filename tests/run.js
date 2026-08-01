@@ -336,6 +336,22 @@ check("parseStatsCard() separa 2 sub-columnas por X y saca la inversión (últim
   assertEqual(sp.join(","), "31,0,7,0,28,0", "orden esperado: HP,Atq,Def,AtqEsp,DefEsp,Vel");
 });
 
+check("parseStatsCard() tolera que ML Kit parta \"155 — 0\" en 2 líneas separadas", () => {
+  // mismo Sinistcha, pero cada valor viene partido en "número" + "— inversión"
+  // como 2 líneas distintas a la misma altura (y), en vez de una sola.
+  const lines = [
+    { t: "177", x: 10, y: 10, h: 14 }, { t: "— 31", x: 50, y: 11, h: 14 },
+    { t: "80", x: 10, y: 40, h: 14 }, { t: "— 0", x: 50, y: 41, h: 14 },
+    { t: "133", x: 10, y: 70, h: 14 }, { t: "— 7", x: 50, y: 70, h: 14 },
+    { t: "141", x: 300, y: 10, h: 14 }, { t: "— 0", x: 340, y: 11, h: 14 },
+    { t: "140", x: 300, y: 40, h: 14 }, { t: "— 28", x: 340, y: 41, h: 14 },
+    { t: "81", x: 300, y: 70, h: 14 }, { t: "— 0", x: 340, y: 70, h: 14 },
+  ];
+  const sp = E.parseStatsCard(lines);
+  assert(sp !== null, "no debería devolver null con líneas fragmentadas");
+  assertEqual(sp.join(","), "31,0,7,0,28,0", "mismo resultado que si viniera en una sola línea por stat");
+});
+
 check("parseStatsCard() devuelve null si no hay suficientes líneas numéricas", () => {
   assertEqual(E.parseStatsCard([{ t: "algo sin números", x: 10, y: 10 }]), null);
 });
