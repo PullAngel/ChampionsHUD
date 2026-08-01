@@ -54,5 +54,9 @@ dependencies {
     // Variante "bundled": el modelo va empaquetado en el APK (~20MB más),
     // no se descarga la primera vez por Play Services — offline-first real
     // (decisions.md #6), no la variante liviana que depende de red al inicio.
-    implementation("com.google.mlkit:text-recognition:16.0.0")
+    // 16.0.0 tiene libmlkit_google_ocr_pipeline.so sin alinear a páginas de
+    // 16 KB (falla el chequeo de compatibilidad de Android Studio); Google
+    // lo corrigió en 16.0.1 (agosto 2024) — confirmado en el changelog
+    // oficial de ML Kit, no en el propio build (no lo puedo compilar acá).
+    implementation("com.google.mlkit:text-recognition:16.0.1")
 }
