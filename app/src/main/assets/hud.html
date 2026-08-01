@@ -987,15 +987,37 @@ const keep=()=>{if(has)try{Android.keepOpen()}catch(e){}};
 let sT=null,tT=null;
 const save=()=>{if(!has)return;clearTimeout(sT);
   sT=setTimeout(()=>{try{Android.saveBattle(JSON.stringify(B))}catch(e){}},400)};
+/* Equipos guardados: v1 era un solo equipo pelado ({v:1,team:MY}); v2 es una
+   lista con nombre y cuál está activo. MY sigue siendo la MISMA referencia
+   que activeTeam().team — mutarla (los selectores de la Fase 0 ya lo hacen)
+   ya deja el cambio reflejado en TEAMS sin copiar nada de vuelta. */
+let TEAMS=[],ACTIVE_ID=null;
+const defaultTeam=()=>[slot(445),slot(910),slot(727),slot(547),slot(591),slot(1000)];
+const newTeamId=()=>Math.max(0,...TEAMS.map(t=>t.id))+1;
+const activeTeam=()=>TEAMS.find(t=>t.id===ACTIVE_ID);
+const activeTeamName=id=>TEAMS.find(t=>t.id===id)?.name||"?";
+function loadTeams(){
+  let raw=null;
+  if(has)try{raw=JSON.parse(Android.loadTeam())}catch(e){}
+  if(raw&&raw.v===2&&Array.isArray(raw.teams)&&raw.teams.length){
+    TEAMS=raw.teams; ACTIVE_ID=raw.activeId??TEAMS[0].id;
+  }else if(raw&&raw.v===1&&raw.team?.length){
+    TEAMS=[{id:1,name:"Equipo 1",team:raw.team}]; ACTIVE_ID=1;
+  }else{
+    TEAMS=[{id:1,name:"Equipo 1",team:defaultTeam()}]; ACTIVE_ID=1;
+  }
+  if(!activeTeam())ACTIVE_ID=TEAMS[0].id;
+  MY=activeTeam().team;
+}
 const saveMy=()=>{if(!has)return;clearTimeout(tT);
-  tT=setTimeout(()=>{try{Android.saveTeam(JSON.stringify({v:1,team:MY}))}catch(e){}},400)};
+  tT=setTimeout(()=>{try{Android.saveTeam(JSON.stringify({v:2,teams:TEAMS,activeId:ACTIVE_ID}))}catch(e){}},400)};
 
 function boot(){
+  loadTeams();
   if(has){
     if(loadDex()){ DEXN=Object.keys(SPD).map(Number).filter(d=>d<900000)
       .sort((a,b)=>S(a).n.localeCompare(S(b).n)); }
     try{META=JSON.parse(Android.loadMeta())||META}catch(e){}
-    try{const t=JSON.parse(Android.loadTeam());if(t&&t.v===1&&t.team?.length)MY=t.team}catch(e){}
     try{const r=JSON.parse(Android.loadBattle());if(r&&r.v===4)B=Object.assign(NEW(),r)}catch(e){}
   }
   if(!B.team.length)B.team=[6,500,547,94,150,9].map(d=>mkFoe(d,.9));
@@ -1429,10 +1451,21 @@ function vFoe(){
 
 function vMine(){
   const m=MY[B.mpick],used=m.sp.reduce((a,b)=>a+b,0),left=SP_POOL-used;
-  let h=`<div class="team">${MY.map((x,i)=>
+  let h=`<div class="card"><span class="hd">Equipo<em>${TEAMS.length} guardado${TEAMS.length===1?"":"s"}</em></span>
+    ${sel(TEAMS.map(t=>t.id),ACTIVE_ID,id=>activeTeamName(id),v=>{
+      ACTIVE_ID=+v; MY=activeTeam().team; B.mpick=0; saveMy()
+    },"Equipo activo")}
+    <div class="pills" style="margin-top:5px">
+      <button class="p" id="tNew">Nuevo</button>
+      <button class="p" id="tDup">Duplicar</button>
+      <button class="p" id="tDel">Mantené para borrar</button></div>
+    <div class="sel" style="margin-top:5px;gap:6px">
+      <input type="text" id="tName" value="${esc(activeTeam().name)}" style="flex:1;background:none;border:none;color:var(--cream)">
+      <button class="ico" id="tRen">✓</button></div></div>
+  <div class="team">${MY.map((x,i)=>
     `<button class="mon" data-mp="${i}" data-on="${i===B.mpick?1:0}" style="background:var(--ally-2)">
       <b>${esc(nm(myDex(x)))}</b><s>${x.item==="—"?"—":esc(itName(x.item).slice(0,10))}</s></button>`).join("")}</div>
-  <div class="card"><span class="hd">Importar equipo<em>pegá hasta 6, reemplaza todo</em></span>
+  <div class="card"><span class="hd">Importar equipo<em>pegá hasta 6, reemplaza el equipo activo</em></span>
     <textarea id="tPaste" rows="5" placeholder="${esc(TEAM_PASTE_PLACEHOLDER)}"
       style="width:100%;background:rgba(0,0,0,.30);color:var(--cream);border:none;
       border-radius:10px;padding:8px;font-family:inherit;font-size:11px;resize:vertical"></textarea>
@@ -1634,6 +1667,7 @@ function wire(){
     const {team,errors}=parseTeamText(raw);
     if(!team.length){$("#tOut").innerHTML=`<span style="color:var(--warn)">No pude leer ningún Pokémon.<br>${errors.map(esc).join("<br>")}</span>`;return}
     MY=team.concat(MY.slice(team.length));
+    activeTeam().team=MY; // el paste reasigna MY entero: hay que re-enlazarlo al equipo activo
     B.mpick=0; saveMy();
     // render() reconstruye #body entero (limpia el textarea a propósito) —
     // el mensaje de resultado hay que escribirlo DESPUÉS, sobre el DOM nuevo.
@@ -1643,6 +1677,28 @@ function wire(){
       ?`<span style="color:var(--warn)">Cargué ${team.length}, con avisos:<br>${errors.map(esc).join("<br>")}</span>`
       :`<span style="color:var(--pick)">Cargué ${team.length} Pokémon sin problemas.</span>`);
     return};
+
+  const tn=$("#tNew");if(tn)tn.onclick=()=>{keep();buzz(1);
+    const id=newTeamId(),team=defaultTeam();
+    TEAMS.push({id,name:"Equipo "+(TEAMS.length+1),team});
+    ACTIVE_ID=id;MY=team;B.mpick=0;saveMy();render()};
+  const td=$("#tDup");if(td)td.onclick=()=>{keep();buzz(1);
+    const at=activeTeam(),id=newTeamId(),team=JSON.parse(JSON.stringify(at.team));
+    TEAMS.push({id,name:at.name+" (copia)",team});
+    ACTIVE_ID=id;MY=team;B.mpick=0;saveMy();render()};
+  // Borrar es destructivo y no hay diálogo de confirmación en esta app (no
+  // funcionan bien con el panel FLAG_NOT_FOCUSABLE) — mismo patrón que ya
+  // usa el botón de turno: mantener apretado, no un solo toque.
+  const tdel=$("#tDel");if(tdel){let hold=0;
+    tdel.onpointerdown=()=>{hold=setTimeout(()=>{hold=0;buzz(1);
+      if(TEAMS.length<=1)return;
+      TEAMS=TEAMS.filter(t=>t.id!==ACTIVE_ID);
+      ACTIVE_ID=TEAMS[0].id;MY=TEAMS[0].team;B.mpick=0;saveMy();render()},900)};
+    tdel.onpointerup=tdel.onpointercancel=()=>{if(hold)clearTimeout(hold)}}
+  const tren=$("#tRen");if(tren)tren.onclick=()=>{keep();buzz(1);
+    const v=$("#tName").value.trim();
+    if(v)activeTeam().name=v;
+    saveMy();render()};
   const mg=$("#mGo");if(mg)mg.onclick=()=>{keep();buzz(1);
     const u=$("#mU").value.trim();
     if(!u){$("#mOut").textContent="Pegá una URL primero.";return}

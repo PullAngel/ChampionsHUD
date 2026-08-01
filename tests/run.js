@@ -60,6 +60,12 @@ function loadEngine() {
     this.ABIL_I18N = ABIL_I18N;
     this.setLang = function (v) { LANG = v; };
     this.getMY = function () { return MY; };
+    this.loadTeams = loadTeams;
+    this.getTeams = function () { return TEAMS; };
+    this.getActiveId = function () { return ACTIVE_ID; };
+    this.setActiveId = function (v) { ACTIVE_ID = v; };
+    this.activeTeam = activeTeam;
+    this.newTeamId = newTeamId;
   `;
 
   const sandbox = {
@@ -165,6 +171,35 @@ check("parseTeamText corta en 6 Pokémon aunque se peguen más", () => {
   const eight = Array.from({ length: 8 }, () => "Sinistcha").join("\n\n");
   const { team } = E.parseTeamText(eight);
   assertEqual(team.length, 6, "no debería superar 6 Pokémon");
+});
+
+// ── equipos guardados (Fase 1) ──
+console.log("\nequipos guardados:");
+
+check("loadTeams() sin datos previos crea un equipo por defecto", () => {
+  E.loadTeams();
+  const teams = E.getTeams();
+  assertEqual(teams.length, 1, "debería arrancar con un solo equipo");
+  assertEqual(teams[0].name, "Equipo 1");
+  assert(E.getMY() === E.activeTeam().team, "MY tiene que ser la MISMA referencia que activeTeam().team");
+});
+
+check("newTeamId() nunca choca con un id existente", () => {
+  E.loadTeams();
+  const id1 = E.newTeamId();
+  E.getTeams().push({ id: id1, name: "x", team: [] });
+  const id2 = E.newTeamId();
+  assert(id2 !== id1, "el segundo id no puede repetir el primero");
+  assert(id2 > id1, "los ids nuevos tienen que ser crecientes");
+});
+
+check("cambiar de equipo activo mueve MY a la referencia correcta", () => {
+  E.loadTeams();
+  const teams = E.getTeams();
+  const secondTeam = [{ dex: 6, sp: [0, 0, 0, 0, 0, 0], up: 1, dn: 3, item: "—", abil: null, mega: false, moves: ["", "", "", ""] }];
+  teams.push({ id: E.newTeamId(), name: "Equipo 2", team: secondTeam });
+  E.setActiveId(teams[1].id);
+  assert(E.activeTeam().team === secondTeam, "activeTeam() tiene que apuntar al segundo equipo");
 });
 
 // ── validador de datos (roadmap Fase 0, ítem 5) ──
