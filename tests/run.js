@@ -352,6 +352,23 @@ check("parseStatsCard() tolera que ML Kit parta \"155 — 0\" en 2 líneas separ
   assertEqual(sp.join(","), "31,0,7,0,28,0", "mismo resultado que si viniera en una sola línea por stat");
 });
 
+check("parseStatsCard() usa el mayor salto en X, no la mediana, si un lado se fragmenta más que el otro", () => {
+  // columna izquierda: las 3 filas partidas en 2 líneas (6 líneas). columna
+  // derecha: sin fragmentar (3 líneas). Con mediana esto corta mal (9 líneas
+  // totales, mediana cae en la 5ta, que todavía es de la izquierda); con el
+  // mayor salto en X, el hueco real entre columnas (50 a 300) sigue siendo
+  // el más grande sin importar cuántas líneas haya de cada lado.
+  const lines = [
+    { t: "177", x: 10, y: 10, h: 14 }, { t: "— 31", x: 50, y: 11, h: 14 },
+    { t: "80", x: 10, y: 40, h: 14 }, { t: "— 0", x: 50, y: 41, h: 14 },
+    { t: "133", x: 10, y: 70, h: 14 }, { t: "— 7", x: 50, y: 70, h: 14 },
+    { t: "141 — 0", x: 300, y: 10 }, { t: "140 — 28", x: 300, y: 40 }, { t: "81 — 0", x: 300, y: 70 },
+  ];
+  const sp = E.parseStatsCard(lines);
+  assert(sp !== null, "no debería devolver null con fragmentación asimétrica");
+  assertEqual(sp.join(","), "31,0,7,0,28,0", "misma inversión esperada, sin importar la fragmentación");
+});
+
 check("parseStatsCard() devuelve null si no hay suficientes líneas numéricas", () => {
   assertEqual(E.parseStatsCard([{ t: "algo sin números", x: 10, y: 10 }]), null);
 });

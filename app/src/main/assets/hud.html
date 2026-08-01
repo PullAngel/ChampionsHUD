@@ -1272,8 +1272,15 @@ function groupRows(items){
 function parseStatsCard(lines){
   const clean=(lines||[]).filter(l=>l.t&&/\d/.test(l.t));
   if(clean.length<6)return null;
+  // Corte por el mayor salto entre X consecutivos, no por mediana: si ML Kit
+  // fragmenta más líneas de un lado que del otro (ej. "155 — 0" se parte en
+  // dos solo en algunas tarjetas), la mediana puede caer del lado equivocado
+  // y perder líneas del grupo más chico. El hueco entre columnas es siempre
+  // el salto más grande, sin importar cuántas líneas caiga de cada lado.
   const xs=clean.map(l=>l.x).sort((a,b)=>a-b);
-  const midX=xs[Math.floor(xs.length/2)];
+  let gap=0,midX=xs[Math.floor(xs.length/2)];
+  for(let i=1;i<xs.length;i++){const d=xs[i]-xs[i-1];
+    if(d>gap){gap=d;midX=(xs[i]+xs[i-1])/2}}
   const left=groupRows(clean.filter(l=>l.x<midX)).slice(0,3);
   const right=groupRows(clean.filter(l=>l.x>=midX)).slice(0,3);
   if(left.length<3||right.length<3)return null;
