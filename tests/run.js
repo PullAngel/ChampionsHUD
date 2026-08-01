@@ -80,6 +80,12 @@ function loadEngine() {
     this.parseStatsCard = parseStatsCard;
     this.finishOwnScan = finishOwnScan;
     this.setOcrDraft = function (v) { OCR_DRAFT = v; };
+    this.editDistance = editDistance;
+    this.closestMatch = closestMatch;
+    this.findSpecies = findSpecies;
+    this.findAbility = findAbility;
+    this.findItem = findItem;
+    this.findMove = findMove;
   `;
 
   const sandbox = {
@@ -346,6 +352,33 @@ check("finishOwnScan() arma un equipo nuevo sin tocar los existentes, y avisa lo
   assert(/no reconozco la especie/.test(html), "debería avisar sobre la card ilegible");
   assertEqual(E.activeTeam().team.length, 1, "solo Sinistcha se pudo leer");
   assertEqual(E.activeTeam().team[0].sp.join(","), "31,0,7,0,28,0");
+});
+
+// ── matcher difuso para OCR con typos (Fase 1, endurecido tras feedback real) ──
+console.log("\nmatch difuso (tolerancia a typos de OCR):");
+
+check("findSpecies() tolera un carácter mal leído", () => {
+  assertEqual(E.findSpecies("Swanpert"), E.findSpecies("Swampert"), "un typo de 1 letra tiene que resolver igual");
+  assertEqual(E.findSpecies("Swampert"), 260);
+});
+
+check("findAbility() tolera un carácter mal leído", () => {
+  assertEqual(E.findAbility("Intimidat"), "intimidate");
+  assertEqual(E.findAbility("Intimidación"), "intimidate");
+});
+
+check("findMove() tolera un carácter mal leído en el nombre en inglés", () => {
+  assertEqual(E.findMove("Wave Crush"), "Wave Crash", "typo de 1 letra en un nombre en inglés");
+});
+
+check("closestMatch() no matchea cualquier cosa con nombres cortos", () => {
+  const entries = [{ key: "cut", label: "Cut" }, { key: "rest", label: "Rest" }];
+  assertEqual(E.closestMatch("Xyz", entries), null, "3 letras totalmente distintas no debería matchear");
+});
+
+check("closestMatch() devuelve null con texto vacío, no explota", () => {
+  assertEqual(E.closestMatch("", [{ key: "a", label: "Algo" }]), null);
+  assertEqual(E.closestMatch("algo", []), null);
 });
 
 // ── validador de datos (roadmap Fase 0, ítem 5) ──

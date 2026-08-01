@@ -1068,18 +1068,50 @@ const NATURES={hardy:[0,0],lonely:[1,2],brave:[1,5],adamant:[1,3],naughty:[1,4],
   calm:[4,1],gentle:[4,2],sassy:[4,5],careful:[4,3],quirky:[0,0]};
 const NAT_IDX={atk:1,def:2,spa:3,spd:4,spe:5};
 
+/** Distancia de edición (Levenshtein) — último recurso cuando el match
+    exacto/normalizado falla. OCR contra fuentes chicas del juego real
+    (habilidades, movimientos) va a tener typos ocasionales que un match
+    exacto nunca va a resolver; esto no reemplaza la corrección manual,
+    solo evita que UN carácter mal leído tire toda la lectura a la basura. */
+function editDistance(a,b){
+  const m=a.length,n=b.length,dp=Array.from({length:m+1},()=>new Array(n+1).fill(0));
+  for(let i=0;i<=m;i++)dp[i][0]=i;
+  for(let j=0;j<=n;j++)dp[0][j]=j;
+  for(let i=1;i<=m;i++)for(let j=1;j<=n;j++)
+    dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+  return dp[m][n];
+}
+/** entries: [{key,label}]. Tolera ~1 error cada 6 caracteres (piso 1, techo
+    3) — bastante ajustado para no matchear cualquier cosa con nombres
+    cortos tipo "Alivio" o "Trueno". */
+function closestMatch(text,entries){
+  const t=(text||"").trim().toLowerCase();
+  if(!t||!entries.length)return null;
+  let best=null,bestD=Infinity;
+  for(const e of entries){
+    const d=editDistance(t,e.label.toLowerCase());
+    if(d<bestD){bestD=d;best=e}
+  }
+  const tol=Math.max(1,Math.min(3,Math.floor(t.length/6)));
+  return best&&bestD<=tol?best.key:null;
+}
+
 function findSpecies(name){
   const t=name.trim().toLowerCase();
   const norm=s=>s.toLowerCase().replace(/[^a-z0-9]/g,"");
   return DEXN.find(d=>S(d).n.toLowerCase()===t) ??
-    DEXN.find(d=>norm(S(d).n)===norm(t));
+    DEXN.find(d=>norm(S(d).n)===norm(t)) ??
+    closestMatch(name,DEXN.map(d=>({key:d,label:S(d).n})));
 }
 function findItem(name){
   const t=name.trim().toLowerCase();
   const hit=IT.find(x=>x[0].toLowerCase()===t||x[1].toLowerCase()===t);
   if(hit)return hit[0];
   const meg=Object.keys(MEGA).find(k=>k.toLowerCase()===t);
-  return meg||null;
+  if(meg)return meg;
+  const entries=IT.flatMap(x=>[{key:x[0],label:x[0]},{key:x[0],label:x[1]}])
+    .concat(Object.keys(MEGA).map(k=>({key:k,label:k})));
+  return closestMatch(name,entries);
 }
 function findAbility(name){
   const t=name.trim().toLowerCase();
@@ -1088,7 +1120,10 @@ function findAbility(name){
     if(r.en.toLowerCase()===t||r.es.toLowerCase()===t)return slug;
   }
   const s=slugify(name);
-  return ABIL_I18N[s]?s:null;
+  if(ABIL_I18N[s])return s;
+  const entries=Object.keys(ABIL_I18N).flatMap(slug=>
+    [{key:slug,label:ABIL_I18N[slug].en},{key:slug,label:ABIL_I18N[slug].es}]);
+  return closestMatch(name,entries);
 }
 function findMove(name){
   const t=name.trim().toLowerCase();
@@ -1098,7 +1133,12 @@ function findMove(name){
   const byEn=Object.keys(MV).find(k=>(MV[k][7]||"").toLowerCase()===t);
   if(byEn)return byEn;
   const esKey=Object.keys(ES_ALT).find(k=>ES_ALT[k].toLowerCase()===t);
-  return esKey||null;
+  if(esKey)return esKey;
+  const entries=Object.keys(MV).flatMap(k=>{
+    const en=MV[k][7];
+    return en?[{key:k,label:k},{key:k,label:en}]:[{key:k,label:k}];
+  });
+  return closestMatch(name,entries);
 }
 
 /** Parsea el texto pegado. Devuelve {team:[...hasta 6 slots], errors:[...]}
@@ -1947,14 +1987,30 @@ window.onScan=function(json){
      </div></div>`)}
 };
 window.onOwnScan=function(json){
-  let d;try{d=JSON.parse(json)}catch(e){return}
-  if(d.error){buzz(1);render();$("#body").insertAdjacentHTML("afterbegin",
-    `<div class="card f"><div class="msg w">${esc(d.error)}</div></div>`);return}
-  const cards=clusterCards(d.lines,d.w,d.h);
   buzz(1);
+  let d;try{d=JSON.parse(json)}catch(e){
+    render();$("#body").insertAdjacentHTML("afterbegin",
+      `<div class="card f"><div class="msg w">La captura no devolvió datos legibles (JSON inválido).</div></div>`);
+    return}
+  if(d.error){render();$("#body").insertAdjacentHTML("afterbegin",
+    `<div class="card f"><div class="msg w">${esc(d.error)}</div></div>`);return}
+  const nlines=(d.lines||[]).length;
+  if(!nlines){
+    render();$("#body").insertAdjacentHTML("afterbegin",
+      `<div class="card f"><span class="hd">Captura de equipo</span>
+       <div class="msg w">No reconocí ningún texto en la captura (0 líneas). Probá con el HUD bien afuera de las tarjetas y buena luz de pantalla.</div></div>`);
+    return;
+  }
+  const cards=clusterCards(d.lines,d.w,d.h);
   if(OCR_PHASE===0){
     OCR_DRAFT[0]=cards.map(parseMovesCard);
     OCR_PHASE=1; render();
+    // Diagnóstico: si esto sigue fallando, esto le dice a Angel EXACTAMENTE
+    // qué leyó ML Kit por tarjeta, en vez de que el fallo quede en la nada.
+    const sample=cards.map((c,i)=>`${i+1}: ${c.slice(0,2).map(l=>l.t).join(" / ")||"(vacía)"}`).join("<br>");
+    $("#body").insertAdjacentHTML("afterbegin",
+      `<div class="card"><span class="hd">Leí ${nlines} líneas</span>
+       <div class="msg">${sample}</div></div>`);
   }else{
     OCR_DRAFT[1]=cards.map(parseStatsCard);
     OCR_PHASE=0;
