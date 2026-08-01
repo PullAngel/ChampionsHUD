@@ -128,10 +128,43 @@ Diseño concreto del `Meta Data Service`, resultado de la investigación de fuen
 
 ### 10.1 Fuentes, en orden de prioridad
 
-- **Primaria — API pública de Limitless TCG** (`https://play.limitlesstcg.com/api`). Sin clave para los endpoints de torneos (`/tournaments`, `/tournaments/{id}/standings`, `/tournaments/{id}/pairings`). Devuelve equipos crudos (campo `decklist` en standings) de torneos reales. Es la fuente raíz de la que beben casi todos los agregadores de terceros — usarla directo evita depender de que un tercero siga existiendo. El subesquema exacto del `decklist` VGC (ítems/movimientos/habilidad/spread) no está documentado formalmente y debe inspeccionarse contra una respuesta real antes de fijar el modelo de datos. Los movimientos/habilidad/spread solo están presentes cuando el torneo usó envío de teamlist abierto — la cobertura de "qué 6 Pokémon" va a ser mayor que la de "sets completos", y el pipeline debe tolerar esa asimetría sin fallar.
+- **Primaria — API pública de Limitless TCG** (`https://play.limitlesstcg.com/api`). Sin clave para los endpoints de torneos (`/tournaments`, `/tournaments/{id}/standings`, `/tournaments/{id}/pairings`). Devuelve equipos crudos (campo `decklist` en standings) de torneos reales. Es la fuente raíz de la que beben casi todos los agregadores de terceros — usarla directo evita depender de que un tercero siga existiendo. Los movimientos/habilidad/nature solo están presentes cuando el torneo usó envío de teamlist abierto — la cobertura de "qué 6 Pokémon" va a ser mayor que la de "sets completos", y el pipeline debe tolerar esa asimetría sin fallar. Esquema real verificado el 2026-08-01, ver 10.1.1.
 - **Secundaria — rutas AI de Pikalytics** (`/ai/pokedex/<formato>/<pokemon>`, Markdown estructurado vía `llms.txt`/`llms-full.txt`). Da agregados ya calculados (uso %, win rate, ítems/habilidades/movimientos/spreads/naturalezas/compañeros) para no tener que recalcular todo desde cero. Cadencia de actualización mensual para varios agregados — si se necesita frescura semanal real, esos agregados puntuales se recalculan directo desde los equipos crudos de Limitless en vez de esperar a Pikalytics.
 - **Descartadas para scraping automatizado — Pokémon Zone y Champions Hub.** Sus términos de servicio lo prohíben explícitamente. Se pueden usar como referencia conceptual/visual manual, nunca como fuente automatizada del pipeline.
 - **No usadas por ahora, quedan documentadas como alternativas de respaldo:** Champions Lab y championshub.gg (agregadores sin API pública documentada), Smogon/Showdown usage stats (secundarias, formato oficial es in-game), pokedata.ovh (VGC presencial, sin cobertura de esta regulación al momento de relevarlo).
+
+### 10.1.1 Esquema real confirmado (verificado 2026-08-01, Fase 2 hito 1)
+
+Inspeccionado contra respuestas reales de la API, no contra documentación (no existe documentación formal de este esquema):
+
+- **`GET /games`** → el juego es `"VGC"` (`Pokémon VGC`), y sus `formats` incluyen exactamente `"M-B": "Regulation Set M-B"` — coincide letra por letra con el `regulation:"M-B"` que ya usa `meta.json`. No hace falta ningún mapeo de traducción entre el nombre de regulación del proyecto y el de Limitless.
+- **`GET /tournaments?game=VGC&format=M-B&limit=N`** → array de `{id, name, date, players}`. El `id` (string hex, no numérico) es el que hace falta para pedir standings.
+- **`GET /tournaments/{id}/standings`** → array de entradas de jugador:
+  ```json
+  {
+    "name": "KST | KAMPFI",
+    "country": "DE",
+    "decklist": [
+      {
+        "id": "sinistcha",
+        "name": "Sinistcha",
+        "item": "Kasib Berry",
+        "ability": "Hospitality",
+        "attacks": ["Matcha Gotcha", "Life Dew", "Rage Powder", "Trick Room"],
+        "nature": "Calm",
+        "tera": null
+      }
+    ],
+    "placing": null,
+    "player": "die_kampfstube",
+    "record": {"wins": 4, "losses": 1, "ties": 0},
+    "deck": {},
+    "drop": 5
+  }
+  ```
+  `decklist[].id` es un slug en inglés (`"sinistcha"`, `"floette-eternal"`) — mapea directo a los slugs canónicos que el proyecto ya usa (decisión #7), sin traducción. `item`/`ability`/`attacks` vienen en inglés, nombre de display (no slug) — pasan por `findItem()`/`findAbility()`/`findMove()` igual que cualquier otro texto en inglés que ya entra al motor. **No hay campo de reparto de stats/EVs** en las respuestas inspeccionadas (ni siquiera en torneos con `decklist` completo) — el subesquema real es más angosto de lo que `§10.1` conjeturaba: cubre especie/ítem/habilidad/movimientos/naturaleza, nunca el spread numérico. Esto no bloquea el índice de combinaciones parciales (§10.3, que no depende de spreads), pero sí implica que "Repartos habituales" (la sección ya existente en Peek/`vFoe()`, alimentada hoy por `meta.json` estimado a mano) va a seguir siendo estimado incluso con datos reales de Limitless, salvo que Pikalytics cubra ese agregado (§10.1, fuente secundaria).
+  `tera` está presente en el esquema pero salió `null` en todas las muestras revisadas — esperable, ya que Champions reemplaza Terastalización por Megaevolución (`decisions.md`); no se puede descartar todavía que el campo tenga otro uso en algún torneo, pero no es una señal a la que este proyecto deba prestarle atención.
+  `placing` salió `null` en torneos sin terminar de completar el cálculo de posiciones — el generador tiene que tolerar ese caso, no asumir que siempre viene poblado.
 
 ### 10.2 Formato de almacenamiento y umbral de migración
 
