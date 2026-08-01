@@ -74,6 +74,7 @@ function loadEngine() {
     this.getB = function () { return B; };
     this.mkFoe = mkFoe;
     this.slot = slot;
+    this.broughtFoes = broughtFoes;
   `;
 
   const sandbox = {
@@ -251,6 +252,22 @@ check("topThreats() con equipo propio vacío no rompe, devuelve []", () => {
   } finally {
     my.push(...backup); // no dejar el sandbox en un estado raro para los tests que vengan después
   }
+});
+
+// ── Campo: quién entra (Fase 1, Parte C) ──
+console.log("\ncampo — quién entra:");
+
+check("broughtFoes() solo cuenta los marcados, en cualquier cantidad", () => {
+  const B = E.getB();
+  B.team = [6, 445, 9].map((d) => E.mkFoe(d, 0.9));
+  assertEqual(E.broughtFoes().join(","), "", "nada marcado todavía");
+  B.team[0].brought = true;
+  B.team[2].brought = true;
+  assertEqual(E.broughtFoes().join(","), "0,2", "solo los índices marcados, en orden");
+});
+
+check("mkFoe() arranca con brought:false", () => {
+  assertEqual(E.mkFoe(6, 0.9).brought, false);
 });
 
 // ── validador de datos (roadmap Fase 0, ítem 5) ──

@@ -969,14 +969,18 @@ const STATUS=["—","quemado","paralizado","envenenado","dormido","congelado"];
 const actNew=()=>({sta:null,bo:[0,0,0,0,0]});
 const slot=d=>({dex:d,sp:[0,32,0,0,2,32],up:1,dn:3,item:"—",abil:(ABIL[d]||["—"])[0],
   mega:false,moves:["","","",""]});
-const NEW=()=>({v:4,doubles:true,turn:1,mine:[0,1],foe:[0,1],team:[],
+const NEW=()=>({v:4,doubles:true,turn:1,mine:[0,1],foe:[0,1],team:[],myBrought:[],
   hp:{m0:100,m1:100,f0:100,f1:100},
   act:{m0:actNew(),m1:actNew(),f0:actNew(),f1:actNew()},
   weather:null,wTurns:0,terrain:null,tTurns:0,tw:{me:0,them:0},tr:0,
   screen:{me:0,them:0},pick:0,mpick:0,apick:"m0",tab:"field",pinned:false,compact:false,focus:0,
   obs:{a:0,m:"Terremoto",p:50}});
 const mkFoe=(dex,c,sh)=>({dex,confidence:c,shiny:!!sh,item:null,itemSure:false,abil:null,
-  moves:[],spdMin:0,spdMax:9999,spdSure:false,out:false,seen:0});
+  moves:[],spdMin:0,spdMax:9999,spdSure:false,out:false,seen:0,brought:false});
+/** Los 4 (o menos) rivales confirmados en esta partida — hasta que no se
+    marcan, todavía no sabemos quién entró de verdad, más allá de team
+    preview (que muestra los 6). */
+const broughtFoes=()=>B.team.map((f,i)=>i).filter(i=>B.team[i]?.brought);
 
 let B=NEW(), MY=[slot(445),slot(910),slot(727),slot(547),slot(591),slot(1000)];
 let META={species:{},source:"?",regulation:"?"};
@@ -1351,17 +1355,46 @@ function vCompact(){
         <u>${Math.abs(x.v)}</u></div>`).join("")}</div></div>`;
 }
 
+/* Panel de "quién entra": qué 4 (o menos) propios se llevaron a la partida y
+   qué rivales de los 6 de team preview están confirmados en ella (arranca
+   en los que se ven activos, se puede sumar más a medida que el rival los
+   revela). Grande y arriba de todo mientras no hay nada marcado; una vez que
+   hay al menos uno de cada lado, se compacta y baja al final de Campo —
+   sigue editable ahí, nunca desaparece del todo. */
+function vBrought(){
+  const empty=!B.myBrought.length&&!B.team.some(f=>f.brought);
+  return `<div class="card d"><span class="hd">Quién entra${empty?"":"<em>tocá para corregir o sumar</em>"}</span>
+    <div class="cap">Rivales confirmados en la partida</div>
+    <div class="pills">${B.team.map((f,i)=>f.dex?
+      `<button class="p" data-brf="${i}" data-on="${f.brought?1:0}">${esc(nm(f.dex))}</button>`:"").join("")}</div>
+    <div class="cap" style="margin-top:6px">Tus 4 elegidos</div>
+    <div class="pills">${MY.map((m,i)=>
+      `<button class="p" data-brm="${i}" data-on="${B.myBrought.includes(i)?1:0}">${esc(nm(myDex(m)))}</button>`).join("")}</div>
+    ${empty?`<div class="msg" style="margin-top:5px">Marcá quién entró de cada lado — con eso alcanza para calcular todo lo demás solo.</div>`:""}</div>`;
+}
+
 function vField(){
   const mine=(B.doubles?B.mine:[B.mine[0]]).filter(i=>MY[i]);
   const foes=(B.doubles?B.foe:[B.foe[0]]).filter(i=>B.team[i]?.dex);
+  const mineBrought=B.myBrought.length?B.myBrought:mine;
+  const foesBrought=broughtFoes().length?broughtFoes():foes;
   const A=k=>B.act[k]||actNew();
-  let h=`<div class="card d"><span class="hd">Turno ${B.turn}<em>${B.doubles?"dobles":"individual"}</em></span>
+  // Un benqueado no tiene "casilla activa" — y no la necesita: las etapas de
+  // stat se resetean al cambiar de Pokémon en el juego real, así que
+  // calcularlo sin modificadores es lo mecánicamente correcto, no un atajo.
+  const actFor=(idx,arr,prefix)=>{const p=arr.indexOf(idx);return p>=0?A(prefix+p):actNew()};
+
+  const brought=vBrought();
+  const showBroughtOnTop=!B.myBrought.length&&!broughtFoes().length;
+  let h=showBroughtOnTop?brought:"";
+
+  h+=`<div class="card d"><span class="hd">Turno ${B.turn}<em>${B.doubles?"dobles":"individual"}</em></span>
     <div class="cols"><div><div class="cap">Tus activos</div>
       ${(B.doubles?[0,1]:[0]).map(i=>`<div style="margin-bottom:3px">${
-        sel(MY.map((m,j)=>j),B.mine[i],j=>nm(myDex(MY[j])),v=>{B.mine[i]=+v;save()},"Tu activo")}</div>`).join("")}</div>
+        sel(mineBrought,B.mine[i],j=>nm(myDex(MY[j])),v=>{B.mine[i]=+v;save()},"Tu activo")}</div>`).join("")}</div>
     <div><div class="cap">Rivales</div>
       ${(B.doubles?[0,1]:[0]).map(i=>`<div style="margin-bottom:3px">${
-        sel(B.team.map((f,j)=>j),B.foe[i],j=>nm(B.team[j].dex)+(B.team[j].out?" ✕":""),
+        sel(foesBrought,B.foe[i],j=>nm(B.team[j].dex)+(B.team[j].out?" ✕":""),
           v=>{B.foe[i]=+v;syncFoe();save()},"Rival en campo")}</div>`).join("")}</div></div></div>`;
 
   h+=`<div class="cols">
@@ -1386,27 +1419,29 @@ function vField(){
     ${a.sta==="quemado"?`<div class="msg w" style="margin-top:4px">Quemado: su daño físico va a la mitad.</div>`:""}
     ${a.sta==="paralizado"?`<div class="msg w" style="margin-top:4px">Paralizado: velocidad a la mitad.</div>`:""}</div>`;
 
-  h+=`<div class="card"><span class="hd">Les hacés</span>`;
-  mine.forEach((mi,ai)=>foes.forEach((fi,di)=>{
-    const m=MY[mi],f=B.team[fi],am=A("m"+ai),df=A("f"+di);
-    const r=best(myDex(m),f.dex,{...ctxFor("me"),aStat:statsOf(m),aItem:m.item==="—"?null:m.item,
-      aAb:m.abil,aHp:B.hp["m"+ai]??100,aBo:am.bo,aSta:am.sta,
-      dHP:0,dSP:0,dItem:f.item,dAb:f.abil,dBo:df.bo},myMoves(m));
-    const cur=r?Math.floor(r.maxHP*(B.hp["f"+di]??100)/100):0;
-    h+=rowFx(`${nm(myDex(m))} → ${nm(f.dex)}`,r?mvName(r.move):"",verdict(r,cur),r,cur);
-  }));
-  h+=`</div><div class="card f"><span class="hd">Te hacen</span>`;
-  foes.forEach((fi,di)=>mine.forEach((mi,ai)=>{
-    const m=MY[mi],f=B.team[fi],am=A("m"+ai),df=A("f"+di);
-    const r=best(f.dex,myDex(m),{...ctxFor("them"),aItem:f.item,aAb:f.abil,aBo:df.bo,aSta:df.sta,
-      dStat:statsOf(m),dAb:m.abil,dHp:B.hp["m"+ai]??100,dBo:am.bo},foeMoves(f));
-    const cur=r?Math.floor(r.maxHP*(B.hp["m"+ai]??100)/100):0;
-    h+=rowFx(`${nm(f.dex)} → ${nm(myDex(m))}`,(r?mvName(r.move):"")+(f.moves.length?"":" · estimado"),
-      verdict(r,cur),r,cur);
-  }));
-  h+=`</div><div class="cols">
+  h+=`<div class="card"><span class="hd">Matriz de daño<em>${mineBrought.length}×${foesBrought.length}, activos y banca</em></span>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:9.5px">
+    <tr><td></td>${foesBrought.map(fi=>`<td style="text-align:center;padding:3px;font-weight:800;color:var(--foe-row)">${esc(nm(B.team[fi].dex))}</td>`).join("")}</tr>
+    ${mineBrought.map(mi=>{
+      const m=MY[mi],am=actFor(mi,mine,"m");
+      return `<tr><td style="font-weight:800;padding:3px;color:var(--pick)">${esc(nm(myDex(m)))}</td>${
+        foesBrought.map(fi=>{
+          const f=B.team[fi],df=actFor(fi,foes,"f");
+          const toThem=best(myDex(m),f.dex,{...ctxFor("me"),aStat:statsOf(m),aItem:m.item==="—"?null:m.item,
+            aAb:m.abil,aBo:am.bo,aSta:am.sta,dHP:0,dSP:0,dItem:f.item,dAb:f.abil,dBo:df.bo},myMoves(m));
+          const fromThem=best(f.dex,myDex(m),{...ctxFor("them"),aItem:f.item,aAb:f.abil,aBo:df.bo,aSta:df.sta,
+            dStat:statsOf(m),dAb:m.abil,dBo:am.bo},foeMoves(f));
+          const vTo=verdict(toThem,toThem?toThem.maxHP:0),vFrom=verdict(fromThem,fromThem?fromThem.maxHP:0);
+          return `<td style="text-align:center;padding:3px"><div class="${vTo.cls}">→${vTo.txt}</div><div class="${vFrom.cls}">←${vFrom.txt}</div></td>`;
+        }).join("")}</tr>`;
+    }).join("")}
+    </table></div>
+    ${mineBrought.length&&foesBrought.length?"":`<div class="msg" style="margin-top:5px">Marcá quién entra más abajo para ver la matriz.</div>`}</div>`;
+
+  h+=`<div class="cols">
     <div class="card d"><span class="hd">Velocidad</span>${vSpeed(mine,foes)}</div>
     <div class="card d"><span class="hd">Campo</span>${vChips()}</div></div>`;
+  if(!showBroughtOnTop)h+=brought;
   return h;
 }
 
@@ -1654,6 +1689,10 @@ function wire(){
   on("[data-lang]",e=>{LANG=e.dataset.lang;try{localStorage.setItem("hudLang",LANG)}catch(x){}});
   on("[data-item]",e=>{const f=B.team[B.pick],v=e.dataset.item;f.item=f.item===v?null:v;f.itemSure=!!f.item});
   on("[data-fab]",e=>{const f=B.team[B.pick],v=e.dataset.fab;f.abil=f.abil===v?null:v});
+  on("[data-brf]",e=>{const f=B.team[+e.dataset.brf];f.brought=!f.brought});
+  on("[data-brm]",e=>{const i=+e.dataset.brm,p=B.myBrought.indexOf(i);
+    if(p>=0)B.myBrought.splice(p,1);
+    else if(B.myBrought.length<4)B.myBrought.push(i);});
   on("[data-mvk]",e=>{const f=B.team[B.pick],v=e.dataset.mvk,i=f.moves.indexOf(v);
     i<0?f.moves.push(v):f.moves.splice(i,1)});
   on("[data-obs]",e=>{const f=B.team[B.pick],k=e.dataset.obs;
