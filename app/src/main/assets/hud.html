@@ -1233,7 +1233,10 @@ function clusterCards(lines,w,h){
     tarjeta, ruido típico de OCR). No resuelve nombres acá — eso es trabajo
     de finishOwnScan(), reusando findSpecies()/findAbility()/etc. */
 function parseMovesCard(lines){
-  const clean=(lines||[]).filter(l=>l.t&&l.t.trim().length>1);
+  // >1 carácter Y al menos una letra: saca ruido típico de OCR (el numerito
+  // de orden "1"-"6" de la tarjeta, símbolos de género/tipo sueltos que a
+  // veces se leen como texto) sin arriesgarse a sacar un nombre real.
+  const clean=(lines||[]).filter(l=>l.t&&l.t.trim().length>1&&/[a-zA-Z]/.test(l.t));
   return {
     dexName: clean[0]?clean[0].t:null,
     abilName: clean[1]?clean[1].t:null,
