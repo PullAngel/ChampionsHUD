@@ -1234,12 +1234,47 @@ function renderInner(){
 }
 
 /* ── PREVIA: qué va a sacar y qué sacar vos ── */
+/* 12 Pokémon (6 propios + 6 rivales) por velocidad base, sin modificadores de
+   turno (Tailwind/Espacio Raro todavía no están activos antes del turno 1).
+   Los propios tienen velocidad exacta; los rivales, un rango — nunca se
+   muestra un solo número para el rival, sería fingir una precisión que no
+   hay (vision.md, "confianza calibrada"). Se ordena por el máximo del rango:
+   la lectura conservadora es asumir que puede ser tan rápido como el rango
+   permite. */
+function fullSpeedOrder(){
+  const mine=MY.filter(m=>m.dex&&S(m.dex)).map(m=>({me:1,n:nm(myDex(m)),v:myStat(m,5),lo:null,hi:null}));
+  const foes=B.team.filter(f=>f.dex&&S(f.dex)).map(f=>{const r=spdRange(f);
+    return {me:0,n:nm(f.dex),v:r.max,lo:r.min,hi:r.max}});
+  return [...mine,...foes].sort((a,b)=>b.v-a.v);
+}
+
+/* Para cada rival (los 6, no solo los que se estima que va a sacar), su
+   mejor golpe posible contra el propio que peor lo resiste. Es información
+   sobre el rival — qué tan peligroso es cada uno — no una recomendación de
+   qué hacer con esa información: no viola decisions.md #1/#19, mismo
+   principio que ya usa "Te hacen" en Glance. */
+function topThreats(){
+  const mine=MY.filter(m=>m.dex&&S(m.dex));
+  const foes=B.team.filter(f=>f.dex&&S(f.dex));
+  if(!mine.length||!foes.length)return [];
+  return foes.map(f=>{
+    let worst=null;
+    for(const m of mine){
+      const r=best(f.dex,myDex(m),{doubles:B.doubles,aItem:f.item,aAb:f.abil,
+        dStat:statsOf(m),dAb:m.abil},foeMoves(f));
+      if(r&&r.e>0&&(!worst||r.R[15]/r.maxHP>worst.r.R[15]/worst.r.maxHP))worst={r,m};
+    }
+    return worst&&{f,m:worst.m,r:worst.r};
+  }).filter(Boolean).sort((a,b)=>(b.r.R[15]/b.r.maxHP)-(a.r.R[15]/a.r.maxHP)).slice(0,4);
+}
+
 function vPre(){
   const p=predict();
   if(!p)return `<div class="card"><div class="msg">Escaneá al rival con ↻ y cargá tu equipo en MÍO.</div></div>`;
   const line=(x,tag,cls)=>`<div class="pl"><i class="${cls}">${tag}</i>
     <b>${esc(nm(x.f?x.f.dex:myDex(x.m)))}<s>${x.role>=20?"control de ritmo":x.off>=95?"amenaza directa":x.surv>=55||x.def>=55?"aguanta":"apoyo"}</s></b>
     <u>${Math.round(x.score)}</u></div>`;
+  const so=fullSpeedOrder(), th=topThreats();
   return `<div class="cols">
     <div class="card f"><span class="hd">Va a sacar</span>
       ${p.theirLeads.map(x=>line(x,"LEAD","")).join("")}
@@ -1250,7 +1285,16 @@ function vPre(){
       ${p.back.map(x=>line(x,"BACK","b")).join("")}</div></div>
   <div class="card d"><span class="hd">Por qué</span>
     ${p.notes.length?p.notes.map(n=>`<div class="note">${esc(n)}</div>`).join("")
-      :`<div class="msg">Sin ejes marcados: es un cambio de golpes directo, priorizá daño y resistencia.</div>`}</div>`;
+      :`<div class="msg">Sin ejes marcados: es un cambio de golpes directo, priorizá daño y resistencia.</div>`}</div>
+  <div class="card"><span class="hd">Orden de velocidad<em>los 12, sin modificadores de turno</em></span>
+    ${so.map((x,i)=>`<div class="row" style="padding:4px 8px">
+      <b style="color:${x.me?"var(--pick)":"var(--foe-row)"}">${i+1}. ${esc(x.n)}</b>
+      <u>${x.me?x.v:x.lo+"–"+x.hi}</u></div>`).join("")}</div>
+  <div class="card f"><span class="hd">Mayores amenazas<em>su mejor golpe, contra tu peor respuesta</em></span>
+    ${th.length?th.map(t=>{const vd=verdict(t.r,t.r.maxHP);
+      return `<div class="row"><b>${esc(nm(t.f.dex))}<s>a ${esc(nm(myDex(t.m)))} · ${esc(mvName(t.r.move))}</s></b>
+        <u class="${vd.cls}">${vd.txt}</u></div>`}).join("")
+      :`<div class="msg">Sin datos suficientes todavía.</div>`}</div>`;
 }
 
 function hpBar(id,label,val){

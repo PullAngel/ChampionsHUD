@@ -5,10 +5,13 @@
  * hud.html no está modularizado todavía (decisions.md #18: decisión
  * deliberada de no hacerlo), así que no se puede hacer `require()` del motor
  * de daño directamente. En cambio, esta suite extrae el tramo del script que
- * va desde el inicio hasta el cierre de la sección IMPORTACIÓN DE EQUIPO POR
- * TEXTO, justo antes de VISTAS — todo lo que no toca el DOM real (motor de
- * daño, tablas MV/ABIL_I18N, calc(), verdict(), el parser de teamlists) — y
- * lo corre en un sandbox de Node con un localStorage falso.
+ * va desde el inicio hasta justo antes de `function vPre()` — todo lo que no
+ * toca el DOM real (motor de daño, tablas MV/ABIL_I18N, calc(), verdict(),
+ * el parser de teamlists, equipos guardados, fullSpeedOrder()/topThreats())
+ * — y lo corre en un sandbox de Node con un localStorage falso. Las
+ * funciones que sí tocan el DOM (render(), vSheet(), etc.) son
+ * *declaraciones*, así que definirlas no ejecuta nada — el corte solo
+ * importa para no incluir el `boot();` final del archivo.
  *
  * Cubre exactamente el patrón de bug de la auditoría (audit.md §5.2): que el
  * motor de daño reconozca habilidades por su slug canónico, no por un
@@ -46,7 +49,7 @@ function assertEqual(a, b, msg) {
 function loadEngine() {
   const html = fs.readFileSync(HUD_PATH, "utf-8");
   const start = html.indexOf("<script>") + "<script>".length;
-  const end = html.indexOf("/* ═════ VISTAS ═════ */");
+  const end = html.indexOf("function vPre(){");
   if (start < 0 || end < 0) throw new Error("no se encontraron los marcadores esperados en hud.html — ¿cambió la estructura del archivo?");
   let src = html.slice(start, end);
   // vm.runInContext solo expone declaraciones `function`/`var` como propiedades
@@ -66,6 +69,11 @@ function loadEngine() {
     this.setActiveId = function (v) { ACTIVE_ID = v; };
     this.activeTeam = activeTeam;
     this.newTeamId = newTeamId;
+    this.fullSpeedOrder = fullSpeedOrder;
+    this.topThreats = topThreats;
+    this.getB = function () { return B; };
+    this.mkFoe = mkFoe;
+    this.slot = slot;
   `;
 
   const sandbox = {
@@ -200,6 +208,49 @@ check("cambiar de equipo activo mueve MY a la referencia correcta", () => {
   teams.push({ id: E.newTeamId(), name: "Equipo 2", team: secondTeam });
   E.setActiveId(teams[1].id);
   assert(E.activeTeam().team === secondTeam, "activeTeam() tiene que apuntar al segundo equipo");
+});
+
+// ── Previa: orden de velocidad completo y amenazas (Fase 1) ──
+console.log("\nprevia — velocidad y amenazas:");
+
+check("fullSpeedOrder() devuelve 12 entradas ordenadas, propios exactos y rivales en rango", () => {
+  const B = E.getB();
+  B.team = [6, 445, 9, 700, 248, 149].map((d) => E.mkFoe(d, 0.9));
+  const order = E.fullSpeedOrder();
+  assertEqual(order.length, 12, "6 propios + 6 rivales");
+  for (let i = 1; i < order.length; i++) {
+    assert(order[i - 1].v >= order[i].v, "tiene que estar ordenado descendente");
+  }
+  const mine = order.filter((x) => x.me);
+  const foes = order.filter((x) => !x.me);
+  assertEqual(mine.length, 6);
+  assertEqual(foes.length, 6);
+  assert(mine.every((x) => x.lo === null && typeof x.v === "number"), "los propios tienen velocidad exacta, no rango");
+  assert(foes.every((x) => typeof x.lo === "number" && typeof x.hi === "number" && x.lo <= x.hi), "los rivales tienen que traer un rango lo<=hi");
+});
+
+check("topThreats() no tira excepción y devuelve como mucho 4, ordenados por daño", () => {
+  const B = E.getB();
+  B.team = [6, 445, 9, 700, 248, 149].map((d) => E.mkFoe(d, 0.9));
+  const th = E.topThreats();
+  assert(th.length <= 4, "no debería devolver más de 4 amenazas");
+  for (let i = 1; i < th.length; i++) {
+    const pctPrev = th[i - 1].r.R[15] / th[i - 1].r.maxHP, pctCur = th[i].r.R[15] / th[i].r.maxHP;
+    assert(pctPrev >= pctCur, "tiene que estar ordenado por % de daño descendente");
+  }
+});
+
+check("topThreats() con equipo propio vacío no rompe, devuelve []", () => {
+  const B = E.getB();
+  B.team = [6].map((d) => E.mkFoe(d, 0.9));
+  const my = E.getMY(), backup = my.slice();
+  my.length = 0; // MY es la misma referencia siempre (ver equipos guardados) — vaciar in-place
+  try {
+    const th = E.topThreats();
+    assertEqual(th.length, 0, "sin propios conocidos no hay con qué comparar");
+  } finally {
+    my.push(...backup); // no dejar el sandbox en un estado raro para los tests que vengan después
+  }
 });
 
 // ── validador de datos (roadmap Fase 0, ítem 5) ──
