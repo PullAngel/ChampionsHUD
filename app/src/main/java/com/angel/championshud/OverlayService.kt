@@ -52,6 +52,7 @@ class OverlayService : Service() {
 
     private lateinit var wm: WindowManager
     private lateinit var matcher: SpriteMatcher
+    private lateinit var teamOcr: TeamOCR
     private lateinit var meta: MetaRepository
     private lateinit var battle: BattleStore
     private lateinit var team: TeamStore
@@ -83,6 +84,7 @@ class OverlayService : Service() {
         super.onCreate()
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         matcher = SpriteMatcher(this)
+        teamOcr = TeamOCR()
         meta = MetaRepository(this)
         battle = BattleStore(this)
         team = TeamStore(this)
@@ -322,6 +324,47 @@ class OverlayService : Service() {
         }, 120)
     }
 
+    /**
+     * Captura de equipo propio ("View Details" del juego, en dos pasadas —
+     * Moves & More y Stats). A diferencia de scan(), acá Kotlin no interpreta
+     * nada del texto que lee — TeamOCR.readText() devuelve líneas crudas con
+     * posición, y toda la lógica de a qué Pokémon pertenece cada línea vive
+     * en hud.html (ver decisions.md: así se puede corregir editando el HTML
+     * sin recompilar, si el layout real no coincide con lo asumido).
+     */
+    private fun scanOwnTeam() {
+        if (scanning) return
+        val cap = capture ?: run {
+            emit("onOwnScan", """{"error":"Falta autorizar la captura. Abrí Champions HUD."}""")
+            return
+        }
+        scanning = true
+        bubble.visibility = View.INVISIBLE
+        panel?.visibility = View.INVISIBLE
+
+        ui.postDelayed({
+            cap.grab { bmp, err ->
+                ioHandler.post {
+                    val json = when {
+                        bmp == null -> org.json.JSONObject()
+                            .put("error", err ?: "No se pudo leer la pantalla.").toString()
+                        else -> runCatching { teamOcr.readText(bmp) }
+                            .getOrElse { e ->
+                                org.json.JSONObject().put("error",
+                                    "Falló el reconocimiento de texto: ${e.javaClass.simpleName}").toString()
+                            }.also { bmp.recycle() }
+                    }
+                    ui.post {
+                        bubble.visibility = View.VISIBLE
+                        panel?.visibility = View.VISIBLE
+                        scanning = false
+                        emit("onOwnScan", json)
+                    }
+                }
+            }
+        }, 120)
+    }
+
     private fun emit(fn: String, json: String) {
         if (!ready) { ui.postDelayed({ emit(fn, json) }, 150); return }
         val payload = JSONObject.quote(json)
@@ -332,6 +375,7 @@ class OverlayService : Service() {
 
     inner class Bridge {
         @JavascriptInterface fun rescan() { ui.post { scan(); resetIdle() } }
+        @JavascriptInterface fun scanOwnTeam() { ui.post { scanOwnTeam(); resetIdle() } }
         @JavascriptInterface fun keepOpen() { ui.post { resetIdle() } }
         @JavascriptInterface fun close() { ui.post { collapseNow() } }
 

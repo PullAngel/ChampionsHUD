@@ -51,4 +51,8 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
+    // Variante "bundled": el modelo va empaquetado en el APK (~20MB más),
+    // no se descarga la primera vez por Play Services — offline-first real
+    // (decisions.md #6), no la variante liviana que depende de red al inicio.
+    implementation("com.google.mlkit:text-recognition:16.0.0")
 }

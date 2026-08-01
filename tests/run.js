@@ -75,6 +75,11 @@ function loadEngine() {
     this.mkFoe = mkFoe;
     this.slot = slot;
     this.broughtFoes = broughtFoes;
+    this.clusterCards = clusterCards;
+    this.parseMovesCard = parseMovesCard;
+    this.parseStatsCard = parseStatsCard;
+    this.finishOwnScan = finishOwnScan;
+    this.setOcrDraft = function (v) { OCR_DRAFT = v; };
   `;
 
   const sandbox = {
@@ -268,6 +273,79 @@ check("broughtFoes() solo cuenta los marcados, en cualquier cantidad", () => {
 
 check("mkFoe() arranca con brought:false", () => {
   assertEqual(E.mkFoe(6, 0.9).brought, false);
+});
+
+// ── OCR del equipo propio (Fase 1, Parte D) ──
+console.log("\nOCR del equipo propio:");
+
+check("clusterCards() agrupa por posición en una grilla de 2x3", () => {
+  // imagen de 1000x600: columnas en x<500/x>=500, filas en y<200/200-400/>=400
+  const lines = [
+    { t: "A", x: 50, y: 50, w: 40, h: 20 }, // card 0 (arriba-izq)
+    { t: "B", x: 600, y: 50, w: 40, h: 20 }, // card 1 (arriba-der)
+    { t: "C", x: 50, y: 250, w: 40, h: 20 }, // card 2 (medio-izq)
+    { t: "D", x: 600, y: 250, w: 40, h: 20 }, // card 3 (medio-der)
+    { t: "E", x: 50, y: 450, w: 40, h: 20 }, // card 4 (abajo-izq)
+    { t: "F", x: 600, y: 450, w: 40, h: 20 }, // card 5 (abajo-der)
+  ];
+  const cards = E.clusterCards(lines, 1000, 600);
+  assertEqual(cards.length, 6, "siempre 6 cards, tengan líneas o no");
+  assertEqual(cards[0][0].t, "A");
+  assertEqual(cards[1][0].t, "B");
+  assertEqual(cards[2][0].t, "C");
+  assertEqual(cards[3][0].t, "D");
+  assertEqual(cards[4][0].t, "E");
+  assertEqual(cards[5][0].t, "F");
+});
+
+check("clusterCards() ordena cada card por Y (orden de lectura)", () => {
+  const lines = [
+    { t: "segunda", x: 50, y: 80, w: 40, h: 20 },
+    { t: "primera", x: 50, y: 10, w: 40, h: 20 },
+    { t: "tercera", x: 50, y: 150, w: 40, h: 20 },
+  ];
+  const cards = E.clusterCards(lines, 1000, 600);
+  assertEqual(cards[0].map((l) => l.t).join(","), "primera,segunda,tercera");
+});
+
+check("parseMovesCard() lee especie/habilidad/ítem/movimientos en orden, ignora ruido de 1 carácter", () => {
+  const lines = ["1", "Sinistcha", "Hospitality", "Colbur Berry", "Rage Powder", "Matcha Gotcha", "Life Dew", "Trick Room"]
+    .map((t) => ({ t }));
+  const r = E.parseMovesCard(lines);
+  assertEqual(r.dexName, "Sinistcha");
+  assertEqual(r.abilName, "Hospitality");
+  assertEqual(r.itemName, "Colbur Berry");
+  assertEqual(r.moveNames.join(","), "Rage Powder,Matcha Gotcha,Life Dew,Trick Room");
+});
+
+check("parseStatsCard() separa 2 sub-columnas por X y saca la inversión (último número)", () => {
+  // Sinistcha real de la captura de Angel: HP 177-31, Atq 80-0, Def 133-7 / AtqEsp 141-0, DefEsp 140-28, Vel 81-0
+  const lines = [
+    { t: "177 — 31", x: 10, y: 10 }, { t: "80 — 0", x: 10, y: 40 }, { t: "133 — 7", x: 10, y: 70 },
+    { t: "141 — 0", x: 300, y: 10 }, { t: "140 — 28", x: 300, y: 40 }, { t: "81 — 0", x: 300, y: 70 },
+  ];
+  const sp = E.parseStatsCard(lines);
+  assertEqual(sp.join(","), "31,0,7,0,28,0", "orden esperado: HP,Atq,Def,AtqEsp,DefEsp,Vel");
+});
+
+check("parseStatsCard() devuelve null si no hay suficientes líneas numéricas", () => {
+  assertEqual(E.parseStatsCard([{ t: "algo sin números", x: 10, y: 10 }]), null);
+});
+
+check("finishOwnScan() arma un equipo nuevo sin tocar los existentes, y avisa lo que no reconoció", () => {
+  E.loadTeams();
+  const before = E.getTeams().length;
+  E.setOcrDraft([
+    [{ dexName: "Sinistcha", abilName: "Hospitality", itemName: "Colbur Berry", moveNames: ["Rage Powder", "Matcha Gotcha", "Life Dew", "Trick Room"] },
+     { dexName: "no existe esto", abilName: null, itemName: null, moveNames: [] },
+     null, null, null, null],
+    [[31, 0, 7, 0, 28, 0], null, null, null, null, null],
+  ]);
+  const html = E.finishOwnScan();
+  assertEqual(E.getTeams().length, before + 1, "tiene que sumar un equipo, no reemplazar");
+  assert(/no reconozco la especie/.test(html), "debería avisar sobre la card ilegible");
+  assertEqual(E.activeTeam().team.length, 1, "solo Sinistcha se pudo leer");
+  assertEqual(E.activeTeam().team[0].sp.join(","), "31,0,7,0,28,0");
 });
 
 // ── validador de datos (roadmap Fase 0, ítem 5) ──

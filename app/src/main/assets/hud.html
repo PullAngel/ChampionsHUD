@@ -1158,6 +1158,113 @@ function parseTeamText(text){
   return {team,errors};
 }
 
+/* ═════ CAPTURA OCR DEL EQUIPO PROPIO ═════
+   Dos pasadas sobre "View Details" del juego: Moves & More (especie,
+   habilidad, ítem, movimientos) y Stats (reparto). TeamOCR.kt en Kotlin no
+   interpreta nada — solo corre ML Kit y devuelve líneas de texto con
+   posición. Toda la lógica de "a qué Pokémon pertenece esta línea" y "qué
+   campo es" vive acá, a propósito: si el layout real del juego no coincide
+   con lo asumido mirando un par de capturas, esto se corrige editando el
+   HTML, no recompilando Kotlin (decisions.md, misma lógica que ya aplica a
+   toda la separación motor/cliente del proyecto).
+   Primer intento, sin verificar contra el juego real — ver roadmap.md. */
+let OCR_PHASE=0, OCR_DRAFT=[null,null];
+
+/** Agrupa líneas de OCR en 6 "cards" por posición (grilla de 2 columnas × 3
+    filas, la que se ve en las capturas de referencia de Angel). Usa
+    posición relativa al ancho/alto de la captura, no coordenadas fijas, así
+    tolera que cambie la resolución del dispositivo. Cada card queda
+    ordenada por Y — el orden de lectura natural de arriba a abajo. */
+function clusterCards(lines,w,h){
+  const cards=Array.from({length:6},()=>[]);
+  for(const ln of (lines||[])){
+    if(!w||!h)continue;
+    const cx=(ln.x+ln.w/2)/w, cy=(ln.y+ln.h/2)/h;
+    const col=cx<0.5?0:1;
+    const row=cy<1/3?0:cy<2/3?1:2;
+    cards[row*2+col].push(ln);
+  }
+  return cards.map(c=>c.slice().sort((a,b)=>a.y-b.y));
+}
+
+/** Fase 1 (Moves & More): especie, habilidad, ítem, hasta 4 movimientos, en
+    ese orden — el que se ve en la captura de referencia. Ignora líneas de
+    una sola letra/dígito (el numerito de orden "1"-"6" que trae cada
+    tarjeta, ruido típico de OCR). No resuelve nombres acá — eso es trabajo
+    de finishOwnScan(), reusando findSpecies()/findAbility()/etc. */
+function parseMovesCard(lines){
+  const clean=(lines||[]).filter(l=>l.t&&l.t.trim().length>1);
+  return {
+    dexName: clean[0]?clean[0].t:null,
+    abilName: clean[1]?clean[1].t:null,
+    itemName: clean[2]?clean[2].t:null,
+    moveNames: clean.slice(3,7).map(l=>l.t),
+  };
+}
+
+/** Fase 2 (Stats): separa las líneas con números en dos sub-columnas por X
+    (PS/Ataque/Defensa a la izquierda, AtqEsp/DefEsp/Velocidad a la derecha
+    — el orden de la captura de referencia) y de cada línea extrae el
+    ÚLTIMO número como la inversión (ej. "177 — 31" → 31; el primer número
+    es el stat ya calculado, no la inversión, y no nos sirve). Si no hay
+    al menos 6 líneas numéricas o algún valor queda fuera de 0–SP_MAX,
+    devuelve null en vez de arriesgar una lectura a medias — fallo ruidoso,
+    lo termina completando la corrección manual. */
+function parseStatsCard(lines){
+  const clean=(lines||[]).filter(l=>l.t&&/\d/.test(l.t));
+  if(clean.length<6)return null;
+  const xs=clean.map(l=>l.x).sort((a,b)=>a-b);
+  const midX=xs[Math.floor(xs.length/2)];
+  const left=clean.filter(l=>l.x<midX).sort((a,b)=>a.y-b.y).slice(0,3);
+  const right=clean.filter(l=>l.x>=midX).sort((a,b)=>a.y-b.y).slice(0,3);
+  if(left.length<3||right.length<3)return null;
+  const extract=l=>{const nums=l.t.match(/\d+/g);return nums&&nums.length?+nums[nums.length-1]:null};
+  const sp=[...left,...right].map(extract);
+  return sp.length===6&&sp.every(n=>n!==null&&n>=0&&n<=SP_MAX)?sp:null;
+}
+
+/** Mergea las dos fases por posición de card (asume la misma grilla de 6 en
+    las dos pantallas — es la misma lista de Pokémon, dos tabs distintas del
+    mismo "View Details"), arma hasta 6 slot(), crea un equipo guardado
+    nuevo y lo deja activo. Devuelve el HTML del resumen — quien llama lo
+    inserta DESPUÉS de render(), nunca antes (render() reconstruye #body
+    entero y se llevaría puesto cualquier inserción previa). */
+function finishOwnScan(){
+  const moves=OCR_DRAFT[0]||[], stats=OCR_DRAFT[1]||[];
+  const errors=[],team=[];
+  for(let i=0;i<6;i++){
+    const mv=moves[i]||{}, st=stats[i];
+    const dex=mv.dexName?findSpecies(mv.dexName):null;
+    if(!dex){errors.push(`Tarjeta ${i+1}: no reconozco la especie "${mv.dexName||"?"}".`);continue}
+    const s=slot(dex),label=S(dex).n;
+    if(mv.itemName){const it=findItem(mv.itemName);
+      if(it)s.item=it; else errors.push(`${label}: no reconozco el ítem "${mv.itemName}".`)}
+    if(mv.abilName){const ab=findAbility(mv.abilName);
+      if(ab)s.abil=ab; else errors.push(`${label}: no reconozco la habilidad "${mv.abilName}".`)}
+    (mv.moveNames||[]).forEach(name=>{
+      if(s.moves.filter(Boolean).length>=4)return;
+      const k=findMove(name);
+      if(!k){errors.push(`${label}: no reconozco el movimiento "${name}".`);return}
+      const free=s.moves.indexOf(""); if(free>=0)s.moves[free]=k;
+    });
+    if(st)s.sp=st; else errors.push(`${label}: no pude leer el reparto de stats — corregilo a mano.`);
+    if(!canMega(s))s.mega=false;
+    team.push(s);
+  }
+  if(!team.length)
+    return `<div class="card f"><span class="hd">Captura de equipo</span>
+      <div class="msg w">No pude leer ningún Pokémon. Probá de nuevo, con el HUD fuera de las tarjetas.</div></div>`;
+  const id=newTeamId();
+  let name="Equipo escaneado",n=1;
+  while(TEAMS.some(t=>t.name===name)){n++;name="Equipo escaneado "+n}
+  TEAMS.push({id,name,team});
+  ACTIVE_ID=id;MY=team;B.mpick=0;saveMy();
+  return `<div class="card${errors.length?" f":""}"><span class="hd">Captura de equipo</span>
+    <div class="msg${errors.length?" w":""}">${errors.length
+      ?`Cargué ${team.length} de 6, con avisos:<br>${errors.map(esc).join("<br>")}`
+      :`Cargué los ${team.length} sin problemas.`} Revisá y corregí en MÍO si hace falta.</div></div>`;
+}
+
 /* ═════ VISTAS ═════ */
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const nm=d=>S(d)?S(d).n:"—";
@@ -1550,6 +1657,11 @@ function vMine(){
       border-radius:10px;padding:8px;font-family:inherit;font-size:11px;resize:vertical"></textarea>
     <button class="btn" id="tGo" style="margin-top:5px">Reemplazar equipo</button>
     <div class="msg" id="tOut" style="margin-top:5px"></div></div>
+  <div class="card${OCR_PHASE?" f":""}"><span class="hd">Capturar equipo<em>${OCR_PHASE?"paso 2 de 2":"lee la pantalla del juego"}</em></span>
+    <button class="btn" id="tOcr" style="margin-top:5px">${OCR_PHASE===0
+      ?"Capturar — abrí View Details, pestaña Moves & More"
+      :"Ahora tocá Stats en el juego, y volvé a tocar acá"}</button>
+    <div class="msg" style="margin-top:5px">Crea un equipo nuevo (no pisa ninguno guardado) y lo deja activo al terminar. Corregí después acá arriba lo que no haya leído bien.</div></div>
   <div class="cols"><div class="card"><span class="hd">Slot ${B.mpick+1}</span>
     <div class="cap">Pokémon</div>${sel(DEXN,m.dex,x=>S(x).n,v=>{m.dex=+v;
       if(!abilsOf(m.dex).includes(m.abil))m.abil=abilsOf(m.dex)[0];
@@ -1744,6 +1856,10 @@ function wire(){
 
   on("[data-c2]",e=>window.__c[e.dataset.c2]=window.__c[e.dataset.c2]?0:1);
 
+  const to=$("#tOcr");if(to)to.onclick=()=>{keep();buzz(1);
+    if(has)Android.scanOwnTeam();
+    else $("#body").insertAdjacentHTML("afterbegin",
+      `<div class="card f"><div class="msg w">Solo funciona dentro de la app.</div></div>`)};
   const tg=$("#tGo");if(tg)tg.onclick=()=>{keep();buzz(1);
     const raw=$("#tPaste").value;
     if(!raw.trim()){$("#tOut").textContent="Pegá un equipo primero.";return}
@@ -1829,6 +1945,25 @@ window.onScan=function(json){
      ${q<0.7?"No reconocí bien el panel: movés la burbuja fuera de la franja derecha."
        :"Corregí a mano los que estén mal tocando cada uno."}
      </div></div>`)}
+};
+window.onOwnScan=function(json){
+  let d;try{d=JSON.parse(json)}catch(e){return}
+  if(d.error){buzz(1);render();$("#body").insertAdjacentHTML("afterbegin",
+    `<div class="card f"><div class="msg w">${esc(d.error)}</div></div>`);return}
+  const cards=clusterCards(d.lines,d.w,d.h);
+  buzz(1);
+  if(OCR_PHASE===0){
+    OCR_DRAFT[0]=cards.map(parseMovesCard);
+    OCR_PHASE=1; render();
+  }else{
+    OCR_DRAFT[1]=cards.map(parseStatsCard);
+    OCR_PHASE=0;
+    // finishOwnScan() ya dejó el equipo nuevo guardado y activo — render()
+    // primero (reconstruye #body entero), el resumen se inserta después.
+    const summary=finishOwnScan();
+    render();
+    $("#body").insertAdjacentHTML("afterbegin",summary);
+  }
 };
 window.onMetaUpdate=function(json){
   let d;try{d=JSON.parse(json)}catch(e){return}
