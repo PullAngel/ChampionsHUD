@@ -1429,24 +1429,11 @@ function topThreats(){
 }
 
 function vPre(){
-  const p=predict();
-  if(!p)return `<div class="card"><div class="msg">Escaneá al rival con ↻ y cargá tu equipo en MÍO.</div></div>`;
-  const line=(x,tag,cls)=>`<div class="pl"><i class="${cls}">${tag}</i>
-    <b>${esc(nm(x.f?x.f.dex:myDex(x.m)))}<s>${x.role>=20?"control de ritmo":x.off>=95?"amenaza directa":x.surv>=55||x.def>=55?"aguanta":"apoyo"}</s></b>
-    <u>${Math.round(x.score)}</u></div>`;
   const so=fullSpeedOrder(), th=topThreats();
-  return `<div class="cols">
-    <div class="card f"><span class="hd">Va a sacar</span>
-      ${p.theirLeads.map(x=>line(x,"LEAD","")).join("")}
-      ${p.theirBack.map(x=>line(x,"BACK","b")).join("")}
-      <div class="msg" style="margin-top:5px">Orden por probabilidad, no certeza.</div></div>
-    <div class="card"><span class="hd">Sacá vos</span>
-      ${p.leads.map(x=>line(x,"LEAD","")).join("")}
-      ${p.back.map(x=>line(x,"BACK","b")).join("")}</div></div>
-  <div class="card d"><span class="hd">Por qué</span>
-    ${p.notes.length?p.notes.map(n=>`<div class="note">${esc(n)}</div>`).join("")
-      :`<div class="msg">Sin ejes marcados: es un cambio de golpes directo, priorizá daño y resistencia.</div>`}</div>
-  <div class="card"><span class="hd">Orden de velocidad<em>los 12, sin modificadores de turno</em></span>
+  if(!so.length&&!th.length)
+    return `<div class="card"><div class="msg">Escaneá al rival con ↻ y cargá tu equipo en MÍO.</div></div>`;
+
+  let h=`<div class="card"><span class="hd">Orden de velocidad<em>los 12, sin modificadores de turno</em></span>
     ${so.map((x,i)=>`<div class="row" style="padding:4px 8px">
       <b style="color:${x.me?"var(--pick)":"var(--foe-row)"}">${i+1}. ${esc(x.n)}${
         x.megaV?`<s>si megaevoluciona: ${x.megaV}</s>`:""}</b>
@@ -1456,6 +1443,28 @@ function vPre(){
       return `<div class="row"><b>${esc(nm(t.f.dex))}<s>a ${esc(nm(myDex(t.m)))} · ${esc(mvName(t.r.move))}</s></b>
         <u class="${vd.cls}">${vd.txt}</u></div>`}).join("")
       :`<div class="msg">Sin datos suficientes todavía.</div>`}</div>`;
+
+  // Predicción de team preview (quién va a sacar cada uno): por ahora el
+  // algoritmo no acierta lo suficiente como para ser útil (feedback real de
+  // Angel) — queda al fondo, sin estorbar, hasta un rediseño (future.md).
+  const p=predict();
+  if(p){
+    const line=(x,tag,cls)=>`<div class="pl"><i class="${cls}">${tag}</i>
+      <b>${esc(nm(x.f?x.f.dex:myDex(x.m)))}<s>${x.role>=20?"control de ritmo":x.off>=95?"amenaza directa":x.surv>=55||x.def>=55?"aguanta":"apoyo"}</s></b>
+      <u>${Math.round(x.score)}</u></div>`;
+    h+=`<div class="cols" style="margin-top:10px">
+      <div class="card f"><span class="hd">Va a sacar<em>predicción, poco fiable todavía</em></span>
+        ${p.theirLeads.map(x=>line(x,"LEAD","")).join("")}
+        ${p.theirBack.map(x=>line(x,"BACK","b")).join("")}
+        <div class="msg" style="margin-top:5px">Orden por probabilidad, no certeza.</div></div>
+      <div class="card"><span class="hd">Sacá vos</span>
+        ${p.leads.map(x=>line(x,"LEAD","")).join("")}
+        ${p.back.map(x=>line(x,"BACK","b")).join("")}</div></div>
+    <div class="card d"><span class="hd">Por qué</span>
+      ${p.notes.length?p.notes.map(n=>`<div class="note">${esc(n)}</div>`).join("")
+        :`<div class="msg">Sin ejes marcados: es un cambio de golpes directo, priorizá daño y resistencia.</div>`}</div>`;
+  }
+  return h;
 }
 
 function hpBar(id,label,val){

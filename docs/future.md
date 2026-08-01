@@ -34,6 +34,14 @@ Detectar patrones propios repetidos entre partidas (por ejemplo, cambios excesiv
 
 Cruzar resultados históricos con debilidades recurrentes para sugerir ajustes de equipo. Importante: esto es distinto de recomendar una jugada dentro de un combate (prohibido, decisión #1) — acá se trata de un análisis fuera de combate, sobre historial propio, y con el mismo cuidado de mostrar razones antes que órdenes.
 
+## Rediseñar el algoritmo de predicción de "quién va a sacar"
+
+`predict()` (`hud.html`, sección PREDICCIÓN) estima qué 4 va a traer cada lado y quién lidera, con un puntaje heurístico (`off`/`def`/`role`/`use` combinados a mano). Probado contra una partida real, Angel lo encontró poco fiable — no es un bug puntual corregible, es que el modelo de puntaje en sí no predice bien todavía. Se sacó de la parte principal de Previa y quedó al fondo, sin estorbar (ver `roadmap.md` Fase 1, y `vPre()`), mientras se diseña algo mejor.
+
+Lo que sí quedó al frente y funciona con datos objetivos, no heurística ajustada a mano: orden de velocidad completo (`fullSpeedOrder()`) y mayores amenazas (`topThreats()`) — ninguno de los dos "predice" nada, calculan directo sobre lo ya conocido.
+
+Pistas para cuando se retome (no es una decisión tomada, son ideas a evaluar): el puntaje actual mezcla señales de naturaleza muy distinta (daño estimado, uso de meta, rol) con pesos fijos elegidos sin validar contra resultados reales — un buen primer paso sería juntar partidas reales (con o sin Angel) y ver qué tan seguido el "LEAD" predicho coincide con lo que el rival realmente saca, antes de tocar los pesos a ciegas otra vez. También depende de que la Fase 2 (datos de meta reales de Limitless, no `meta.json` estimado a mano) esté resuelta — con datos de uso reales el puntaje tiene mejor materia prima para trabajar.
+
 ## Open Team Sheets
 
 Ya contemplado como un tipo de evento más en la Fase 4 del roadmap (no requiere cambios en el motor de inferencia: simplemente colapsa hipótesis a certeza desde el arranque del combate).
