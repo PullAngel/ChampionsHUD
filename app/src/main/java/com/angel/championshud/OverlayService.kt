@@ -337,7 +337,7 @@ class OverlayService : Service() {
      * en hud.html (ver decisions.md: así se puede corregir editando el HTML
      * sin recompilar, si el layout real no coincide con lo asumido).
      */
-    private fun scanOwnTeam() {
+    private fun doScanOwnTeam() {
         if (scanning) return
         val cap = capture ?: run {
             emit("onOwnScan", """{"error":"Falta autorizar la captura. Abrí Champions HUD."}""")
@@ -380,7 +380,14 @@ class OverlayService : Service() {
 
     inner class Bridge {
         @JavascriptInterface fun rescan() { ui.post { scan(); resetIdle() } }
-        @JavascriptInterface fun scanOwnTeam() { ui.post { scanOwnTeam(); resetIdle() } }
+        // OJO: no llamar este método "scanOwnTeam" iba — Bridge es clase interna
+        // y ya existe un scanOwnTeam() privado en OverlayService con la lógica
+        // real. Con el mismo nombre acá, la llamada interna se resolvía a SÍ
+        // MISMA (la de Bridge) en vez de a la privada: loop infinito
+        // reenviándose al hilo principal, la captura real nunca corría — así
+        // se manifestaba "el botón no hace nada". Nombre distinto, como ya
+        // hacían rescan()/scan().
+        @JavascriptInterface fun scanOwnTeam() { ui.post { doScanOwnTeam(); resetIdle() } }
         @JavascriptInterface fun keepOpen() { ui.post { resetIdle() } }
         @JavascriptInterface fun close() { ui.post { collapseNow() } }
 
