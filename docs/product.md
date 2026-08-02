@@ -24,6 +24,8 @@ El jugador no piensa en distribuciones de probabilidad. Piensa en preguntas conc
 
 Toda la interfaz se organiza alrededor de estas cinco preguntas. Si un dato no responde a ninguna, no pertenece a Glance ni a Peek.
 
+**Validado 2026-08-01** contra investigación externa sobre qué distingue a un jugador de VGC profesional (fuentes: Smogon, VGC Guide, Nugget Bridge, un paper académico de 2025 sobre predicción de leads) y contra una sesión de preguntas con Angel como jugador real — detalle completo en `decisions.md` #20. La pregunta *"¿Me mata? / ¿Lo mato?"* resultó ser, en la práctica de Angel, el cuello de botella más grande de los cinco: no la falta de info, sino la precisión del cálculo en el momento exacto en que decide (ej. necesitar bajar una cantidad de vida muy específica para asegurar un KO al turno siguiente, con margen de error real de ~10% al estimarlo de memoria). Esto no cambia el modelo de las cinco preguntas — lo confirma y indica dónde está el mayor apalancamiento: el Motor de Cálculo ya construido.
+
 ## Flujo completo de una batalla
 
 1. **Pre-combate:** el equipo propio ya está cargado (una sola vez, no por partida). El HUD queda flotando, en reposo.
@@ -49,7 +51,9 @@ Legible en menos de un segundo, en visión periférica mientras se mira el juego
 
 ### Peek (un tap)
 
-Panel expandido del rival activo: sets probables (con su estado de confianza), movimientos revelados vs. probables, rangos de daño relevantes contra el Pokémon activo propio, PP de movimientos clave (en particular movimientos como Protect, donde el conteo cambia decisiones).
+Panel expandido del rival activo: sets probables (con su estado de confianza), movimientos revelados vs. probables, rangos de daño relevantes contra el Pokémon activo propio, PP de movimientos clave (en particular movimientos como Protect, donde el conteo cambia decisiones — confirmado como brecha real por Angel: "muy pocas veces lo cuento... o cuando ya estamos en late game y no puedo recordar con precisión"; ver `roadmap.md`, todavía no construido).
+
+Descripción de la habilidad, expandible/secundaria — no aparece en el primer vistazo (no responde ninguna de las cinco preguntas de arriba por sí sola), pero está a un tap si hace falta consultarla. Angel, al ser consultado: *"no es información primordial, pero sería genial que la pueda dar si la necesito"*.
 
 ### Deep (dos taps, pensado para entre turnos o pausa, no para el turno en curso)
 

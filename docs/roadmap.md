@@ -101,8 +101,14 @@ Diseño completo en `architecture.md` §10. No es una fase de una sola sesión; 
 - Motor de inferencia rediseñado como eliminación de hipótesis sobre una base de sets conocidos (no ajuste estadístico continuo sobre un prior débil) — más simple, más explicable, y ahora sí alimentado con datos reales.
 - Sistema de confianza en tres niveles (Confirmado / Deducido / Estimado por meta) integrado en Peek y Deep.
 - Modo de importación manual de equipo como funcionalidad de primera clase, no como contingencia (decisión #15).
+- `roleInCore` y `speedControlMajority` como campos del `MetaSnapshot`, desde el diseño inicial del generador — no como parche después. Plan completo en `architecture.md` §10.6, salido de la sesión de asesoría VGC (`decisions.md` #20).
 
 **Criterio de salida:** la pestaña de predicción de equipo deja de depender de un archivo estimado a mano y cada estimación es explicable con su cadena de evidencia.
+
+**Sesión de asesoría VGC, 2026-08-01/02 (`decisions.md` #20) — análisis y plan, sin código todavía (preferencia explícita de Angel: analizar → documentar → planear → recién después programar).** Investigación externa sobre qué distingue a un jugador de VGC profesional + una sesión larga de preguntas a Angel como jugador real, para no diseñar Fase 2 a ciegas. Conclusiones ya documentadas, listas para retomar cuando se pase a código:
+- `architecture.md` §10.6 — dos campos nuevos requeridos del `MetaSnapshot` (arriba).
+- `architecture.md` §11.1 — descripción de habilidad expandible en Peek. Fuente y método ya verificados end-to-end (PokeAPI, 201/201 habilidades encontradas, incluidas las propias de Champions) — falta solo escribir el código, no falta investigar nada más.
+- `architecture.md` §11.2 — seguimiento de PP en movimientos clave. Confirmado como brecha real (`product.md` lo prometía desde el principio y nunca se construyó). Necesita agregar PP máximo a la tabla `MV` primero (dato nuevo, ~150+ movimientos) antes de tocar la UI — plan completo en la sección, no se arrancó por el tamaño de esa migración de datos.
 
 ## Fase 3 — Formalizar la separación Motor / Cliente
 
