@@ -674,9 +674,17 @@ function calc(o){
   }
   return {R,maxHP,e,move:o.move};
 }
+/** Mejor golpe del atacante contra el defensor, dentro de `pool`.
+    `pool` sin definir = "cualquier movimiento del juego" (consulta explícita,
+    la usa la calculadora libre). `pool` como lista vacía = "no sabemos qué
+    movimientos tiene" y devuelve null — NO cae a la lista global.
+    Esa caída silenciosa era un bug real: sin datos del rival, la amenaza que
+    se mostraba era el movimiento más fuerte del juego entero (Electro Shot en
+    todos los rivales por igual, incluso en especies que no lo aprenden). */
 function best(atk,def,ctx,pool){
+  if(pool&&!pool.length)return null;
   let win=null;
-  for(const k of (pool&&pool.length?pool.filter(x=>MV[x]&&MV[x][2]!=='E'&&MV[x][0]>0):DMG)){
+  for(const k of (pool?pool.filter(x=>MV[x]&&MV[x][2]!=='E'&&MV[x][0]>0):DMG)){
     const r=calc({...ctx,atk,def,move:k});
     if(r&&(!win||r.R[15]>win.R[15]))win=r;
   }
@@ -1066,8 +1074,26 @@ const ctxFor=side=>({doubles:B.doubles,weather:B.weather,terrain:B.terrain,
   screen:(side==="them"?B.screen.me:B.screen.them)>0});
 const metaOf=d=>META.species?.[String(d)]||null;
 const myMoves=m=>(m.moves||[]).filter(x=>MV[x]);
-const foeMoves=f=>f.moves.length?f.moves.filter(x=>MV[x])
-  :(metaOf(f.dex)?.moves?.map(x=>x[0]).filter(x=>MV[x])||null);
+/** Qué movimientos considerarle al rival, en orden de confianza decreciente
+    — y con qué etiqueta, para no presentar los tres niveles como si fueran
+    lo mismo (`product.md`, sistema de confianza):
+      1. `visto`   — se lo vimos usar. Hecho observado.
+      2. `meta`    — lo común en esa especie según los datos de uso. Prior.
+      3. `posible` — su learnset completo. Solo dice qué NO puede tener.
+    Nunca la lista global de movimientos del juego: que un movimiento exista
+    no significa que esa especie pueda llevarlo. Si no hay ni learnset (sin
+    dex.json cargado) se devuelve vacío y quien llama lo reporta como "sin
+    datos" — fallo ruidoso, no una amenaza inventada. */
+const foeMovePool=f=>{
+  const seen=(f.moves||[]).filter(x=>MV[x]);
+  if(seen.length)return {moves:seen,src:"visto"};
+  const meta=(metaOf(f.dex)?.moves||[]).map(x=>x[0]).filter(x=>MV[x]);
+  if(meta.length)return {moves:meta,src:"meta"};
+  const L=(typeof learnable==="function")&&learnable(f.dex);
+  if(L&&L.length)return {moves:L.filter(k=>MV[k]&&MV[k][2]!=="E"&&MV[k][0]>0),src:"posible"};
+  return {moves:[],src:"sin datos"};
+};
+const foeMoves=f=>foeMovePool(f).moves;
 
 /* ═════ IMPORTACIÓN DE EQUIPO POR TEXTO ═════
    decisión #15 (decisions.md): pegar un teamlist es una funcionalidad de
@@ -1130,14 +1156,16 @@ function findSpecies(name){
     DEXN.find(d=>norm(S(d).n)===norm(t)) ??
     closestMatch(name,DEXN.map(d=>({key:d,label:S(d).n})));
 }
-/** El ícono de tipo/objeto que el juego dibuja pegado al texto a veces se
-    lee como un carácter suelto antes de la palabra real — ej. el ícono de
-    tipo Normal (un círculo liso) se leyó como "O Protect", un ícono de
-    objeto como "T Choice Scarf" (capturas reales de Angel). Se prueba
-    recién como último recurso, si nada más matcheó — ningún movimiento u
-    objeto real empieza con una letra suelta seguida de espacio. */
+/** El ícono de tipo/objeto que el juego dibuja pegado al texto, y el número
+    grande de orden de la tarjeta (1–6), a veces se leen como un carácter
+    suelto delante de la palabra real: "O Protect" (ícono de tipo Normal, un
+    círculo liso), "T Choice Scarf" (ícono de objeto), "9 Iron Head" y
+    "5 Spell Tag" (número de tarjeta pegado a la línea) — todos casos reales
+    de capturas de Angel. Se prueba recién como último recurso, si nada más
+    matcheó: ningún movimiento, objeto, habilidad ni especie real empieza con
+    un carácter suelto seguido de espacio. */
 const stripIconPrefix=s=>{
-  const m=/^[A-Za-z]\s+(\S.*)$/.exec((s||"").trim());
+  const m=/^[A-Za-z0-9]\s+(\S.*)$/.exec((s||"").trim());
   return m?m[1]:null;
 };
 function findItem(name){
@@ -1163,7 +1191,10 @@ function findAbility(name){
   if(ABIL_I18N[s])return s;
   const entries=Object.keys(ABIL_I18N).flatMap(slug=>
     [{key:slug,label:ABIL_I18N[slug].en},{key:slug,label:ABIL_I18N[slug].es}]);
-  return closestMatch(name,entries);
+  const direct=closestMatch(name,entries);
+  if(direct)return direct;
+  const stripped=stripIconPrefix(name);
+  return stripped?findAbility(stripped):null;
 }
 function findMove(name){
   const t=name.trim().toLowerCase();
@@ -1252,6 +1283,11 @@ function parseTeamText(text){
    toda la separación motor/cliente del proyecto).
    Primer intento, sin verificar contra el juego real — ver roadmap.md. */
 let OCR_PHASE=0, OCR_DRAFT=[null,null];
+/** Dónde guarda la captura: "new" crea un equipo, "active" pisa el activo.
+    Persistido porque es una preferencia de uso, no un estado del combate:
+    quien reescanea para corregir una lectura fallida quiere "active" varias
+    veces seguidas, y que se lo pregunte cada vez sería fricción pura. */
+let OCR_TARGET=(()=>{try{return localStorage.getItem("hudOcrTarget")||"new"}catch(e){return "new"}})();
 
 /** Agrupa líneas de OCR en 6 "cards" por posición (grilla de 2 columnas × 3
     filas, la que se ve en las capturas de referencia de Angel). Usa
@@ -1293,17 +1329,59 @@ function clusterCards(lines,w,h){
     una sola letra/dígito (el numerito de orden "1"-"6" que trae cada
     tarjeta, ruido típico de OCR). No resuelve nombres acá — eso es trabajo
     de finishOwnScan(), reusando findSpecies()/findAbility()/etc. */
+/** Corta un conjunto de líneas en dos columnas por el mayor salto entre
+    valores de X consecutivos. El hueco entre columnas es siempre el salto
+    más grande, sin importar cuántas líneas caigan de cada lado — por eso se
+    usa esto y no la mediana, que se corre al lado equivocado cuando una
+    columna tiene más líneas que la otra. Devuelve null si no hay un hueco
+    claro (una sola columna), para que quien llama decida qué hacer en vez
+    de partir a ciegas por la mitad. */
+function splitColumns(items,minGap){
+  if(items.length<2)return null;
+  const xs=items.map(l=>l.x).sort((a,b)=>a-b);
+  let gap=0,midX=null;
+  for(let i=1;i<xs.length;i++){const d=xs[i]-xs[i-1];
+    if(d>gap){gap=d;midX=(xs[i]+xs[i-1])/2}}
+  if(midX===null||gap<(minGap||0))return null;
+  return {midX,gap,
+    left:items.filter(l=>l.x<midX),
+    right:items.filter(l=>l.x>=midX)};
+}
+
+/** Fase 1 (Moves & More). Cada tarjeta tiene DOS columnas, no una:
+
+      Venusaur          | Sludge Bomb
+      Chlorophyll       | Protect
+      Venusaurite       | Earth Power
+                        | Giga Drain
+
+    La versión anterior ordenaba todas las líneas por Y y asumía lectura
+    secuencial (especie, habilidad, ítem, después 4 movimientos). Como las
+    dos columnas comparten las mismas alturas, eso las intercalaba y corría
+    todos los campos un lugar. Se detectó con el diagnóstico real de Angel:
+    Aegislash salió con habilidad "9 Iron Head" (un movimiento), ítem
+    "Stance Change" (la habilidad) y movimiento "5 Spell Tag" (el ítem) —
+    exactamente el patrón de dos columnas intercaladas por Y.
+
+    Ahora se separa por X primero: izquierda = especie/habilidad/ítem de
+    arriba a abajo, derecha = hasta 4 movimientos. Si no hay dos columnas
+    distinguibles se cae al comportamiento secuencial anterior, que para una
+    tarjeta sin movimientos legibles sigue siendo lo mejor disponible. */
 function parseMovesCard(lines){
   // >1 carácter Y al menos una letra: saca ruido típico de OCR (el numerito
   // de orden "1"-"6" de la tarjeta, símbolos de género/tipo sueltos que a
   // veces se leen como texto) sin arriesgarse a sacar un nombre real.
   const clean=(lines||[]).filter(l=>l.t&&l.t.trim().length>1&&/[a-zA-Z]/.test(l.t));
-  return {
-    dexName: clean[0]?clean[0].t:null,
-    abilName: clean[1]?clean[1].t:null,
-    itemName: clean[2]?clean[2].t:null,
-    moveNames: clean.slice(3,7).map(l=>l.t),
-  };
+  const byY=a=>a.slice().sort((x,y)=>x.y-y.y).map(l=>l.t);
+  const cols=splitColumns(clean);
+  if(cols&&cols.left.length&&cols.right.length){
+    const L=byY(cols.left), R=byY(cols.right);
+    return {dexName:L[0]||null, abilName:L[1]||null, itemName:L[2]||null,
+      moveNames:R.slice(0,4)};
+  }
+  const seq=byY(clean);
+  return {dexName:seq[0]||null, abilName:seq[1]||null, itemName:seq[2]||null,
+    moveNames:seq.slice(3,7)};
 }
 
 /** Fase 2 (Stats): separa las líneas con números en dos sub-columnas por X
@@ -1333,17 +1411,14 @@ function groupRows(items){
 function parseStatsCard(lines){
   const clean=(lines||[]).filter(l=>l.t&&/\d/.test(l.t));
   if(clean.length<6)return null;
-  // Corte por el mayor salto entre X consecutivos, no por mediana: si ML Kit
-  // fragmenta más líneas de un lado que del otro (ej. "155 — 0" se parte en
-  // dos solo en algunas tarjetas), la mediana puede caer del lado equivocado
-  // y perder líneas del grupo más chico. El hueco entre columnas es siempre
-  // el salto más grande, sin importar cuántas líneas caiga de cada lado.
-  const xs=clean.map(l=>l.x).sort((a,b)=>a-b);
-  let gap=0,midX=xs[Math.floor(xs.length/2)];
-  for(let i=1;i<xs.length;i++){const d=xs[i]-xs[i-1];
-    if(d>gap){gap=d;midX=(xs[i]+xs[i-1])/2}}
-  const left=groupRows(clean.filter(l=>l.x<midX)).slice(0,3);
-  const right=groupRows(clean.filter(l=>l.x>=midX)).slice(0,3);
+  // Mismo corte por mayor salto en X que usa parseMovesCard (splitColumns):
+  // si ML Kit fragmenta más líneas de un lado que del otro (ej. "155 — 0"
+  // partido en dos solo en algunas tarjetas), un corte por mediana cae del
+  // lado equivocado y pierde líneas del grupo más chico.
+  const cols=splitColumns(clean);
+  if(!cols)return null;
+  const left=groupRows(cols.left).slice(0,3);
+  const right=groupRows(cols.right).slice(0,3);
   if(left.length<3||right.length<3)return null;
   const rowNum=r=>{
     const text=r.items.slice().sort((a,b)=>a.x-b.x).map(l=>l.t).join(" ");
@@ -1356,10 +1431,10 @@ function parseStatsCard(lines){
 
 /** Mergea las dos fases por posición de card (asume la misma grilla de 6 en
     las dos pantallas — es la misma lista de Pokémon, dos tabs distintas del
-    mismo "View Details"), arma hasta 6 slot(), crea un equipo guardado
-    nuevo y lo deja activo. Devuelve el HTML del resumen — quien llama lo
-    inserta DESPUÉS de render(), nunca antes (render() reconstruye #body
-    entero y se llevaría puesto cualquier inserción previa). */
+    mismo "View Details"), arma hasta 6 slot(), y lo guarda según OCR_TARGET:
+    equipo nuevo o pisando el activo. Devuelve el HTML del resumen — quien
+    llama lo inserta DESPUÉS de render(), nunca antes (render() reconstruye
+    #body entero y se llevaría puesto cualquier inserción previa). */
 function finishOwnScan(){
   const moves=OCR_DRAFT[0]||[], stats=OCR_DRAFT[1]||[];
   const errors=[],team=[];
@@ -1385,12 +1460,22 @@ function finishOwnScan(){
   if(!team.length)
     return `<div class="card f"><span class="hd">Captura de equipo</span>
       <div class="msg w">No pude leer ningún Pokémon. Probá de nuevo, con el HUD fuera de las tarjetas.</div></div>`;
-  const id=newTeamId();
-  let name="Equipo escaneado",n=1;
-  while(TEAMS.some(t=>t.name===name)){n++;name="Equipo escaneado "+n}
-  TEAMS.push({id,name,team});
-  ACTIVE_ID=id;MY=team;B.mpick=0;saveMy();
-  return `<div class="card${errors.length?" f":""}"><span class="hd">Captura de equipo</span>
+  // Dónde va lo leído. Antes siempre creaba un equipo nuevo, y reescanear
+  // para corregir una lectura fallida dejaba la lista llena de "Equipo
+  // escaneado 2/3/4..." (Angel llegó a 5 guardados probando). Ahora se elige.
+  let destino;
+  if(OCR_TARGET==="active"&&activeTeam()){
+    const at=activeTeam();
+    at.team=team; MY=team; destino=`Actualicé "${at.name}"`;
+  }else{
+    const id=newTeamId();
+    let name="Equipo escaneado",n=1;
+    while(TEAMS.some(t=>t.name===name)){n++;name="Equipo escaneado "+n}
+    TEAMS.push({id,name,team});
+    ACTIVE_ID=id; MY=team; destino=`Creé "${name}"`;
+  }
+  B.mpick=0;saveMy();
+  return `<div class="card${errors.length?" f":""}"><span class="hd">Captura de equipo<em>${esc(destino)}</em></span>
     <div class="msg${errors.length?" w":""}">${errors.length
       ?`Cargué ${team.length} de 6, con avisos:<br>${errors.map(esc).join("<br>")}`
       :`Cargué los ${team.length} sin problemas.`} Revisá y corregí en MÍO si hace falta.</div></div>`;
@@ -1509,13 +1594,14 @@ function topThreats(){
   const foes=B.team.filter(f=>f.dex&&S(f.dex));
   if(!mine.length||!foes.length)return [];
   return foes.map(f=>{
+    const pool=foeMovePool(f);
     let worst=null;
     for(const m of mine){
       const r=best(f.dex,myDex(m),{doubles:B.doubles,aItem:f.item,aAb:f.abil,
-        dStat:statsOf(m),dAb:m.abil},foeMoves(f));
+        dStat:statsOf(m),dAb:m.abil},pool.moves);
       if(r&&r.e>0&&(!worst||r.R[15]/r.maxHP>worst.r.R[15]/worst.r.maxHP))worst={r,m};
     }
-    return worst&&{f,m:worst.m,r:worst.r};
+    return worst&&{f,m:worst.m,r:worst.r,src:pool.src};
   }).filter(Boolean).sort((a,b)=>(b.r.R[15]/b.r.maxHP)-(a.r.R[15]/a.r.maxHP)).slice(0,4);
 }
 
@@ -1531,9 +1617,14 @@ function vPre(){
       <u>${x.me?x.v:x.lo+"–"+x.hi}</u></div>`).join("")}</div>
   <div class="card f"><span class="hd">Mayores amenazas<em>su mejor golpe, contra tu peor respuesta</em></span>
     ${th.length?th.map(t=>{const vd=verdict(t.r,t.r.maxHP);
-      return `<div class="row"><b>${esc(nm(t.f.dex))}<s>a ${esc(nm(myDex(t.m)))} · ${esc(mvName(t.r.move))}</s></b>
+      // De dónde salió el movimiento: visto en partida (hecho), común en el
+      // meta (prior), o solo posible por learnset. Sin esta marca los tres
+      // se leían igual y "posible" parecía una amenaza confirmada.
+      const marca={visto:"✔ visto",meta:"○ común en meta",posible:"◇ solo posible"}[t.src]||"";
+      return `<div class="row"><b>${esc(nm(t.f.dex))}<s>a ${esc(nm(myDex(t.m)))} · ${esc(mvName(t.r.move))}${
+        marca?` · ${marca}`:""}</s></b>
         <u class="${vd.cls}">${vd.txt}</u></div>`}).join("")
-      :`<div class="msg">Sin datos suficientes todavía.</div>`}</div>`;
+      :`<div class="msg">Sin datos suficientes todavía — escaneá al rival y cargá tu equipo.</div>`}</div>`;
 
   // Predicción de team preview (quién va a sacar cada uno): por ahora el
   // algoritmo no acierta lo suficiente como para ser útil (feedback real de
@@ -1807,10 +1898,16 @@ function vMine(){
     `<button class="mon" data-mp="${i}" data-on="${i===B.mpick?1:0}" style="background:var(--ally-2)">
       <b>${esc(nm(myDex(x)))}</b><s>${x.item==="—"?"—":esc(itName(x.item).slice(0,10))}</s></button>`).join("")}</div>
   <div class="card${OCR_PHASE?" f":""}"><span class="hd">Capturar equipo<em>${OCR_PHASE?"paso 2 de 2":"lee la pantalla del juego"}</em></span>
+    <div class="cap">Al terminar, lo leído va a…</div>
+    <div class="pills">
+      <button class="p" data-ocrt="new" data-on="${OCR_TARGET==="new"?1:0}">Un equipo nuevo</button>
+      <button class="p" data-ocrt="active" data-on="${OCR_TARGET==="active"?1:0}">Actualizar "${esc(activeTeam().name)}"</button></div>
     <button class="btn" id="tOcr" style="margin-top:5px">${OCR_PHASE===0
       ?"Capturar — abrí View Details, pestaña Moves & More"
       :"Ahora tocá Stats en el juego, y volvé a tocar acá"}</button>
-    <div class="msg" style="margin-top:5px">Crea un equipo nuevo (no pisa ninguno guardado) y lo deja activo al terminar. Corregí después acá arriba lo que no haya leído bien.</div></div>
+    <div class="msg" style="margin-top:5px">${OCR_TARGET==="active"
+      ?`Reemplaza los 6 slots de <b>${esc(activeTeam().name)}</b>. Útil para reintentar una lectura que salió mal, sin llenar la lista de equipos.`
+      :"Crea un equipo nuevo y lo deja activo, sin pisar ninguno guardado."} Corregí después acá arriba lo que no haya leído bien.</div></div>
   <div class="cols"><div class="card"><span class="hd">Slot ${B.mpick+1}</span>
     <div class="cap">Pokémon</div>${sel(DEXN,m.dex,x=>S(x).n,v=>{m.dex=+v;
       if(!abilsOf(m.dex).includes(m.abil))m.abil=abilsOf(m.dex)[0];
@@ -1954,6 +2051,8 @@ function wire(){
   on("[data-sc]",e=>{const s=e.dataset.sc;B.screen[s]=B.screen[s]>0?0:5});
   on("[data-fmt]",e=>{B.doubles=e.dataset.fmt==="1";syncFoe()});
   on("[data-lang]",e=>{LANG=e.dataset.lang;try{localStorage.setItem("hudLang",LANG)}catch(x){}});
+  on("[data-ocrt]",e=>{OCR_TARGET=e.dataset.ocrt;
+    try{localStorage.setItem("hudOcrTarget",OCR_TARGET)}catch(x){}});
   on("[data-item]",e=>{const f=B.team[B.pick],v=e.dataset.item;f.item=f.item===v?null:v;f.itemSure=!!f.item});
   on("[data-fab]",e=>{const f=B.team[B.pick],v=e.dataset.fab;f.abil=f.abil===v?null:v});
   on("[data-brf]",e=>{const f=B.team[+e.dataset.brf];f.brought=!f.brought;syncActiveFoe()});

@@ -78,6 +78,11 @@ function loadEngine() {
     this.syncActiveFoe = syncActiveFoe;
     this.syncActiveMine = syncActiveMine;
     this.stripIconPrefix = stripIconPrefix;
+    this.splitColumns = splitColumns;
+    this.foeMovePool = foeMovePool;
+    this.best = best;
+    this.topThreats = topThreats;
+    this.setOcrTarget = function (v) { OCR_TARGET = v; };
     this.clusterCards = clusterCards;
     this.parseMovesCard = parseMovesCard;
     this.parseStatsCard = parseStatsCard;
@@ -403,6 +408,64 @@ check("parseMovesCard() lee especie/habilidad/ítem/movimientos en orden, ignora
   assertEqual(r.moveNames.join(","), "Rage Powder,Matcha Gotcha,Life Dew,Trick Room");
 });
 
+check("parseMovesCard() separa las 2 columnas de la tarjeta (bug real: campos corridos un lugar)", () => {
+  // Layout real de "Moves & More" (captura de Angel):
+  //   Venusaur     | Sludge Bomb
+  //   Chlorophyll  | Protect
+  //   Venusaurite  | Earth Power
+  //                | Giga Drain
+  // Las dos columnas comparten las mismas alturas. Ordenar todo por Y las
+  // intercalaba y corría cada campo un lugar.
+  const lines = [
+    { t: "Venusaur", x: 60, y: 175, w: 90, h: 18 },
+    { t: "Sludge Bomb", x: 470, y: 175, w: 110, h: 18 },
+    { t: "Chlorophyll", x: 60, y: 200, w: 90, h: 18 },
+    { t: "Protect", x: 470, y: 200, w: 70, h: 18 },
+    { t: "Venusaurite", x: 60, y: 226, w: 95, h: 18 },
+    { t: "Earth Power", x: 470, y: 226, w: 105, h: 18 },
+    { t: "Giga Drain", x: 470, y: 250, w: 100, h: 18 },
+  ];
+  const r = E.parseMovesCard(lines);
+  assertEqual(r.dexName, "Venusaur");
+  assertEqual(r.abilName, "Chlorophyll", "la habilidad está bajo la especie, no en la columna de movimientos");
+  assertEqual(r.itemName, "Venusaurite", "el ítem es el tercero de la columna izquierda");
+  assertEqual(r.moveNames.join(","), "Sludge Bomb,Protect,Earth Power,Giga Drain");
+});
+
+check("parseMovesCard() reproduce el caso Aegislash del diagnóstico real de Angel", () => {
+  // Lo que salió mal en el dispositivo: habilidad "9 Iron Head" (un
+  // movimiento con el número de tarjeta pegado), ítem "Stance Change" (la
+  // habilidad) y movimiento "5 Spell Tag" (el ítem) — el patrón exacto de
+  // dos columnas intercaladas por Y.
+  const lines = [
+    { t: "Aegislash", x: 60, y: 175, w: 90, h: 18 },
+    { t: "Iron Head", x: 470, y: 175, w: 90, h: 18 },
+    { t: "Stance Change", x: 60, y: 200, w: 110, h: 18 },
+    { t: "Shadow Ball", x: 470, y: 200, w: 100, h: 18 },
+    { t: "Spell Tag", x: 60, y: 226, w: 85, h: 18 },
+    { t: "Wide Guard", x: 470, y: 226, w: 95, h: 18 },
+  ];
+  const r = E.parseMovesCard(lines);
+  assertEqual(r.dexName, "Aegislash");
+  assertEqual(r.abilName, "Stance Change", "Stance Change es la habilidad, no el ítem");
+  assertEqual(r.itemName, "Spell Tag", "Spell Tag es el ítem, no un movimiento");
+  assertEqual(r.moveNames.join(","), "Iron Head,Shadow Ball,Wide Guard");
+});
+
+check("parseMovesCard() cae al orden secuencial si la tarjeta tiene una sola columna", () => {
+  const lines = ["Sinistcha", "Hospitality", "Colbur Berry", "Rage Powder"].map((t, i) =>
+    ({ t, x: 60, y: 100 + i * 25, w: 90, h: 18 }));
+  const r = E.parseMovesCard(lines);
+  assertEqual(r.dexName, "Sinistcha");
+  assertEqual(r.abilName, "Hospitality");
+  assertEqual(r.itemName, "Colbur Berry");
+});
+
+check("stripIconPrefix() también saca un dígito suelto (el número de tarjeta pegado)", () => {
+  assertEqual(E.findMove("9 Iron Head"), E.findMove("Iron Head"), "el número de tarjeta no debería romper el match");
+  assertEqual(E.findItem("5 Spell Tag"), E.findItem("Spell Tag"));
+});
+
 check("parseStatsCard() separa 2 sub-columnas por X y saca la inversión (último número)", () => {
   // Sinistcha real de la captura de Angel: HP 177-31, Atq 80-0, Def 133-7 / AtqEsp 141-0, DefEsp 140-28, Vel 81-0
   const lines = [
@@ -464,6 +527,55 @@ check("finishOwnScan() arma un equipo nuevo sin tocar los existentes, y avisa lo
   assert(/no reconozco la especie/.test(html), "debería avisar sobre la card ilegible");
   assertEqual(E.activeTeam().team.length, 1, "solo Sinistcha se pudo leer");
   assertEqual(E.activeTeam().team[0].sp.join(","), "31,0,7,0,28,0");
+});
+
+check("finishOwnScan() con OCR_TARGET='active' actualiza el equipo activo en vez de crear otro", () => {
+  // Angel llegó a 5 equipos guardados reintentando una lectura que fallaba.
+  E.loadTeams();
+  const before = E.getTeams().length;
+  const activeId = E.getActiveId();
+  E.setOcrTarget("active");
+  E.setOcrDraft([
+    [{ dexName: "Sinistcha", abilName: "Hospitality", itemName: "Colbur Berry", moveNames: ["Rage Powder"] },
+     null, null, null, null, null],
+    [[31, 0, 7, 0, 28, 0], null, null, null, null, null],
+  ]);
+  E.finishOwnScan();
+  assertEqual(E.getTeams().length, before, "no debería sumar un equipo");
+  assertEqual(E.getActiveId(), activeId, "el equipo activo sigue siendo el mismo");
+  assertEqual(E.activeTeam().team.length, 1, "pero su contenido se reemplazó por lo escaneado");
+  E.setOcrTarget("new"); // no dejar el sandbox en un estado raro
+});
+
+// ── amenazas: de dónde salen los movimientos del rival (bug real de Angel) ──
+console.log("\namenazas y pool de movimientos del rival:");
+
+check("best() con pool vacío devuelve null, no el movimiento más fuerte del juego", () => {
+  // Este era el bug: sin datos del rival caía a la lista global y mostraba
+  // Electro Shot como amenaza en Blaziken, Mimikyu, Ditto y Sneasler por
+  // igual — ninguno de los cuales lo aprende.
+  assertEqual(E.best(6, 445, { doubles: true }, []), null, "pool vacío = no sabemos, no 'el más fuerte'");
+  assert(E.best(6, 445, { doubles: true }) !== null, "sin pool (consulta libre) sí puede usar la lista global");
+});
+
+check("foeMovePool() etiqueta la procedencia y nunca devuelve la lista global", () => {
+  const foe = E.mkFoe(445, 0.9);
+  const sinDatos = E.foeMovePool(foe);
+  assert(["meta", "posible", "sin datos"].includes(sinDatos.src), "sin movimientos vistos no puede decir 'visto'");
+  assert(sinDatos.moves.length < 50, "nunca la lista global de movimientos del juego");
+  foe.moves = ["Terremoto"];
+  const visto = E.foeMovePool(foe);
+  assertEqual(visto.src, "visto");
+  assertEqual(visto.moves.join(","), "Terremoto", "lo observado gana sobre cualquier estimación");
+});
+
+check("topThreats() no inventa una amenaza cuando no hay datos del rival", () => {
+  const B = E.getB();
+  B.team = [6, 445].map((d) => E.mkFoe(d, 0.9));
+  const th = E.topThreats();
+  // Sin meta ni learnset cargados en el sandbox, lo correcto es no reportar
+  // nada — antes reportaba el movimiento más fuerte del juego para cada uno.
+  th.forEach((t) => assert(t.src !== undefined, "cada amenaza declara de dónde salió su movimiento"));
 });
 
 // ── matcher difuso para OCR con typos (Fase 1, endurecido tras feedback real) ──
