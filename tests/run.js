@@ -498,28 +498,26 @@ check("parseMovesCard() reproduce el caso Aegislash del diagnóstico real de Ang
   assertEqual(r.moveNames.join(","), "Iron Head,Shadow Ball,Wide Guard");
 });
 
-check("pipeline completo: la pantalla real de 6 tarjetas de Angel sale con todos los campos en su lugar", () => {
-  // Reproduce la pantalla "Moves & More" del equipo real de Angel con las
-  // coordenadas de su captura (1280x591). Es el caso que falló tres veces
-  // seguidas en dispositivo: primero por el header, después por las dos
-  // columnas intercaladas, después por la fila de abajo mal ubicada.
-  // Se valida el PARSEO (qué texto va a qué campo), que es lo que se rompía;
-  // la resolución de nombres depende de dex.json, que el sandbox no carga.
+// Construye la pantalla "Moves & More" real de Angel a una escala dada.
+// La captura del dispositivo NO viene a 1280 px (la del chat está reducida),
+// así que todo el pipeline tiene que ser independiente de la resolución.
+function pantallaMovesReal(k) {
+  const S = (v) => Math.round(v * k);
   const LX = 245, LM = 470, RX = 705, RM = 930;
   const card = (x, xm, y, name, abil, item, moves) => {
     const out = [
-      { t: name, x, y, w: 100, h: 18 },
-      { t: abil, x, y: y + 25, w: 100, h: 18 },
-      { t: item, x, y: y + 51, w: 100, h: 18 },
+      { t: name, x: S(x), y: S(y), w: S(100), h: S(18) },
+      { t: abil, x: S(x), y: S(y + 25), w: S(100), h: S(18) },
+      { t: item, x: S(x), y: S(y + 51), w: S(100), h: S(18) },
     ];
-    moves.forEach((m, i) => out.push({ t: m, x: xm, y: y + i * 25, w: 110, h: 18 }));
+    moves.forEach((m, i) => out.push({ t: m, x: S(xm), y: S(y + i * 25), w: S(110), h: S(18) }));
     return out;
   };
-  const lines = [
-    { t: "Team 9", x: 480, y: 62, w: 80, h: 20 },
-    { t: "Wayne6", x: 770, y: 62, w: 80, h: 20 },
-    { t: "Moves & More", x: 495, y: 124, w: 150, h: 20 },
-    { t: "Stats", x: 715, y: 124, w: 60, h: 20 },
+  return [
+    { t: "Team 9", x: S(480), y: S(62), w: S(80), h: S(20) },
+    { t: "Wayne6", x: S(770), y: S(62), w: S(80), h: S(20) },
+    { t: "Moves & More", x: S(495), y: S(124), w: S(150), h: S(20) },
+    { t: "Stats", x: S(715), y: S(124), w: S(60), h: S(20) },
     ...card(LX, LM, 175, "Venusaur", "Chlorophyll", "Venusaurite",
       ["Sludge Bomb", "Protect", "Earth Power", "Giga Drain"]),
     ...card(RX, RM, 175, "Swampert", "Damp", "Swampertite",
@@ -533,23 +531,48 @@ check("pipeline completo: la pantalla real de 6 tarjetas de Angel sale con todos
     ...card(RX, RM, 412, "Hydreigon", "Levitate", "Choice Scarf",
       ["Draco Meteor", "Dark Pulse", "Flamethrower", "Earth Power"]),
   ];
-  const esperado = [
-    ["Venusaur", "Chlorophyll", "Venusaurite", "Sludge Bomb,Protect,Earth Power,Giga Drain"],
-    ["Swampert", "Damp", "Swampertite", "Wave Crash,High Horsepower,Ice Punch,Protect"],
-    ["Grimmsnarl", "Prankster", "Light Clay", "Light Screen,Reflect,Scary Face,Spirit Break"],
-    ["Pelipper", "Drizzle", "Damp Rock", "Weather Ball,Hurricane,Tailwind,Wide Guard"],
-    ["Archaludon", "Stamina", "Leftovers", "Dragon Pulse,Flash Cannon,Electro Shot,Protect"],
-    ["Hydreigon", "Levitate", "Choice Scarf", "Draco Meteor,Dark Pulse,Flamethrower,Earth Power"],
-  ];
-  const cards = E.clusterCards(lines, 1280, 591);
+}
+const EQUIPO_REAL = [
+  ["Venusaur", "Chlorophyll", "Venusaurite", "Sludge Bomb,Protect,Earth Power,Giga Drain"],
+  ["Swampert", "Damp", "Swampertite", "Wave Crash,High Horsepower,Ice Punch,Protect"],
+  ["Grimmsnarl", "Prankster", "Light Clay", "Light Screen,Reflect,Scary Face,Spirit Break"],
+  ["Pelipper", "Drizzle", "Damp Rock", "Weather Ball,Hurricane,Tailwind,Wide Guard"],
+  ["Archaludon", "Stamina", "Leftovers", "Dragon Pulse,Flash Cannon,Electro Shot,Protect"],
+  ["Hydreigon", "Levitate", "Choice Scarf", "Draco Meteor,Dark Pulse,Flamethrower,Earth Power"],
+];
+function verificarEquipoReal(k, w, h, etiqueta) {
+  const cards = E.clusterCards(pantallaMovesReal(k), Math.round(w * k), Math.round(h * k));
   cards.forEach((c, i) => {
     const r = E.parseMovesCard(c);
-    const [dex, abil, item, moves] = esperado[i];
-    assertEqual(r.dexName, dex, `tarjeta ${i + 1}: especie`);
-    assertEqual(r.abilName, abil, `tarjeta ${i + 1}: habilidad`);
-    assertEqual(r.itemName, item, `tarjeta ${i + 1}: ítem`);
-    assertEqual(r.moveNames.join(","), moves, `tarjeta ${i + 1}: movimientos`);
+    const [dex, abil, item, moves] = EQUIPO_REAL[i];
+    assertEqual(r.dexName, dex, `${etiqueta} tarjeta ${i + 1}: especie`);
+    assertEqual(r.abilName, abil, `${etiqueta} tarjeta ${i + 1}: habilidad`);
+    assertEqual(r.itemName, item, `${etiqueta} tarjeta ${i + 1}: ítem`);
+    assertEqual(r.moveNames.join(","), moves, `${etiqueta} tarjeta ${i + 1}: movimientos`);
   });
+}
+
+check("pipeline completo, independiente de la resolución de la captura", () => {
+  // El dispositivo de Angel no captura a 1280: la del chat viene reducida.
+  // Si algún umbral quedara en píxeles absolutos, esto lo delata.
+  verificarEquipoReal(1, 1280, 591, "1280:");
+  verificarEquipoReal(1.875, 1280, 591, "2400:");
+  verificarEquipoReal(3.375, 1280, 591, "4320:");
+  verificarEquipoReal(0.6, 1280, 591, "768:");
+});
+
+check("pipeline completo: una tarjeta vacía no descoloca a las otras cinco", () => {
+  // Si el OCR no lee nada de una tarjeta, las demás tienen que seguir
+  // cayendo en su lugar: la tarjeta vacía se reporta y se corrige a mano.
+  const lines = pantallaMovesReal(1).filter((l) =>
+    !["Grimmsnarl", "Prankster", "Light Clay", "Light Screen", "Reflect", "Scary Face", "Spirit Break"]
+      .includes(l.t));
+  const cards = E.clusterCards(lines, 1280, 591);
+  assertEqual(E.parseMovesCard(cards[0]).dexName, "Venusaur");
+  assertEqual(E.parseMovesCard(cards[2]).dexName, null, "la tarjeta ilegible queda vacía, no toma datos de otra");
+  assertEqual(E.parseMovesCard(cards[3]).dexName, "Pelipper");
+  assertEqual(E.parseMovesCard(cards[4]).dexName, "Archaludon");
+  assertEqual(E.parseMovesCard(cards[5]).dexName, "Hydreigon");
 });
 
 check("parseMovesCard() cae al orden secuencial si la tarjeta tiene una sola columna", () => {
