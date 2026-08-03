@@ -228,7 +228,12 @@ const hpOf=(b,sp)=>Math.floor((2*b+IV)*LVL/100)+LVL+10+sp;
 const stOf=(b,sp,nat)=>SP_AFTER_NAT
   ? Math.floor((Math.floor((2*b+IV)*LVL/100)+5)*nat)+sp
   : Math.floor((Math.floor((2*b+IV)*LVL/100)+5+sp)*nat);
-const natMul=(i,up,dn)=> i===up?1.1 : i===dn?0.9 : 1;
+/** up/dn son índices de stat (1–5; la naturaleza nunca toca PS). **0 = sin
+    naturaleza**: se usa cuando de verdad no la sabemos — por ejemplo cuando
+    la captura no pudo determinarla, ya que el juego la indica con flechas de
+    color y no con texto. Neutro (×1) es el estimador honesto en ese caso;
+    inventar una naturaleza sesga todos los cálculos en silencio. */
+const natMul=(i,up,dn)=> (up&&i===up)?1.1 : (dn&&i===dn)?0.9 : 1;
 
 /* ═════ DATOS BASE ═════ */
 /* Colores por tipo. decoMove() y decoItem() dependen de esto: sin el mapa
@@ -1505,13 +1510,23 @@ const normStat=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
 /** Qué stat es esta línea, o -1. Acepta que el número venga pegado a la
     etiqueta ("HP 202 32") pero NO que siga otra letra: así "def" no se come
     "defense" ni "ataque" se come "ataqueesp". */
-function statIndexOf(text){
+function statIndexRaw(text){
   const nt=normStat(text);
   if(!nt)return -1;
   for(const [i,keys] of STAT_LABEL_KEYS)
     for(const k of keys)
       if(nt===k||(nt.startsWith(k)&&!/^[a-z]/.test(nt.slice(k.length))))return i;
   return -1;
+}
+function statIndexOf(text){
+  const i=statIndexRaw(text);
+  if(i>=0)return i;
+  // El juego dibuja un ícono (corazón, espada, escudo…) delante de cada
+  // etiqueta. Si ML Kit lo lee como una letra suelta, "HP" llega como
+  // "V HP 178 32" y el match directo falla. Mismo recurso que ya usan
+  // findMove()/findItem() para "O Protect".
+  const st=stripIconPrefix(text);
+  return st?statIndexRaw(st):-1;
 }
 const lastNum=t=>{const m=String(t||"").match(/\d+/g);return m&&m.length?+m[m.length-1]:null};
 
@@ -1525,9 +1540,49 @@ const lastNum=t=>{const m=String(t||"").match(/\d+/g);return m&&m.length?+m[m.le
     Si las etiquetas no se reconocen, cae al método posicional anterior.
     Devuelve null si no puede leer los 6 — fallo ruidoso, lo completa la
     corrección manual, nunca un reparto a medias presentado como bueno. */
+/** La naturaleza NO viene escrita: el juego dibuja una flecha roja hacia
+    arriba en la stat que sube y una azul hacia abajo en la que baja (nada si
+    es neutra). ML Kit reconoce texto, no formas ni colores, así que lo más
+    probable es que no devuelva nada por esas flechas. Se intenta igual —
+    sale gratis y algunos motores sí emiten un carácter — pero **no se
+    inventa**: si no aparece ninguna marca, la naturaleza queda sin definir
+    (0/0) y el resumen avisa que hay que ponerla a mano.
+    Detectarla de verdad exige mirar color y forma en el bitmap, como ya hace
+    SpriteMatcher con los sprites — es trabajo de Kotlin, ver `audit.md`. */
+const FLECHA_UP=/[▲△↑⬆⇧]/, FLECHA_DN=/[▼▽↓⬇⇩]/;
+/** Ubica cada flecha en su celda: la fila la da el Y (cuál de las tres
+    bandas) y la sub-columna el X (izquierda = PS/Atq/Def, derecha =
+    AtqEsp/DefEsp/Vel), o sea el mismo orden que el array `sp`.
+    Devuelve {up:0,dn:0} si no hay nada que interpretar — que es el caso
+    esperado mientras la detección dependa de texto. */
+function naturalezaDeTarjeta(L){
+  const marca=l=>String(l.t).replace(/\d+/g,"").trim();
+  const conFlecha=L.filter(l=>{const r=marca(l);return r&&(FLECHA_UP.test(r)||FLECHA_DN.test(r))});
+  if(!conFlecha.length)return {up:0,dn:0};
+  const num=L.filter(l=>/\d/.test(l.t));
+  const bandas=splitRows(num,3), cols=splitColumns(num);
+  if(!bandas||!cols)return {up:0,dn:0};
+  const centro=b=>b.reduce((a,l)=>a+(l.y||0),0)/b.length;
+  const ys=bandas.map(centro);
+  let up=0,dn=0;
+  for(const l of conFlecha){
+    let fila=0,mejor=Infinity;
+    ys.forEach((c,i)=>{const d=Math.abs((l.y||0)-c);if(d<mejor){mejor=d;fila=i}});
+    const idx=((l.x||0)<cols.midX?0:3)+fila;
+    if(!idx)continue;                       // PS no puede subir ni bajar
+    const r=marca(l);
+    if(!up&&FLECHA_UP.test(r))up=idx;
+    else if(!dn&&FLECHA_DN.test(r))dn=idx;
+  }
+  return (up&&dn)?{up,dn}:{up:0,dn:0};      // o las dos, o ninguna
+}
+/** Devuelve `{sp:[6 inversiones], up, dn}` o null si no pudo leer el reparto
+    completo. `up`/`dn` en 0 significa "naturaleza no determinada", no
+    "neutra" — quien llama lo reporta para que se corrija a mano. */
 function parseStatsCard(lines){
   const L=(lines||[]).filter(l=>l&&l.t);
   if(!L.length)return null;
+  const con=sp=>({sp,...naturalezaDeTarjeta(L)});
   const sp=[null,null,null,null,null,null];
   for(const ln of L){
     const i=statIndexOf(ln.t);
@@ -1539,28 +1594,59 @@ function parseStatsCard(lines){
     // sub-columnas comparten altura (HP y Sp. Atk son la misma fila), así
     // que sin ese corte los valores de la izquierda se llevaban los de la
     // derecha y las 6 inversiones salían duplicadas.
+    // 0.9 de la altura del texto: tolera que la etiqueta y su número tengan
+    // el baseline apenas corrido (pasa cuando el ícono es más alto que la
+    // letra), sin llegar a la fila de abajo, que está a ~1.4 alturas.
     const hh=ln.h||14;
-    const row=L.filter(o=>o!==ln&&Math.abs((o.y||0)-(ln.y||0))<hh*0.7&&(o.x||0)>=(ln.x||0))
+    const row=L.filter(o=>o!==ln&&Math.abs((o.y||0)-(ln.y||0))<hh*0.9&&(o.x||0)>=(ln.x||0))
       .sort((a,b)=>(a.x||0)-(b.x||0));
     const propios=[];
     for(const o of row){if(statIndexOf(o.t)>=0)break;propios.push(o)}
     const v=lastNum([ln.t,...propios.map(o=>o.t)].join(" "));
     if(v!==null)sp[i]=v;
   }
-  if(sp.every(n=>n!==null&&n>=0&&n<=SP_MAX))return sp;
+  if(sp.every(n=>n!==null&&n>=0&&n<=SP_MAX))return con(sp);
 
-  // Fallback posicional (el método anterior): dos sub-columnas por el mayor
-  // salto en X, tres filas cada una, último número de cada fila.
-  const clean=L.filter(l=>/\d/.test(l.t));
-  if(clean.length<6)return null;
-  const cols=splitColumns(clean);
-  if(!cols)return null;
-  const left=groupRows(cols.left).slice(0,3);
-  const right=groupRows(cols.right).slice(0,3);
-  if(left.length<3||right.length<3)return null;
-  const rowNum=r=>lastNum(r.items.slice().sort((a,b)=>a.x-b.x).map(l=>l.t).join(" "));
-  const pos=[...left,...right].map(rowNum);
-  return pos.length===6&&pos.every(n=>n!==null&&n>=0&&n<=SP_MAX)?pos:null;
+  const num=L.filter(l=>/\d/.test(l.t));
+  if(num.length<6)return null;
+
+  // Método 2, por forma de las filas. El más robusto de los tres, porque no
+  // necesita ni reconocer etiquetas ni acertar dónde separar las columnas:
+  // cada fila de la tarjeta contiene los dos stats de esa altura, y leída de
+  // izquierda a derecha da SIEMPRE cuatro números —
+  //     [stat izq, inversión izq, stat der, inversión der]
+  // (ej. "HP 202 32   Sp. Atk 105 0" → 202, 32, 105, 0).
+  // Así que las inversiones son el 2º y el 4º, sin importar dónde caiga el
+  // hueco entre columnas ni si el juego dibujó las etiquetas legibles.
+  const filas=splitRows(num,3);
+  if(filas&&filas.length===3&&filas.every(f=>f.length)){
+    const porFila=filas.map(f=>{
+      const n=(f.slice().sort((a,b)=>(a.x||0)-(b.x||0)).map(l=>l.t).join(" ").match(/\d+/g)||[]).map(Number);
+      return n.length===4?[n[1],n[3]]:null;
+    });
+    if(porFila.every(Boolean)){
+      const sp2=[porFila[0][0],porFila[1][0],porFila[2][0],
+                 porFila[0][1],porFila[1][1],porFila[2][1]];
+      if(sp2.every(n=>n>=0&&n<=SP_MAX))return con(sp2);
+    }
+  }
+
+  // Método 3, por sub-columnas: se separa por el mayor salto en X y, dentro
+  // de cada una, se fuerzan 3 bandas por los mayores saltos en Y. La versión
+  // vieja usaba groupRows()+slice(0,3), que agrupaba por una tolerancia fija
+  // de altura: si el valor y la inversión quedaban a alturas apenas
+  // distintas salían 6 medias filas en vez de 3. splitRows no depende de eso.
+  const cols=splitColumns(num);
+  if(!cols||cols.left.length<3||cols.right.length<3)return null;
+  const tresDe=lado=>{
+    const bandas=splitRows(lado,3);
+    if(!bandas||bandas.some(b=>!b.length))return null;
+    return bandas.map(b=>lastNum(b.slice().sort((a,c)=>(a.x||0)-(c.x||0)).map(l=>l.t).join(" ")));
+  };
+  const izq=tresDe(cols.left), der=tresDe(cols.right);
+  if(!izq||!der)return null;
+  const pos=[...izq,...der];
+  return pos.every(n=>n!==null&&n>=0&&n<=SP_MAX)?con(pos):null;
 }
 
 /** Mergea las dos fases por posición de card (asume la misma grilla de 6 en
@@ -1573,7 +1659,7 @@ function finishOwnScan(){
   const moves=OCR_DRAFT[0]||[], stats=OCR_DRAFT[1]||[];
   // Los slots que ya había, para no perderlos si una tarjeta no se pudo leer.
   const prev=(activeTeam()&&activeTeam().team)||[];
-  const errors=[],team=[];
+  const errors=[],team=[],sinNaturaleza=[];
   let leidos=0;
   for(let i=0;i<6;i++){
     const mv=moves[i]||{}, st=stats[i];
@@ -1599,7 +1685,15 @@ function finishOwnScan(){
       if(!k){errors.push(`${label}: no reconozco el movimiento "${name}".`);return}
       const free=s.moves.indexOf(""); if(free>=0)s.moves[free]=k;
     });
-    if(st)s.sp=st; else errors.push(`${label}: no pude leer el reparto de stats — corregilo a mano.`);
+    if(st){
+      s.sp=st.sp;
+      // La naturaleza el juego la muestra con flechas de color, no con
+      // texto. Si no se pudo determinar queda sin definir (neutra, ×1) en
+      // vez de heredar el default del slot: inventarla sesgaría en silencio
+      // todos los cálculos de daño y velocidad.
+      s.up=st.up||0; s.dn=st.dn||0;
+      if(!st.up||!st.dn)sinNaturaleza.push(label);
+    }else errors.push(`${label}: no pude leer el reparto de stats — corregilo a mano.`);
     if(!canMega(s))s.mega=false;
     team.push(s);
   }
@@ -1624,7 +1718,12 @@ function finishOwnScan(){
   return `<div class="card${errors.length?" f":""}"><span class="hd">Captura de equipo<em>${esc(destino)}</em></span>
     <div class="msg${errors.length?" w":""}">${errors.length
       ?`Cargué ${leidos} de 6, con avisos:<br>${errors.map(esc).join("<br>")}`
-      :`Cargué los ${leidos} sin problemas.`} Revisá y corregí en MÍO si hace falta.</div></div>`;
+      :`Cargué los ${leidos} sin problemas.`} Revisá y corregí en MÍO si hace falta.</div>
+    ${sinNaturaleza.length?`<div class="msg w" style="margin-top:5px">
+      <b>Naturaleza sin determinar</b> en ${esc(sinNaturaleza.join(", "))}. El juego la marca
+      con flechas de color, no con texto, así que la captura no la puede leer todavía: quedaron
+      en neutra (sin ±10%). Ponela a mano en MÍO → <em>Sube</em> / <em>Baja</em> — cambia daño
+      y velocidad, conviene hacerlo antes de calcular nada.</div>`:""}</div>`;
 }
 
 /* ═════ VISTAS ═════ */
@@ -2066,10 +2165,12 @@ function vMine(){
       <button class="p" data-mega="1" data-on="${m.mega?1:0}">${m.mega?"Megaevolucionado":"Sin megaevolucionar"}</button></div>
       <div class="msg" style="margin-top:3px">Llevar la piedra no es haberla usado. Marcalo cuando megaevolucione de verdad.</div>`:""}
     <div class="f2" style="margin-top:4px">
-      <div><div class="cap">Sube</div>${sel([1,2,3,4,5],m.up,i=>STN[i],
-        v=>{m.up=+v; if(m.dn===m.up)m.dn=m.up===1?2:1; saveMy()},"Stat que sube 10%")}</div>
-      <div><div class="cap">Baja</div>${sel([1,2,3,4,5],m.dn,i=>STN[i],
-        v=>{m.dn=+v; if(m.up===m.dn)m.up=m.dn===1?2:1; saveMy()},"Stat que baja 10%")}</div></div></div>
+      <div><div class="cap">Sube</div>${sel([0,1,2,3,4,5],m.up,i=>i?STN[i]:"— ninguna",
+        v=>{m.up=+v; if(m.up&&m.dn===m.up)m.dn=m.up===1?2:1; saveMy()},"Stat que sube 10%")}</div>
+      <div><div class="cap">Baja</div>${sel([0,1,2,3,4,5],m.dn,i=>i?STN[i]:"— ninguna",
+        v=>{m.dn=+v; if(m.dn&&m.up===m.dn)m.up=m.dn===1?2:1; saveMy()},"Stat que baja 10%")}</div></div>
+    ${(!m.up||!m.dn)?`<div class="msg w" style="margin-top:3px">Naturaleza sin definir: se calcula
+      sin ±10%. La captura no puede leerla (el juego la muestra con flechas de color).</div>`:""}</div>
   <div class="card d"><span class="hd">Stat Points<em id="spLeft">quedan ${left}</em></span>
     ${[0,1,2,3,4,5].map(i=>`<div class="sp"><b>${STN[i]}</b>
       <div class="bar"><div class="bg"><div class="fl" style="width:${m.sp[i]/SP_MAX*100}%"></div></div>
@@ -2384,11 +2485,29 @@ window.onOwnScan=function(json){
   }else{
     OCR_DRAFT[1]=cards.map(parseStatsCard);
     OCR_PHASE=0;
-    // finishOwnScan() ya dejó el equipo nuevo guardado y activo — render()
-    // primero (reconstruye #body entero), el resumen se inserta después.
+    // Diagnóstico del paso 2, con el mismo criterio que el del paso 1: si
+    // alguna tarjeta no dio reparto, mostrar las líneas NUMÉRICAS que sí se
+    // leyeron de ella. Sin esto, "no pude leer el reparto" no dice si el
+    // problema fue el OCR, el recorte de la tarjeta o el parseo.
+    const falladas=OCR_DRAFT[1].map((s,i)=>s?null:i).filter(i=>i!==null);
+    let diag="";
+    if(falladas.length){
+      diag=`<div class="card f"><span class="hd">Qué leí en Stats<em>${falladas.length} sin reparto</em></span>
+        <div class="msg">${falladas.map(i=>{
+          // Todas las líneas, no solo las numéricas: las no numéricas son las
+          // etiquetas y —si ML Kit llega a devolverlas— las flechas de
+          // naturaleza, que es justo lo que hace falta saber.
+          const todas=(cards[i]||[]).map(l=>esc(l.t));
+          const muestra=todas.slice(0,12).join(" | ")||"(sin texto)";
+          return `${i+1}: ${muestra}${todas.length>12?` …+${todas.length-12}`:""}`;
+        }).join("<br>")}</div>
+        <div class="msg" style="margin-top:5px;opacity:.7">Mandame esta pantalla si el reparto sigue sin salir.</div></div>`;
+    }
+    // finishOwnScan() ya dejó el equipo guardado y activo — render() primero
+    // (reconstruye #body entero), el resumen se inserta después.
     const summary=finishOwnScan();
     render();
-    $("#body").insertAdjacentHTML("afterbegin",summary);
+    $("#body").insertAdjacentHTML("afterbegin",summary+diag);
   }
 };
 window.onMetaUpdate=function(json){

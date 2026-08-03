@@ -84,6 +84,8 @@ function loadEngine() {
     this.topThreats = topThreats;
     this.setOcrTarget = function (v) { OCR_TARGET = v; };
     this.statIndexOf = statIndexOf;
+    this.natMul = natMul;
+    this.naturalezaDeTarjeta = naturalezaDeTarjeta;
     this.megaTargetsMissing = function () {
       return Object.keys(MEGA).filter(function (k) { return !SPD[MEGA[k][0]]; });
     };
@@ -618,7 +620,7 @@ check("parseStatsCard() se ancla en las etiquetas, con la etiqueta y los número
     ...row("Attack", 128, 32, 250, 326), ...row("Sp. Def", 111, 1, 700, 326),
     ...row("Defense", 110, 0, 250, 352), ...row("Speed", 121, 30, 700, 352),
   ];
-  const sp = E.parseStatsCard(lines);
+  const r = E.parseStatsCard(lines); const sp = r && r.sp;
   assert(sp !== null, "no debería devolver null con el layout real");
   assertEqual(sp.join(","), "32,32,0,0,1,30", "orden [PS,Atq,Def,AtqEsp,DefEsp,Vel]");
 });
@@ -632,7 +634,106 @@ check("parseStatsCard() también lee la etiqueta y los números en una sola lín
     { t: "Defense 110 0", x: 250, y: 352, w: 200, h: 18 },
     { t: "Speed 121 30", x: 700, y: 352, w: 200, h: 18 },
   ];
-  assertEqual(E.parseStatsCard(lines).join(","), "32,32,0,0,1,30");
+  assertEqual(E.parseStatsCard(lines).sp.join(","), "32,32,0,0,1,30");
+});
+
+check("parseStatsCard() lee el reparto aunque ML Kit NO reconozca ninguna etiqueta", () => {
+  // Escenario mas probable de la falla real: las etiquetas van en gris claro
+  // sobre fondo claro y ML Kit no las devuelve. Quedan solo los numeros, en
+  // dos sub-columnas de tres filas, con el valor y la inversion separados.
+  const par = (v, inv, x, y) => [
+    { t: String(v), x, y, w: 40, h: 18 },
+    { t: "— " + inv, x: x + 70, y, w: 40, h: 18 },
+  ];
+  const lines = [
+    ...par(202, 32, 350, 300), ...par(105, 0, 810, 300),
+    ...par(128, 32, 350, 326), ...par(111, 1, 810, 326),
+    ...par(110, 0, 350, 352), ...par(121, 30, 810, 352),
+  ];
+  const r = E.parseStatsCard(lines); const sp = r && r.sp;
+  assert(sp !== null, "sin etiquetas tiene que resolverlo por estructura");
+  assertEqual(sp.join(","), "32,32,0,0,1,30");
+});
+
+check("parseStatsCard() tolera que el ícono se lea como una letra pegada a la etiqueta", () => {
+  // "V HP 202 32": el corazon/espada/escudo que el juego dibuja delante de
+  // cada etiqueta, leido como caracter suelto.
+  const lines = [
+    { t: "V HP 202 32", x: 250, y: 300, w: 200, h: 18 },
+    { t: "0 Sp. Atk 105 0", x: 700, y: 300, w: 200, h: 18 },
+    { t: "X Attack 128 32", x: 250, y: 326, w: 200, h: 18 },
+    { t: "0 Sp. Def 111 1", x: 700, y: 326, w: 200, h: 18 },
+    { t: "U Defense 110 0", x: 250, y: 352, w: 200, h: 18 },
+    { t: "Z Speed 121 30", x: 700, y: 352, w: 200, h: 18 },
+  ];
+  assertEqual(E.parseStatsCard(lines).sp.join(","), "32,32,0,0,1,30");
+});
+
+check("parseStatsCard() aguanta que el valor y la inversión queden a alturas apenas distintas", () => {
+  // Baselines corridos unos pixeles: la version anterior agrupaba por una
+  // tolerancia fija y producia seis medias filas en vez de tres.
+  const lines = [
+    { t: "HP", x: 250, y: 300, w: 60, h: 18 }, { t: "202", x: 360, y: 303, w: 40, h: 18 }, { t: "32", x: 430, y: 301, w: 30, h: 18 },
+    { t: "Sp. Atk", x: 700, y: 300, w: 80, h: 18 }, { t: "105", x: 810, y: 302, w: 40, h: 18 }, { t: "0", x: 880, y: 300, w: 30, h: 18 },
+    { t: "Attack", x: 250, y: 326, w: 60, h: 18 }, { t: "128", x: 360, y: 328, w: 40, h: 18 }, { t: "32", x: 430, y: 327, w: 30, h: 18 },
+    { t: "Sp. Def", x: 700, y: 326, w: 80, h: 18 }, { t: "111", x: 810, y: 329, w: 40, h: 18 }, { t: "1", x: 880, y: 326, w: 30, h: 18 },
+    { t: "Defense", x: 250, y: 352, w: 60, h: 18 }, { t: "110", x: 360, y: 354, w: 40, h: 18 }, { t: "0", x: 430, y: 352, w: 30, h: 18 },
+    { t: "Speed", x: 700, y: 352, w: 60, h: 18 }, { t: "121", x: 810, y: 355, w: 40, h: 18 }, { t: "30", x: 880, y: 353, w: 30, h: 18 },
+  ];
+  assertEqual(E.parseStatsCard(lines).sp.join(","), "32,32,0,0,1,30");
+});
+
+check("parseStatsCard() deja la naturaleza SIN DEFINIR cuando no hay flechas legibles", () => {
+  // El juego la marca con flechas de color, no con texto. Inventar una
+  // sesga en silencio todo el daño y la velocidad: se devuelve 0/0 y quien
+  // llama lo reporta para corregirlo a mano.
+  const lines = [
+    { t: "HP 202 32", x: 250, y: 300, w: 200, h: 18 }, { t: "Sp. Atk 105 0", x: 700, y: 300, w: 200, h: 18 },
+    { t: "Attack 128 32", x: 250, y: 326, w: 200, h: 18 }, { t: "Sp. Def 111 1", x: 700, y: 326, w: 200, h: 18 },
+    { t: "Defense 110 0", x: 250, y: 352, w: 200, h: 18 }, { t: "Speed 121 30", x: 700, y: 352, w: 200, h: 18 },
+  ];
+  const r = E.parseStatsCard(lines);
+  assertEqual(r.up, 0, "sin flecha no se inventa una subida");
+  assertEqual(r.dn, 0, "sin flecha no se inventa una bajada");
+});
+
+check("parseStatsCard() ubica las flechas en su stat si ML Kit llega a devolverlas", () => {
+  // Flecha arriba en Velocidad (índice 5, columna derecha fila 3) y abajo en
+  // Ataque (índice 1, columna izquierda fila 2).
+  const lines = [
+    { t: "202", x: 350, y: 300, w: 40, h: 18 }, { t: "32", x: 430, y: 300, w: 30, h: 18 },
+    { t: "105", x: 810, y: 300, w: 40, h: 18 }, { t: "0", x: 880, y: 300, w: 30, h: 18 },
+    { t: "128", x: 350, y: 326, w: 40, h: 18 }, { t: "32", x: 430, y: 326, w: 30, h: 18 },
+    { t: "▼", x: 470, y: 326, w: 14, h: 18 },
+    { t: "111", x: 810, y: 326, w: 40, h: 18 }, { t: "1", x: 880, y: 326, w: 30, h: 18 },
+    { t: "110", x: 350, y: 352, w: 40, h: 18 }, { t: "0", x: 430, y: 352, w: 30, h: 18 },
+    { t: "121", x: 810, y: 352, w: 40, h: 18 }, { t: "30", x: 880, y: 352, w: 30, h: 18 },
+    { t: "▲", x: 920, y: 352, w: 14, h: 18 },
+  ];
+  const r = E.parseStatsCard(lines);
+  assert(r !== null, "el reparto tiene que salir igual");
+  assertEqual(r.up, 5, "flecha arriba en Velocidad");
+  assertEqual(r.dn, 1, "flecha abajo en Ataque");
+});
+
+check("natMul() trata 0 como 'sin naturaleza' y no toca ninguna stat", () => {
+  for (let i = 0; i < 6; i++) assertEqual(E.natMul(i, 0, 0), 1, `stat ${i} sin naturaleza`);
+  assertEqual(E.natMul(1, 1, 3), 1.1, "sube Ataque");
+  assertEqual(E.natMul(3, 1, 3), 0.9, "baja Ataque Especial");
+  assertEqual(E.natMul(0, 1, 3), 1, "la naturaleza nunca toca PS");
+});
+
+check("finishOwnScan() avisa cuando quedó sin determinar la naturaleza", () => {
+  E.loadTeams();
+  E.setOcrTarget("new");
+  E.setOcrDraft([
+    [{ dexName: "Sinistcha", abilName: "Hospitality", itemName: "Colbur Berry", moveNames: ["Rage Powder"] },
+     null, null, null, null, null],
+    [{ sp: [31, 0, 7, 0, 28, 0], up: 0, dn: 0 }, null, null, null, null, null],
+  ]);
+  const html = E.finishOwnScan();
+  assert(/Naturaleza sin determinar/.test(html), "tiene que avisarlo explícitamente");
+  assertEqual(E.activeTeam().team[0].up, 0, "y dejarla neutra, no con el default del slot");
 });
 
 check("parseStatsCard() no confunde 'Attack' con 'Sp. Atk' ni 'Defense' con 'Sp. Def'", () => {
@@ -665,7 +766,7 @@ check("parseStatsCard() separa 2 sub-columnas por X y saca la inversión (últim
     { t: "177 — 31", x: 10, y: 10 }, { t: "80 — 0", x: 10, y: 40 }, { t: "133 — 7", x: 10, y: 70 },
     { t: "141 — 0", x: 300, y: 10 }, { t: "140 — 28", x: 300, y: 40 }, { t: "81 — 0", x: 300, y: 70 },
   ];
-  const sp = E.parseStatsCard(lines);
+  const r = E.parseStatsCard(lines); const sp = r && r.sp;
   assertEqual(sp.join(","), "31,0,7,0,28,0", "orden esperado: HP,Atq,Def,AtqEsp,DefEsp,Vel");
 });
 
@@ -680,7 +781,7 @@ check("parseStatsCard() tolera que ML Kit parta \"155 — 0\" en 2 líneas separ
     { t: "140", x: 300, y: 40, h: 14 }, { t: "— 28", x: 340, y: 41, h: 14 },
     { t: "81", x: 300, y: 70, h: 14 }, { t: "— 0", x: 340, y: 70, h: 14 },
   ];
-  const sp = E.parseStatsCard(lines);
+  const r = E.parseStatsCard(lines); const sp = r && r.sp;
   assert(sp !== null, "no debería devolver null con líneas fragmentadas");
   assertEqual(sp.join(","), "31,0,7,0,28,0", "mismo resultado que si viniera en una sola línea por stat");
 });
@@ -697,7 +798,7 @@ check("parseStatsCard() usa el mayor salto en X, no la mediana, si un lado se fr
     { t: "133", x: 10, y: 70, h: 14 }, { t: "— 7", x: 50, y: 70, h: 14 },
     { t: "141 — 0", x: 300, y: 10 }, { t: "140 — 28", x: 300, y: 40 }, { t: "81 — 0", x: 300, y: 70 },
   ];
-  const sp = E.parseStatsCard(lines);
+  const r = E.parseStatsCard(lines); const sp = r && r.sp;
   assert(sp !== null, "no debería devolver null con fragmentación asimétrica");
   assertEqual(sp.join(","), "31,0,7,0,28,0", "misma inversión esperada, sin importar la fragmentación");
 });
@@ -713,7 +814,7 @@ check("finishOwnScan() arma un equipo nuevo sin tocar los existentes, y avisa lo
     [{ dexName: "Sinistcha", abilName: "Hospitality", itemName: "Colbur Berry", moveNames: ["Rage Powder", "Matcha Gotcha", "Life Dew", "Trick Room"] },
      { dexName: "no existe esto", abilName: null, itemName: null, moveNames: [] },
      null, null, null, null],
-    [[31, 0, 7, 0, 28, 0], null, null, null, null, null],
+    [{ sp: [31, 0, 7, 0, 28, 0], up: 4, dn: 1 }, null, null, null, null, null],
   ]);
   const html = E.finishOwnScan();
   assertEqual(E.getTeams().length, before + 1, "tiene que sumar un equipo, no reemplazar");
@@ -733,7 +834,7 @@ check("finishOwnScan() con OCR_TARGET='active' actualiza el equipo activo en vez
   E.setOcrDraft([
     [{ dexName: "Sinistcha", abilName: "Hospitality", itemName: "Colbur Berry", moveNames: ["Rage Powder"] },
      null, null, null, null, null],
-    [[31, 0, 7, 0, 28, 0], null, null, null, null, null],
+    [{ sp: [31, 0, 7, 0, 28, 0], up: 4, dn: 1 }, null, null, null, null, null],
   ]);
   E.finishOwnScan();
   assertEqual(E.getTeams().length, before, "no debería sumar un equipo");
