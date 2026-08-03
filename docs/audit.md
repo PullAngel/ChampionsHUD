@@ -11,7 +11,7 @@ Cada hallazgo de la sección 5 tiene su ítem correspondiente, con verificación
 El proyecto son dos mitades acopladas por un puente angosto:
 
 ```
-Android/Kotlin (5 archivos, ~1251 líneas)      hud.html (1 archivo, 1503 líneas)
+Android/Kotlin (6 archivos, ~1226 líneas)      hud.html (1 archivo, ~2310 líneas)
 ────────────────────────────────────      ─────────────────────────
 MainActivity      → onboarding             Motor de daño, inferencia,
 OverlayService     → ventana + puente       predicción, estado, vistas,
@@ -82,6 +82,20 @@ La versión anterior de este documento describía `ReconnectActivity` como uno d
 **Se trazó el flujo completo:** cuando Android revoca el permiso (`SecurityException` en `ScreenCapture.ensure()`, `ScreenCapture.kt:99-101`, o el callback `projection.registerCallback{onStop()}`), se marca `dead=true` y `ensure()` devuelve el string `"Android revocó el permiso de captura. Cerrá el HUD y volvé a abrirlo."`. Ese mensaje viaja por `grab()` → `OverlayService.scan()` (`OverlayService.kt:301-311`, que lo empaqueta como `{"error": ...}`) → `emit("onScan", json)` → `window.onScan()` en `hud.html:1523-1526`, que lo muestra explícitamente en el panel.
 **Conclusión:** no hay reconexión automática (a diferencia de lo que `ReconnectActivity` presumiblemente hacía) — el usuario tiene que cerrar y reabrir la burbuja a mano. Pero el fallo es explícito y accionable, no silencioso: consistente con el principio de "fallo ruidoso, nunca silencioso" (`decisions.md` #8). No se considera un bug — es una degradación aceptable dado que ya es ruidosa. Si en el futuro se quiere automatizar la re-solicitud del permiso, es una mejora de UX de Fase 1, no una corrección de bug.
 
+### 5.10 Tabla `MEGA` incompleta y desalineada con `SPD` — **PARCIALMENTE RESUELTO, 2026-08-03**
+Encontrado al depurar la captura del equipo propio (el equipo real de Angel lleva Venusaurite y Swampertite).
+**Lo resuelto:** `MEGA` no tenía **ninguna** entrada de Venusaur, así que "Venusaurite" era irreconocible. Peor: tres entradas que sí existían (`Swampertite`, `Sablenita`, `Mawilita`) apuntaban a claves de forma mega **inexistentes en `SPD`** — tocar "Megaevolucionado" en un Swampert con su piedra hacía que `S()` devolviera `null` y `myStat()` tirara una excepción. Agregadas las cuatro formas con stats sacadas de `dex.json`. Hay un test (`tests/run.js`) que recorre `MEGA` entera y falla si alguna entrada apunta a una forma que no existe, para que no vuelva a pasar en silencio.
+**Lo que sigue vigente:** `dex.json` trae **76 formas mega** y `MEGA` cubre **15**. Las 61 restantes no se pueden completar de memoria: los nombres de las piedras son irregulares (Blastoise → *Blastoisinite*, Sableye → *Sablenite*, Heracross → *Heracronite*) y Champions agrega megas nuevas (Raichu, Meganium, Feraligatr, Eelektross, Greninja, Falinks, Scovillain, Glimmora…) cuyos nombres de piedra no están en ninguna fuente ya relevada. **Es una tarea de datos, no de código** — completarla adivinando produciría exactamente la clase de error silencioso que este proyecto viene arrastrando. Queda para cuando haya una fuente confiable de nombres de objeto de Champions (candidato natural: el mismo pipeline de Fase 2).
+**Deuda relacionada, sin tocar:** las claves de `MEGA` mezclan español (`Blastoisita`, `Gengarita`) e inglés (`Swampertite`) sin criterio. Se mitigó con una conversión `-ite`↔`-ita` en `findItem()`, pero la tabla debería unificarse a slugs canónicos cuando se regenere (decisión #7).
+
+### 5.11 `loadDex()` asigna claves de formas alternativas de forma frágil — **VIGENTE, no corregido**
+`loadDex()` (`hud.html`) asigna a cada forma alternativa la clave `900000+num*10+(Object.keys(byNum).length%10)`. El último dígito depende de **cuántas especies se procesaron antes**, no de la forma en sí, así que la clave que le toca a una mega concreta es esencialmente arbitraria y puede colisionar con otra forma del mismo Pokémon (una mega y una Gmax del mismo `num` compiten por el mismo rango de 10 claves). Además el chequeo `byNum[sp.num]` consulta una clave distinta de la que después escribe (`byNum[key]=1`), así que la detección de "ya vi este número" no hace lo que aparenta.
+Consecuencia práctica: las claves de forma mega que `MEGA` referencia (`900061`, `901261`, …) pueden no coincidir con las que `loadDex()` genera cuando hay `dex.json` cargado. Hoy no rompe porque las entradas de `MEGA` apuntan a las formas embebidas, que `loadDex()` no borra. **Por eso la entrada nueva de Venusaur usa una clave en el rango `99xxxx`**, fuera del alcance de lo que `loadDex()` puede generar. No se corrigió el generador de claves en sí: es un cambio de riesgo medio en código que hoy funciona, y conviene hacerlo junto con la regeneración de `MEGA` (§5.10), no antes.
+
+### 5.12 La captura puede devolver un fotograma viejo en pantallas estáticas — **VIGENTE, no corregido**
+`ScreenCapture.grab()` intenta primero `take(r)`, que devuelve el fotograma más reciente **ya encolado**. El `ImageReader` tiene `maxImages=3` y, en una pantalla que no cambia, esos tres buffers se llenan y el productor se frena — por lo que el "más reciente encolado" puede ser de antes de que el HUD se ocultara, es decir, con el panel tapando lo que se quiere leer.
+El escaneo del rival no lo sufre porque el team preview está animado (llegan fotogramas nuevos todo el tiempo). La captura del equipo propio sí es una pantalla estática, así que es justo el caso de riesgo. En las pruebas reales hasta ahora **no se manifestó** — la escalera de reintentos (250/600/1200/2000 ms) parece cubrirlo — por eso no se tocó: es código Kotlin que no se puede compilar ni probar en el entorno de desarrollo actual, y romperlo dejaría a Angel sin poder buildear. **El arreglo, si hiciera falta:** vaciar los buffers encolados (`acquireLatestImage()` en bucle, descartando) **antes** de ocultar el panel, y recién después capturar — así cualquier fotograma en cola es necesariamente posterior. Si aparece una lectura que muestra el panel del HUD tapando las tarjetas, esta es la causa.
+
 ### 5.9 `build_meta.py` sigue siendo un stub — **CONFIRMADO VIGENTE, 2026-07-31**
 `fetch_usage()` (línea 37) sigue devolviendo `{}` incondicionalmente. Consistente con el diseño de Fase 2 en `architecture.md` §10 — no es un hallazgo de Fase 0, se mantiene documentado acá por completitud ya que `meta.json` trae la nota explícita "Corré build_meta.py para reemplazarlos".
 
@@ -95,16 +109,20 @@ La versión anterior de este documento describía `ReconnectActivity` como uno d
 - **WebView único y persistente** — no se pierde el estado del combate al abrir/cerrar el panel.
 - **Persistencia atómica y tolerante a fallos:** escritura atómica, versionado por campo `v`, degradación a `{}` si el archivo está corrupto en vez de crashear.
 
-## 7. Deuda técnica, en orden de severidad (actualizado 2026-07-31, segunda pasada)
+## 7. Deuda técnica, en orden de severidad (actualizado 2026-08-03, tercera pasada)
 
-1. `build_meta.py` sin implementar pese a presentarse como una de las fuentes de datos del sistema (§5.9). **Vigente, es trabajo de Fase 2.**
-2. Dependencia declarada sin uso (§5.6). **Vigente.**
-3. Un único archivo de 1503+ líneas sin módulos ni contratos tipados entre secciones — la causa raíz que permitió que 5.2 y 5.3 (ya resueltos) ocurrieran sin que nada las detectara, y sigue siendo terreno fértil para el próximo bug de la misma familia. **Vigente.**
-4. `ReconnectActivity` desaparecido sin reemplazo documentado (§5.8) — severidad sin determinar, requiere investigación antes de poder priorizarlo.
-5. Texto de interfaz (labels, mensajes de las vistas `vX()`) sigue hardcodeado en español pese a que el selector de idioma ya cubre los datos del juego (§5.5) — inconsistencia menor, no un bug.
-6. Tres comparaciones de habilidad sin resolver del todo, marcadas con TODO en el código tras la migración a slugs (§5.2): `Barrera Férrea` y `Sartén Vudú` sin poder identificarse contra Showdown/PokeAPI, y el efecto atribuido a `Robustez`/Sturdy que no es el real de esa habilidad.
+1. `build_meta.py` sin implementar pese a presentarse como una de las fuentes de datos del sistema (§5.9). **Vigente, es el corazón de la Fase 2.**
+2. Tabla `MEGA` con 15 de las 76 formas mega que trae `dex.json` (§5.10). **Vigente**, y es la que más se nota en uso real: cualquier Pokémon con una piedra fuera de esas 15 no se reconoce al capturar el equipo. Es trabajo de datos, no de código.
+3. `loadDex()` genera claves de formas alternativas de forma frágil y colisionable (§5.11). **Vigente.** Hoy no rompe, pero es una trampa puesta para el futuro; conviene resolverlo junto con el punto 2.
+4. Un único archivo de ~2300 líneas sin módulos ni contratos tipados entre secciones — la causa raíz que permitió que 5.2 y 5.3 (ya resueltos) ocurrieran sin que nada las detectara. **Vigente**, y creciendo: el archivo casi duplicó su tamaño. La decisión de no modularizar (#18) sigue en pie, pero el contrapeso acordado ahí era la suite de tests — que sí creció en proporción (de 0 a 80 casos), así que el trato se está cumpliendo.
+5. Captura potencialmente estancada en un fotograma viejo en pantallas estáticas (§5.12). **Vigente, sin manifestarse todavía**; documentado el arreglo por si aparece.
+6. Dependencia declarada sin uso (§5.6). **Vigente, trivial.**
+7. Texto de interfaz (labels, mensajes de las vistas `vX()`) sigue hardcodeado en español pese a que el selector de idioma ya cubre los datos del juego (§5.5) — inconsistencia menor, no un bug.
+8. Tres comparaciones de habilidad sin resolver del todo, marcadas con TODO en el código tras la migración a slugs (§5.2): `Barrera Férrea` y `Sartén Vudú` sin poder identificarse contra Showdown/PokeAPI, y el efecto atribuido a `Robustez`/Sturdy que no es el real de esa habilidad.
 
-**Resueltos en esta sesión:** idioma de habilidades (§5.2), `meta.json` desincronizado (§5.3), mismatch `predict()`/`vPre()` (§5.1).
+**Retirado de esta lista:** `ReconnectActivity` (§5.8) figuraba como "severidad sin determinar, requiere investigación" cuando §5.8 ya lo había investigado y cerrado como no-bug en la misma pasada — contradicción interna del documento, corregida el 2026-08-03.
+
+**Resueltos:** idioma de habilidades (§5.2), `meta.json` desincronizado (§5.3), mismatch `predict()`/`vPre()` (§5.1), piedras mega apuntando a formas inexistentes (§5.10, parte crítica).
 
 ## 8. Patrón transversal
 

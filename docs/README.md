@@ -27,7 +27,9 @@ Esta carpeta es la fuente de verdad del proyecto. Antes de diseñar o implementa
 
 ## Estado actual
 
-El proyecto completó la **Fase 0 — Estabilización** el 2026-07-31 y está ahora en **Fase 1 — Reducir la fricción crítica de uso** (ver [`roadmap.md`](./roadmap.md)). Los hallazgos de [`audit.md`](./audit.md) que describían comportamiento incorrecto están resueltos, con `validate_data.py` y `tests/run.js` protegiendo contra que se reintroduzcan en silencio.
+El proyecto completó la **Fase 0 — Estabilización** el 2026-07-31 y está en **Fase 1 — Reducir la fricción crítica de uso**, con todo el código escrito y seis vueltas de corrección contra uso real; lo único que falta para cerrarla es jugar un combate completo sin bugs nuevos. La **Fase 2** ya tiene su diseño cerrado ([`inference.md`](./inference.md)) y un plan por sprints en [`roadmap.md`](./roadmap.md), más su primer hito de investigación ya hecho.
+
+`validate_data.py` y `tests/run.js` (80 casos) protegen contra que los bugs resueltos se reintroduzcan en silencio. La deuda técnica viva está priorizada en [`audit.md`](./audit.md) §7 — hoy la más visible en uso es la cobertura incompleta de piedras mega (§5.10).
 
 ## Convención de idioma
 
