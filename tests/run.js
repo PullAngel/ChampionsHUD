@@ -83,6 +83,13 @@ function loadEngine() {
     this.best = best;
     this.topThreats = topThreats;
     this.setOcrTarget = function (v) { OCR_TARGET = v; };
+    this.statIndexOf = statIndexOf;
+    this.megaTargetsMissing = function () {
+      return Object.keys(MEGA).filter(function (k) { return !SPD[MEGA[k][0]]; });
+    };
+    this.megaAlias = megaAlias;
+    this.canMega = canMega;
+    this.S = S;
     this.clusterCards = clusterCards;
     this.parseMovesCard = parseMovesCard;
     this.parseStatsCard = parseStatsCard;
@@ -354,13 +361,52 @@ check("clusterCards() agrupa por posición en una grilla de 2x3", () => {
 });
 
 check("clusterCards() ordena cada card por Y (orden de lectura)", () => {
+  // Grilla 2x3 completa: las 3 líneas de la card 0 llegan desordenadas y
+  // tienen que salir en orden de lectura. Las otras cards existen para que
+  // la detección de filas tenga bandas reales que separar.
   const lines = [
     { t: "segunda", x: 50, y: 80, w: 40, h: 20 },
     { t: "primera", x: 50, y: 10, w: 40, h: 20 },
     { t: "tercera", x: 50, y: 150, w: 40, h: 20 },
+    { t: "b", x: 600, y: 10, w: 40, h: 20 },
+    { t: "c", x: 50, y: 400, w: 40, h: 20 }, { t: "d", x: 600, y: 400, w: 40, h: 20 },
+    { t: "e", x: 50, y: 800, w: 40, h: 20 }, { t: "f", x: 600, y: 800, w: 40, h: 20 },
   ];
-  const cards = E.clusterCards(lines, 1000, 600);
+  const cards = E.clusterCards(lines, 1000, 1000);
   assertEqual(cards[0].map((l) => l.t).join(","), "primera,segunda,tercera");
+  assertEqual(cards[4].map((l) => l.t).join(","), "e", "la fila de abajo no se mezcla con la del medio");
+});
+
+check("clusterCards() manda la fila 3 a las cards 5 y 6 aunque la grilla no ocupe toda la altura", () => {
+  // Bug real: con tercios fijos de la ALTURA DE LA IMAGEN, Archaludon
+  // (y=412 en un contenido que va de 175 a 496) caía en la banda del medio,
+  // y la card 5 se quedaba con su ítem "Leftovers" como primera línea.
+  // Coordenadas tomadas de la captura real de Angel.
+  const card = (name, abil, item, x, y) => [
+    { t: name, x, y, w: 90, h: 18 },
+    { t: abil, x, y: y + 25, w: 90, h: 18 },
+    { t: item, x, y: y + 51, w: 90, h: 18 },
+  ];
+  const lines = [
+    { t: "Team 9", x: 480, y: 62, w: 80, h: 20 },
+    { t: "Wayne6", x: 770, y: 62, w: 80, h: 20 },
+    { t: "Moves & More", x: 495, y: 124, w: 150, h: 20 },
+    { t: "Stats", x: 715, y: 124, w: 60, h: 20 },
+    ...card("Venusaur", "Chlorophyll", "Venusaurite", 245, 175),
+    ...card("Swampert", "Damp", "Swampertite", 705, 175),
+    ...card("Grimmsnarl", "Prankster", "Light Clay", 245, 293),
+    ...card("Pelipper", "Drizzle", "Damp Rock", 705, 293),
+    ...card("Archaludon", "Stamina", "Leftovers", 245, 412),
+    ...card("Hydreigon", "Levitate", "Choice Scarf", 705, 412),
+  ];
+  const cards = E.clusterCards(lines, 1280, 591);
+  const first = (i) => (cards[i][0] ? cards[i][0].t : "(vacía)");
+  assertEqual(first(0), "Venusaur");
+  assertEqual(first(1), "Swampert");
+  assertEqual(first(2), "Grimmsnarl");
+  assertEqual(first(3), "Pelipper");
+  assertEqual(first(4), "Archaludon", "la card 5 tomaba 'Leftovers' (su ítem) como especie");
+  assertEqual(first(5), "Hydreigon", "la card 6 tomaba 'Choice Scarf' (su ítem) como especie");
 });
 
 check("clusterCards() no confunde el nombre de equipo/entrenador con la especie de la tarjeta 1/2", () => {
@@ -452,6 +498,60 @@ check("parseMovesCard() reproduce el caso Aegislash del diagnóstico real de Ang
   assertEqual(r.moveNames.join(","), "Iron Head,Shadow Ball,Wide Guard");
 });
 
+check("pipeline completo: la pantalla real de 6 tarjetas de Angel sale con todos los campos en su lugar", () => {
+  // Reproduce la pantalla "Moves & More" del equipo real de Angel con las
+  // coordenadas de su captura (1280x591). Es el caso que falló tres veces
+  // seguidas en dispositivo: primero por el header, después por las dos
+  // columnas intercaladas, después por la fila de abajo mal ubicada.
+  // Se valida el PARSEO (qué texto va a qué campo), que es lo que se rompía;
+  // la resolución de nombres depende de dex.json, que el sandbox no carga.
+  const LX = 245, LM = 470, RX = 705, RM = 930;
+  const card = (x, xm, y, name, abil, item, moves) => {
+    const out = [
+      { t: name, x, y, w: 100, h: 18 },
+      { t: abil, x, y: y + 25, w: 100, h: 18 },
+      { t: item, x, y: y + 51, w: 100, h: 18 },
+    ];
+    moves.forEach((m, i) => out.push({ t: m, x: xm, y: y + i * 25, w: 110, h: 18 }));
+    return out;
+  };
+  const lines = [
+    { t: "Team 9", x: 480, y: 62, w: 80, h: 20 },
+    { t: "Wayne6", x: 770, y: 62, w: 80, h: 20 },
+    { t: "Moves & More", x: 495, y: 124, w: 150, h: 20 },
+    { t: "Stats", x: 715, y: 124, w: 60, h: 20 },
+    ...card(LX, LM, 175, "Venusaur", "Chlorophyll", "Venusaurite",
+      ["Sludge Bomb", "Protect", "Earth Power", "Giga Drain"]),
+    ...card(RX, RM, 175, "Swampert", "Damp", "Swampertite",
+      ["Wave Crash", "High Horsepower", "Ice Punch", "Protect"]),
+    ...card(LX, LM, 293, "Grimmsnarl", "Prankster", "Light Clay",
+      ["Light Screen", "Reflect", "Scary Face", "Spirit Break"]),
+    ...card(RX, RM, 293, "Pelipper", "Drizzle", "Damp Rock",
+      ["Weather Ball", "Hurricane", "Tailwind", "Wide Guard"]),
+    ...card(LX, LM, 412, "Archaludon", "Stamina", "Leftovers",
+      ["Dragon Pulse", "Flash Cannon", "Electro Shot", "Protect"]),
+    ...card(RX, RM, 412, "Hydreigon", "Levitate", "Choice Scarf",
+      ["Draco Meteor", "Dark Pulse", "Flamethrower", "Earth Power"]),
+  ];
+  const esperado = [
+    ["Venusaur", "Chlorophyll", "Venusaurite", "Sludge Bomb,Protect,Earth Power,Giga Drain"],
+    ["Swampert", "Damp", "Swampertite", "Wave Crash,High Horsepower,Ice Punch,Protect"],
+    ["Grimmsnarl", "Prankster", "Light Clay", "Light Screen,Reflect,Scary Face,Spirit Break"],
+    ["Pelipper", "Drizzle", "Damp Rock", "Weather Ball,Hurricane,Tailwind,Wide Guard"],
+    ["Archaludon", "Stamina", "Leftovers", "Dragon Pulse,Flash Cannon,Electro Shot,Protect"],
+    ["Hydreigon", "Levitate", "Choice Scarf", "Draco Meteor,Dark Pulse,Flamethrower,Earth Power"],
+  ];
+  const cards = E.clusterCards(lines, 1280, 591);
+  cards.forEach((c, i) => {
+    const r = E.parseMovesCard(c);
+    const [dex, abil, item, moves] = esperado[i];
+    assertEqual(r.dexName, dex, `tarjeta ${i + 1}: especie`);
+    assertEqual(r.abilName, abil, `tarjeta ${i + 1}: habilidad`);
+    assertEqual(r.itemName, item, `tarjeta ${i + 1}: ítem`);
+    assertEqual(r.moveNames.join(","), moves, `tarjeta ${i + 1}: movimientos`);
+  });
+});
+
 check("parseMovesCard() cae al orden secuencial si la tarjeta tiene una sola columna", () => {
   const lines = ["Sinistcha", "Hospitality", "Colbur Berry", "Rage Powder"].map((t, i) =>
     ({ t, x: 60, y: 100 + i * 25, w: 90, h: 18 }));
@@ -464,6 +564,60 @@ check("parseMovesCard() cae al orden secuencial si la tarjeta tiene una sola col
 check("stripIconPrefix() también saca un dígito suelto (el número de tarjeta pegado)", () => {
   assertEqual(E.findMove("9 Iron Head"), E.findMove("Iron Head"), "el número de tarjeta no debería romper el match");
   assertEqual(E.findItem("5 Spell Tag"), E.findItem("Spell Tag"));
+});
+
+check("parseStatsCard() se ancla en las etiquetas, con la etiqueta y los números en líneas separadas", () => {
+  // Layout real de la pestaña Stats: etiqueta a la izquierda, stat calculado
+  // y la inversión a su derecha, en dos sub-columnas.
+  const row = (label, val, inv, x, y) => [
+    { t: label, x, y, w: 70, h: 18 },
+    { t: String(val), x: x + 110, y, w: 40, h: 18 },
+    { t: "— " + inv, x: x + 170, y, w: 40, h: 18 },
+  ];
+  const lines = [
+    ...row("HP", 202, 32, 250, 300), ...row("Sp. Atk", 105, 0, 700, 300),
+    ...row("Attack", 128, 32, 250, 326), ...row("Sp. Def", 111, 1, 700, 326),
+    ...row("Defense", 110, 0, 250, 352), ...row("Speed", 121, 30, 700, 352),
+  ];
+  const sp = E.parseStatsCard(lines);
+  assert(sp !== null, "no debería devolver null con el layout real");
+  assertEqual(sp.join(","), "32,32,0,0,1,30", "orden [PS,Atq,Def,AtqEsp,DefEsp,Vel]");
+});
+
+check("parseStatsCard() también lee la etiqueta y los números en una sola línea", () => {
+  const lines = [
+    { t: "HP 202 32", x: 250, y: 300, w: 200, h: 18 },
+    { t: "Sp. Atk 105 0", x: 700, y: 300, w: 200, h: 18 },
+    { t: "Attack 128 32", x: 250, y: 326, w: 200, h: 18 },
+    { t: "Sp. Def 111 1", x: 700, y: 326, w: 200, h: 18 },
+    { t: "Defense 110 0", x: 250, y: 352, w: 200, h: 18 },
+    { t: "Speed 121 30", x: 700, y: 352, w: 200, h: 18 },
+  ];
+  assertEqual(E.parseStatsCard(lines).join(","), "32,32,0,0,1,30");
+});
+
+check("parseStatsCard() no confunde 'Attack' con 'Sp. Atk' ni 'Defense' con 'Sp. Def'", () => {
+  assertEqual(E.statIndexOf("Attack"), 1);
+  assertEqual(E.statIndexOf("Sp. Atk"), 3);
+  assertEqual(E.statIndexOf("Defense"), 2);
+  assertEqual(E.statIndexOf("Sp. Def"), 4);
+  assertEqual(E.statIndexOf("Ataque"), 1, "también en español");
+  assertEqual(E.statIndexOf("Ataque Esp."), 3, "'Ataque' no debe comerse 'Ataque Esp.'");
+  assertEqual(E.statIndexOf("Giga Drain"), -1, "un movimiento no es una etiqueta de stat");
+});
+
+check("parseStatsCard() devuelve null si un valor no es una inversión válida (0–32)", () => {
+  // Si se lee el stat calculado en vez de la inversión, tiene que fallar
+  // ruidosamente en vez de guardar 202 como reparto.
+  const lines = [
+    { t: "HP 202", x: 250, y: 300, w: 100, h: 18 },
+    { t: "Sp. Atk 105", x: 700, y: 300, w: 100, h: 18 },
+    { t: "Attack 128", x: 250, y: 326, w: 100, h: 18 },
+    { t: "Sp. Def 111", x: 700, y: 326, w: 100, h: 18 },
+    { t: "Defense 110", x: 250, y: 352, w: 100, h: 18 },
+    { t: "Speed 121", x: 700, y: 352, w: 100, h: 18 },
+  ];
+  assertEqual(E.parseStatsCard(lines), null);
 });
 
 check("parseStatsCard() separa 2 sub-columnas por X y saca la inversión (último número)", () => {
@@ -525,7 +679,9 @@ check("finishOwnScan() arma un equipo nuevo sin tocar los existentes, y avisa lo
   const html = E.finishOwnScan();
   assertEqual(E.getTeams().length, before + 1, "tiene que sumar un equipo, no reemplazar");
   assert(/no reconozco la especie/.test(html), "debería avisar sobre la card ilegible");
-  assertEqual(E.activeTeam().team.length, 1, "solo Sinistcha se pudo leer");
+  assert(/1 de 6/.test(html), "el resumen cuenta cuántas se leyeron de verdad");
+  assertEqual(E.activeTeam().team.length, 6,
+    "el equipo queda con 6 slots aunque solo se leyera 1: si no, los que fallan no se pueden corregir a mano");
   assertEqual(E.activeTeam().team[0].sp.join(","), "31,0,7,0,28,0");
 });
 
@@ -543,7 +699,8 @@ check("finishOwnScan() con OCR_TARGET='active' actualiza el equipo activo en vez
   E.finishOwnScan();
   assertEqual(E.getTeams().length, before, "no debería sumar un equipo");
   assertEqual(E.getActiveId(), activeId, "el equipo activo sigue siendo el mismo");
-  assertEqual(E.activeTeam().team.length, 1, "pero su contenido se reemplazó por lo escaneado");
+  assertEqual(E.activeTeam().team.length, 6, "sigue teniendo 6 slots");
+  assertEqual(E.S(E.activeTeam().team[0].dex).n, "Sinistcha", "pero el slot 1 se reemplazó por lo escaneado");
   E.setOcrTarget("new"); // no dejar el sandbox en un estado raro
 });
 
@@ -607,6 +764,41 @@ check("findItem() ignora un carácter suelto pegado adelante (ícono de objeto l
   // leyó como "T Choice Scarf".
   assertEqual(E.findItem("T Choice Scarf"), E.findItem("Choice Scarf"), "el prefijo del ícono no debería cambiar el resultado");
   assertEqual(E.findItem("Choice Scarf"), "Pañuelo Elección");
+});
+
+check("findMove() tolera un prefijo de 2 caracteres (ícono + número de tarjeta pegados)", () => {
+  // Caso real del diagnóstico de Angel: "W2 Sludge Bomb". Se testea con
+  // Protect porque Sludge Bomb solo existe con dex.json cargado, y el
+  // sandbox corre con las tablas embebidas — el mecanismo es el mismo.
+  assertEqual(E.findMove("W2 Protect"), E.findMove("Protect"));
+  assertEqual(E.findMove("Protect"), "Protección");
+});
+
+check("findItem() reconoce las piedras mega en inglés aunque la clave esté en español", () => {
+  // Las claves de MEGA son mezcla ("Blastoisita" pero "Swampertite"); el
+  // juego en inglés siempre muestra "-ite".
+  assertEqual(E.megaAlias("Venusaurite"), "Venusaurita");
+  assertEqual(E.megaAlias("Charizardite Y"), "Charizardita Y");
+  assert(E.findItem("Blastoisite") !== null, "debería resolver a la clave en español");
+  assert(E.findItem("Gengarite") !== null);
+});
+
+check("Venusaurite existe y su forma mega es resoluble (faltaba entera en las tablas)", () => {
+  // Venusaur (dex 3) solo está en dex.json, no en la tabla embebida de 56
+  // especies que usa el sandbox — por eso se pasa el dex a mano.
+  const it = E.findItem("Venusaurite");
+  assert(it !== null, "el ítem tiene que existir");
+  const megaDex = E.canMega({ item: it, dex: 3 });
+  assert(megaDex, "Venusaur con Venusaurite tiene que poder megaevolucionar");
+  assert(E.S(megaDex) !== null, "y su forma mega tiene que existir en SPD");
+  assertEqual(E.S(megaDex).n, "Venusaur-Mega");
+});
+
+check("toda entrada de MEGA apunta a una forma que existe en SPD", () => {
+  // Tres entradas (Swampertite, Sablenita, Mawilita) apuntaban a claves
+  // inexistentes: tocar "Megaevolucionado" reventaba en myStat().
+  const faltantes = E.megaTargetsMissing();
+  assertEqual(faltantes.join(", "), "", "estas piedras apuntan a una forma que no existe");
 });
 
 check("stripIconPrefix() no altera nombres reales de una sola palabra", () => {

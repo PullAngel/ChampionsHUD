@@ -277,7 +277,8 @@ const MEGA={
 "Gengarita":[900941,94],"Gyaradosita":[901301,130],"Tyranitarita":[902481,248],
 "Blazikenita":[902571,257],"Salamencita":[903731,373],"Metagrossita":[903761,376],
 "Garchompita":[904451,445],"Lucarita":[904481,448],
-"Swampertite":[901261,260],"Sablenita":[903021,302],"Mawilita":[903031,303]};
+"Swampertite":[901261,260],"Sablenita":[903021,302],"Mawilita":[903031,303],
+"Venusaurite":[990003,3]};
 Object.assign(SPD,{
 900061:["Charizard-Mega Y",78,104,78,159,115,100,"FIR","FLY"],
 900062:["Charizard-Mega X",78,130,111,130,85,100,"FIR","DRA"],
@@ -289,7 +290,17 @@ Object.assign(SPD,{
 903731:["Salamence-Mega",95,145,130,120,90,120,"DRA","FLY"],
 903761:["Metagross-Mega",80,145,150,105,110,110,"STE","PSY"],
 904451:["Garchomp-Mega",108,170,115,120,95,92,"DRA","GRO"],
-904481:["Lucario-Mega",70,145,88,140,70,112,"FIG","STE"]});
+904481:["Lucario-Mega",70,145,88,140,70,112,"FIG","STE"],
+// Estas tres las referenciaba MEGA pero no existían acá: tocar
+// "Megaevolucionado" en un Swampert con Swampertite (el equipo real de
+// Angel) hacía que S() devolviera null y myStat() reventara. Stats sacadas
+// de dex.json, no de memoria.
+901261:["Swampert-Mega",100,150,110,95,110,70,"WAT","GRO"],
+903021:["Sableye-Mega",50,85,125,85,115,20,"DAR","GHO"],
+903031:["Mawile-Mega",50,105,125,55,95,50,"STE","FAI"],
+// Venusaurite faltaba entera en MEGA. Clave en 99xxxx a propósito: loadDex()
+// genera las suyas como 900000+num*10+n y podría pisar una 9000xx.
+990003:["Venusaur-Mega",80,100,123,122,120,80,"GRA","POI"]});
 const S=d=>{const r=SPD[d];return r?{n:r[0],s:[r[1],r[2],r[3],r[4],r[5],r[6]],t:r.slice(7)}:null};
 let DEXN=Object.keys(SPD).map(Number).filter(d=>d<900000).sort((a,b)=>S(a).n.localeCompare(S(b).n));
 /** Piedra equipada válida para esta especie. */
@@ -1149,12 +1160,16 @@ function closestMatch(text,entries){
   return best&&bestD<=tol?best.key:null;
 }
 
-function findSpecies(name){
-  const t=name.trim().toLowerCase();
+function findSpeciesRaw(name){
+  const t=name.toLowerCase();
   const norm=s=>s.toLowerCase().replace(/[^a-z0-9]/g,"");
   return DEXN.find(d=>S(d).n.toLowerCase()===t) ??
     DEXN.find(d=>norm(S(d).n)===norm(t)) ??
     closestMatch(name,DEXN.map(d=>({key:d,label:S(d).n})));
+}
+function findSpecies(name){
+  for(const v of ocrVariants(name)){const r=findSpeciesRaw(v);if(r)return r}
+  return null;
 }
 /** El ícono de tipo/objeto que el juego dibuja pegado al texto, y el número
     grande de orden de la tarjeta (1–6), a veces se leen como un carácter
@@ -1165,24 +1180,49 @@ function findSpecies(name){
     matcheó: ningún movimiento, objeto, habilidad ni especie real empieza con
     un carácter suelto seguido de espacio. */
 const stripIconPrefix=s=>{
-  const m=/^[A-Za-z0-9]\s+(\S.*)$/.exec((s||"").trim());
+  // Hasta 2 caracteres: el ícono solo daba 1 ("O Protect"), pero el número
+  // de tarjeta pegado al ícono da 2 ("W2 Sludge Bomb", caso real de Angel).
+  const m=/^[A-Za-z0-9]{1,2}\s+(\S.*)$/.exec((s||"").trim());
   return m?m[1]:null;
 };
-function findItem(name){
-  const t=name.trim().toLowerCase();
+/** Las claves de MEGA son nombres en español ("Blastoisita", "Gengarita"),
+    con alguna suelta en inglés ("Swampertite") — inconsistencia vieja de la
+    tabla. El OCR lee lo que muestra el juego, que en inglés termina en
+    "-ite". Convertir entre las dos formas evita que la piedra no se
+    reconozca solo por el idioma de la clave. */
+const megaAlias=s=>{
+  const t=String(s||"").trim();
+  let r=t.replace(/ite\b/i,"ita");
+  if(r!==t)return r;
+  r=t.replace(/ita\b/i,"ite");
+  return r!==t?r:null;
+};
+/** Variantes a probar de un texto leído por OCR, de la más literal a la más
+    tolerante. Se resuelven en orden y gana la primera que matchea, así una
+    lectura limpia nunca queda pisada por una interpretación forzada. */
+function ocrVariants(name,extra){
+  const out=[],push=v=>{v=String(v||"").trim();if(v&&!out.includes(v))out.push(v)};
+  push(name);
+  push(stripIconPrefix(name));
+  if(extra)for(const v of out.slice())push(extra(v));
+  return out;
+}
+function findItemRaw(name){
+  const t=name.toLowerCase();
   const hit=IT.find(x=>x[0].toLowerCase()===t||x[1].toLowerCase()===t);
   if(hit)return hit[0];
   const meg=Object.keys(MEGA).find(k=>k.toLowerCase()===t);
   if(meg)return meg;
   const entries=IT.flatMap(x=>[{key:x[0],label:x[0]},{key:x[0],label:x[1]}])
     .concat(Object.keys(MEGA).map(k=>({key:k,label:k})));
-  const direct=closestMatch(name,entries);
-  if(direct)return direct;
-  const stripped=stripIconPrefix(name);
-  return stripped?findItem(stripped):null;
+  return closestMatch(name,entries);
 }
-function findAbility(name){
-  const t=name.trim().toLowerCase();
+function findItem(name){
+  for(const v of ocrVariants(name,megaAlias)){const r=findItemRaw(v);if(r)return r}
+  return null;
+}
+function findAbilityRaw(name){
+  const t=name.toLowerCase();
   for(const slug in ABIL_I18N){
     const r=ABIL_I18N[slug];
     if(r.en.toLowerCase()===t||r.es.toLowerCase()===t)return slug;
@@ -1191,13 +1231,14 @@ function findAbility(name){
   if(ABIL_I18N[s])return s;
   const entries=Object.keys(ABIL_I18N).flatMap(slug=>
     [{key:slug,label:ABIL_I18N[slug].en},{key:slug,label:ABIL_I18N[slug].es}]);
-  const direct=closestMatch(name,entries);
-  if(direct)return direct;
-  const stripped=stripIconPrefix(name);
-  return stripped?findAbility(stripped):null;
+  return closestMatch(name,entries);
 }
-function findMove(name){
-  const t=name.trim().toLowerCase();
+function findAbility(name){
+  for(const v of ocrVariants(name)){const r=findAbilityRaw(v);if(r)return r}
+  return null;
+}
+function findMoveRaw(name){
+  const t=name.toLowerCase();
   if(MV[name])return name;
   const byKey=Object.keys(MV).find(k=>k.toLowerCase()===t);
   if(byKey)return byKey;
@@ -1209,10 +1250,11 @@ function findMove(name){
     const en=MV[k][7];
     return en?[{key:k,label:k},{key:k,label:en}]:[{key:k,label:k}];
   });
-  const direct=closestMatch(name,entries);
-  if(direct)return direct;
-  const stripped=stripIconPrefix(name);
-  return stripped?findMove(stripped):null;
+  return closestMatch(name,entries);
+}
+function findMove(name){
+  for(const v of ocrVariants(name)){const r=findMoveRaw(v);if(r)return r}
+  return null;
 }
 
 /** Parsea el texto pegado. Devuelve {team:[...hasta 6 slots], errors:[...]}
@@ -1304,23 +1346,55 @@ let OCR_TARGET=(()=>{try{return localStorage.getItem("hudOcrTarget")||"new"}catc
     se usan como ancla real de dónde empieza la grilla en vez de una
     fracción fija de la imagen completa. Si no se reconocen (ML Kit no las
     leyó), se cae al comportamiento anterior en vez de romper todo. */
+/** Parte un conjunto de líneas en `n` bandas horizontales cortando por los
+    n-1 saltos verticales más grandes. Las tarjetas están separadas por un
+    hueco visible bastante mayor que el interlineado de adentro de cada una,
+    así que los saltos más grandes son siempre los bordes entre filas. */
+function splitRows(items,n){
+  const sorted=items.slice().sort((a,b)=>a.y-b.y);
+  if(sorted.length<n)return null;
+  const gaps=[];
+  for(let i=1;i<sorted.length;i++)gaps.push({i,d:sorted[i].y-sorted[i-1].y});
+  if(gaps.length<n-1)return null;
+  const cuts=gaps.slice().sort((a,b)=>b.d-a.d).slice(0,n-1).map(g=>g.i).sort((a,b)=>a-b);
+  const bands=[];let prev=0;
+  for(const c of cuts){bands.push(sorted.slice(prev,c));prev=c}
+  bands.push(sorted.slice(prev));
+  return bands;
+}
 function clusterCards(lines,w,h){
   const cards=Array.from({length:6},()=>[]);
   const tabRe=/^(moves\s*&?\s*more|stats)$/i;
-  const all=(lines||[]).filter(l=>l&&l.t&&!tabRe.test(l.t.trim()));
-  const tabs=(lines||[]).filter(l=>l&&l.t&&tabRe.test(l.t.trim()));
+  const src=(lines||[]).filter(l=>l&&l.t&&typeof l.x==="number"&&typeof l.y==="number");
+  const tabs=src.filter(l=>tabRe.test(l.t.trim()));
+  const body=src.filter(l=>!tabRe.test(l.t.trim()));
   const topCut=tabs.length?Math.max(...tabs.map(l=>l.y+(l.h||0))):0;
-  const grid=topCut?all.filter(l=>(l.y+(l.h||0)/2)>topCut):[];
-  const use=grid.length>=6?grid:all;
-  const y0=use===grid?topCut:0;
-  for(const ln of use){
-    if(!w||!h)continue;
-    const gh=h-y0; if(gh<=0)continue;
-    const cx=(ln.x+ln.w/2)/w, cy=Math.max(0,(ln.y+ln.h/2)-y0)/gh;
-    const col=cx<0.5?0:1;
-    const row=cy<1/3?0:cy<2/3?1:2;
-    cards[row*2+col].push(ln);
+  const below=topCut?body.filter(l=>(l.y+(l.h||0)/2)>topCut):[];
+  const use=below.length>=6?below:body;
+  if(!use.length||!w)return cards;
+
+  // Las filas se detectan por los saltos reales entre tarjetas, NO por
+  // tercios de la altura de la imagen. Ese era el bug: la grilla no ocupa
+  // la pantalla entera (hay padding arriba y abajo), así que con tercios
+  // fijos la fila de abajo se corría a la del medio — la especie de la
+  // tarjeta 5 (Archaludon) caía en la banda equivocada y esa tarjeta
+  // terminaba tomando su propio ítem ("Leftovers") como especie.
+  let bands=splitRows(use,3);
+  if(!bands||bands.some(b=>b.length<2)){
+    // Si el corte por saltos no da tres bandas razonables, se reparte en
+    // tercios del CONTENIDO real (primera a última línea), que sigue siendo
+    // muy superior a tercios de la imagen completa.
+    const ys=use.map(l=>l.y+(l.h||0)/2);
+    const y0=Math.min(...ys), span=(Math.max(...ys)-y0)||1;
+    bands=[[],[],[]];
+    for(const ln of use){
+      const t=((ln.y+(ln.h||0)/2)-y0)/span;
+      bands[t<1/3?0:t<2/3?1:2].push(ln);
+    }
   }
+  bands.slice(0,3).forEach((band,row)=>{
+    for(const ln of band)cards[row*2+((ln.x+(ln.w||0)/2)<w/2?0:1)].push(ln);
+  });
   return cards.map(c=>c.slice().sort((a,b)=>a.y-b.y));
 }
 
@@ -1408,25 +1482,79 @@ function groupRows(items){
   }
   return rows;
 }
+/** Etiquetas de cada stat, en el orden del array `sp` [PS,Atq,Def,AtqEsp,
+    DefEsp,Vel]. Las variantes "Sp. Atk"/"Sp. Def" van primero para que
+    "Ataque Esp." no se confunda con "Ataque". Se cubre inglés y español
+    porque el selector de idioma del juego lo elige el usuario (decisión
+    #17) y el OCR lee lo que el juego muestre. */
+const STAT_LABEL_KEYS=[
+  [3,["spatk","spa","atqesp","ataqueesp","atesp"]],
+  [4,["spdef","spd","defesp","defensaesp"]],
+  [0,["hp","ps"]],
+  [1,["attack","atk","ataque"]],
+  [2,["defense","def","defensa"]],
+  [5,["speed","spe","velocidad"]],
+];
+const normStat=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
+/** Qué stat es esta línea, o -1. Acepta que el número venga pegado a la
+    etiqueta ("HP 202 32") pero NO que siga otra letra: así "def" no se come
+    "defense" ni "ataque" se come "ataqueesp". */
+function statIndexOf(text){
+  const nt=normStat(text);
+  if(!nt)return -1;
+  for(const [i,keys] of STAT_LABEL_KEYS)
+    for(const k of keys)
+      if(nt===k||(nt.startsWith(k)&&!/^[a-z]/.test(nt.slice(k.length))))return i;
+  return -1;
+}
+const lastNum=t=>{const m=String(t||"").match(/\d+/g);return m&&m.length?+m[m.length-1]:null};
+
+/** Fase 2 (Stats). Se ancla en las ETIQUETAS de cada stat, no en la posición.
+    La versión anterior era puramente posicional (dos sub-columnas × tres
+    filas) y fallaba entera si el OCR fragmentaba distinto de lo asumido —
+    en la prueba real de Angel no pudo leer el reparto de ninguna de las 6
+    tarjetas. Las etiquetas, en cambio, son texto fijo del juego: se busca
+    "HP"/"Attack"/"Sp. Atk"/…, y de su fila se toma el ÚLTIMO número, que es
+    la inversión (en "177 — 31", el 177 es el stat ya calculado y no sirve).
+    Si las etiquetas no se reconocen, cae al método posicional anterior.
+    Devuelve null si no puede leer los 6 — fallo ruidoso, lo completa la
+    corrección manual, nunca un reparto a medias presentado como bueno. */
 function parseStatsCard(lines){
-  const clean=(lines||[]).filter(l=>l.t&&/\d/.test(l.t));
+  const L=(lines||[]).filter(l=>l&&l.t);
+  if(!L.length)return null;
+  const sp=[null,null,null,null,null,null];
+  for(const ln of L){
+    const i=statIndexOf(ln.t);
+    if(i<0||sp[i]!==null)continue;
+    // La fila entera: la etiqueta más lo que haya a su derecha a la misma
+    // altura. Cubre tanto "HP 202 32" en una línea como "HP" + "202" + "32"
+    // en tres, sin tratarlos como casos distintos.
+    // El barrido CORTA al llegar a la siguiente etiqueta de stat: las dos
+    // sub-columnas comparten altura (HP y Sp. Atk son la misma fila), así
+    // que sin ese corte los valores de la izquierda se llevaban los de la
+    // derecha y las 6 inversiones salían duplicadas.
+    const hh=ln.h||14;
+    const row=L.filter(o=>o!==ln&&Math.abs((o.y||0)-(ln.y||0))<hh*0.7&&(o.x||0)>=(ln.x||0))
+      .sort((a,b)=>(a.x||0)-(b.x||0));
+    const propios=[];
+    for(const o of row){if(statIndexOf(o.t)>=0)break;propios.push(o)}
+    const v=lastNum([ln.t,...propios.map(o=>o.t)].join(" "));
+    if(v!==null)sp[i]=v;
+  }
+  if(sp.every(n=>n!==null&&n>=0&&n<=SP_MAX))return sp;
+
+  // Fallback posicional (el método anterior): dos sub-columnas por el mayor
+  // salto en X, tres filas cada una, último número de cada fila.
+  const clean=L.filter(l=>/\d/.test(l.t));
   if(clean.length<6)return null;
-  // Mismo corte por mayor salto en X que usa parseMovesCard (splitColumns):
-  // si ML Kit fragmenta más líneas de un lado que del otro (ej. "155 — 0"
-  // partido en dos solo en algunas tarjetas), un corte por mediana cae del
-  // lado equivocado y pierde líneas del grupo más chico.
   const cols=splitColumns(clean);
   if(!cols)return null;
   const left=groupRows(cols.left).slice(0,3);
   const right=groupRows(cols.right).slice(0,3);
   if(left.length<3||right.length<3)return null;
-  const rowNum=r=>{
-    const text=r.items.slice().sort((a,b)=>a.x-b.x).map(l=>l.t).join(" ");
-    const nums=text.match(/\d+/g);
-    return nums&&nums.length?+nums[nums.length-1]:null;
-  };
-  const sp=[...left,...right].map(rowNum);
-  return sp.length===6&&sp.every(n=>n!==null&&n>=0&&n<=SP_MAX)?sp:null;
+  const rowNum=r=>lastNum(r.items.slice().sort((a,b)=>a.x-b.x).map(l=>l.t).join(" "));
+  const pos=[...left,...right].map(rowNum);
+  return pos.length===6&&pos.every(n=>n!==null&&n>=0&&n<=SP_MAX)?pos:null;
 }
 
 /** Mergea las dos fases por posición de card (asume la misma grilla de 6 en
@@ -1437,11 +1565,23 @@ function parseStatsCard(lines){
     #body entero y se llevaría puesto cualquier inserción previa). */
 function finishOwnScan(){
   const moves=OCR_DRAFT[0]||[], stats=OCR_DRAFT[1]||[];
+  // Los slots que ya había, para no perderlos si una tarjeta no se pudo leer.
+  const prev=(activeTeam()&&activeTeam().team)||[];
   const errors=[],team=[];
+  let leidos=0;
   for(let i=0;i<6;i++){
     const mv=moves[i]||{}, st=stats[i];
     const dex=mv.dexName?findSpecies(mv.dexName):null;
-    if(!dex){errors.push(`Tarjeta ${i+1}: no reconozco la especie "${mv.dexName||"?"}".`);continue}
+    if(!dex){
+      errors.push(`Tarjeta ${i+1}: no reconozco la especie "${mv.dexName||"?"}".`);
+      // El equipo SIEMPRE queda con 6 slots. Antes se salteaba la tarjeta
+      // ilegible y el equipo quedaba con 4, sin forma de completar los otros
+      // dos a mano — el slot que falla se deja como estaba (o uno vacío) y
+      // se corrige con los selectores de siempre.
+      team.push(prev[i]||slot(DEXN[0]));
+      continue;
+    }
+    leidos++;
     const s=slot(dex),label=S(dex).n;
     if(mv.itemName){const it=findItem(mv.itemName);
       if(it)s.item=it; else errors.push(`${label}: no reconozco el ítem "${mv.itemName}".`)}
@@ -1457,7 +1597,7 @@ function finishOwnScan(){
     if(!canMega(s))s.mega=false;
     team.push(s);
   }
-  if(!team.length)
+  if(!leidos)
     return `<div class="card f"><span class="hd">Captura de equipo</span>
       <div class="msg w">No pude leer ningún Pokémon. Probá de nuevo, con el HUD fuera de las tarjetas.</div></div>`;
   // Dónde va lo leído. Antes siempre creaba un equipo nuevo, y reescanear
@@ -1477,8 +1617,8 @@ function finishOwnScan(){
   B.mpick=0;saveMy();
   return `<div class="card${errors.length?" f":""}"><span class="hd">Captura de equipo<em>${esc(destino)}</em></span>
     <div class="msg${errors.length?" w":""}">${errors.length
-      ?`Cargué ${team.length} de 6, con avisos:<br>${errors.map(esc).join("<br>")}`
-      :`Cargué los ${team.length} sin problemas.`} Revisá y corregí en MÍO si hace falta.</div></div>`;
+      ?`Cargué ${leidos} de 6, con avisos:<br>${errors.map(esc).join("<br>")}`
+      :`Cargué los ${leidos} sin problemas.`} Revisá y corregí en MÍO si hace falta.</div></div>`;
 }
 
 /* ═════ VISTAS ═════ */
@@ -2220,12 +2360,21 @@ window.onOwnScan=function(json){
   if(OCR_PHASE===0){
     OCR_DRAFT[0]=cards.map(parseMovesCard);
     OCR_PHASE=1; render();
-    // Diagnóstico: si esto sigue fallando, esto le dice a Angel EXACTAMENTE
-    // qué leyó ML Kit por tarjeta, en vez de que el fallo quede en la nada.
-    const sample=cards.map((c,i)=>`${i+1}: ${c.slice(0,2).map(l=>l.t).join(" / ")||"(vacía)"}`).join("<br>");
+    // Diagnóstico del paso 1: muestra los campos YA PARSEADOS por tarjeta,
+    // no las líneas crudas. Así se ve de una si cada texto cayó en el campo
+    // que le toca (que es donde estuvo el bug las tres primeras veces) sin
+    // tener que esperar al paso 2 para enterarse.
+    const marca=(t,fn)=>t?(fn(t)?esc(t):`<span style="color:var(--warn)">${esc(t)}?</span>`):"—";
+    const sample=OCR_DRAFT[0].map((d,i)=>{
+      if(!d||!d.dexName)return `${i+1}: <span style="color:var(--warn)">(vacía)</span>`;
+      const mv=(d.moveNames||[]).map(n=>marca(n,findMove)).join(", ")||"—";
+      return `${i+1}: ${marca(d.dexName,findSpecies)} · ${marca(d.abilName,findAbility)}
+        · ${marca(d.itemName,findItem)}<br><s style="opacity:.75">${mv}</s>`;
+    }).join("<br>");
     $("#body").insertAdjacentHTML("afterbegin",
-      `<div class="card"><span class="hd">Leí ${nlines} líneas</span>
-       <div class="msg">${sample}</div></div>`);
+      `<div class="card"><span class="hd">Paso 1 leído<em>${nlines} líneas</em></span>
+       <div class="msg">${sample}</div>
+       <div class="msg" style="margin-top:5px;opacity:.7">Lo marcado con "?" no lo reconocí. Si el orden de los campos está mal, mandame esta pantalla.</div></div>`);
   }else{
     OCR_DRAFT[1]=cards.map(parseStatsCard);
     OCR_PHASE=0;
