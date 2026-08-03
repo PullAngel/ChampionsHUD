@@ -30,6 +30,10 @@ Si en algún momento existe un cliente para otra plataforma, consume el mismo Mo
 
 Detectar patrones propios repetidos entre partidas (por ejemplo, cambios excesivos ante cierto tipo de amenaza) es un análisis batch sobre los event logs ya guardados. No requiere cambios en el Motor de combate; es un consumidor más del log, igual que el resumen post-partida.
 
+Preguntas que este análisis debería poder contestar, para tenerlas anotadas cuando se retome: cuántas veces se subestimó un daño, qué matchups se pierden repetidamente, qué amenazas se suelen ignorar, qué chequeos de velocidad se pasan por alto. También agregados tipo "informe de tus últimas 20 partidas" o "qué revisar de este equipo".
+
+**Sobre usar machine learning para esto: no hace falta y no se va a usar**, salvo que aparezca un problema concreto que las reglas y la estadística no puedan resolver. Todas las preguntas de arriba son consultas de agregación sobre datos ya estructurados (el event log). ML aportaría opacidad justo donde el producto exige explicabilidad (`vision.md`, principio 7) — y el proyecto ya tiene un antecedente de puntaje opaco que no funcionó: `predict()`, ver más abajo. Decidir por reglas y estadística no es una limitación técnica, es la elección correcta para este dominio.
+
 ## Recomendaciones de equipo
 
 Cruzar resultados históricos con debilidades recurrentes para sugerir ajustes de equipo. Importante: esto es distinto de recomendar una jugada dentro de un combate (prohibido, decisión #1) — acá se trata de un análisis fuera de combate, sobre historial propio, y con el mismo cuidado de mostrar razones antes que órdenes.

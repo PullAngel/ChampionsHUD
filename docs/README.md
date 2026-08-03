@@ -9,6 +9,7 @@ Esta carpeta es la fuente de verdad del proyecto. Antes de diseñar o implementa
 | [`vision.md`](./vision.md) | Qué es Champions HUD, qué problema resuelve, qué NO es, filosofía y principios de diseño. Léelo primero. |
 | [`product.md`](./product.md) | Personas, flujo completo de batalla, capas de interfaz (Glance/Peek/Deep), sistema de confianza, anti-patrones. |
 | [`architecture.md`](./architecture.md) | Arquitectura lógica: motor (engine core) + clientes, capas internas, modelo de datos, persistencia offline-first, pipeline de datos de meta (Limitless/Pikalytics), puntos de extensión reservados (licencias, ads). |
+| [`inference.md`](./inference.md) | Modelo de conocimiento: event log, espacio de hipótesis, reglas de inferencia, cadena de evidencia, motor de prioridad. Es el detalle técnico de la Fase 2. |
 | [`decisions.md`](./decisions.md) | Registro de decisiones (estilo ADR). Cuando dos documentos parecen contradecirse, este es el que gana. |
 | [`audit.md`](./audit.md) | Auditoría técnica del estado del código: qué funciona, qué está roto, deuda técnica. |
 | [`roadmap.md`](./roadmap.md) | Fases de desarrollo, en orden, con criterios de salida de cada una. |
@@ -17,7 +18,7 @@ Esta carpeta es la fuente de verdad del proyecto. Antes de diseñar o implementa
 ## Cómo usar esta documentación
 
 **Antes de proponer o implementar una feature nueva**, verificá en este orden:
-1. ¿Está alineada con la filosofía de [`vision.md`](./vision.md)? (en particular: el copiloto informa, nunca decide por el jugador)
+1. ¿Está alineada con la filosofía de [`vision.md`](./vision.md)? (en particular: el copiloto describe la posición y jerarquiza información, pero nunca elige la jugada — ver `decisions.md` #1, #19 y #21, que refinan esa línea en ese orden)
 2. ¿Contradice alguna decisión ya tomada en [`decisions.md`](./decisions.md)?
 3. ¿Dónde vive en la arquitectura de [`architecture.md`](./architecture.md)? Si no encaja en ninguna capa existente, es señal de alarma, no motivo para forzarla.
 4. ¿En qué fase del [`roadmap.md`](./roadmap.md) corresponde? Verificá el estado actual ahí — no asumas que sigue siendo la misma fase que la última vez que se leyó este documento.

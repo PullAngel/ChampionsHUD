@@ -15,9 +15,9 @@ En Pokémon Champions —y en VGC en general— una fracción enorme de las part
 - **No es un Team Builder.** No arma equipos; ayuda a jugar los que ya existen.
 - **No es un motor de recomendación de jugadas.** Esto es lo suficientemente importante como para tener su propia sección.
 
-## El copiloto nunca recomienda una jugada
+## El copiloto describe la posición; la jugada la elegís vos
 
-Esta es la regla más importante del producto y **reemplaza cualquier diseño anterior que rankeara o sugiriera movimientos** (por ejemplo, un modo "compacto" que ordenara los cuatro movimientos propios por conveniencia). Esa clase de feature queda descartada, no pospuesta: contradice la razón de ser del producto.
+Esta es la regla más importante del producto. Su forma exacta se refinó dos veces contra uso real (`decisions.md` #19 y #21) — lo que sigue es la vigente.
 
 El objetivo del copiloto **no es decirte qué hacer**. Es:
 
@@ -25,10 +25,20 @@ El objetivo del copiloto **no es decirte qué hacer**. Es:
 - Mantener memoria del combate completo, algo que ningún jugador humano puede hacer con precisión partido a partido.
 - Eliminar hipótesis incompatibles con la evidencia observada (sets, ítems, habilidades, movimientos restantes del rival).
 - Actualizar automáticamente ese estado de conocimiento a medida que aparece nueva evidencia.
+- **Jerarquizar**: decidir qué información mostrar primero, según lo que más probablemente cambie tu decisión de este turno.
+- **Describir riesgo y consecuencia**: enunciar el estado en que estás y a dónde lleva cada escenario.
 
-**Regla operativa:** si algo se puede resolver con una calculadora de daño y datos conocidos, la app lo hace. Si algo requiere decidir *qué hacer con esa información*, esa decisión es siempre y exclusivamente del jugador. El copiloto puede mostrar la consecuencia de una acción hipotética si el jugador la pide explícitamente ("¿qué pasa si uso X?"), pero nunca la ordena, nunca la resalta como "la mejor", nunca la elige por vos.
+**La línea, en una frase: el copiloto describe la posición, nunca elige la acción.**
 
-Esta regla no es solo filosófica: es la que sostiene la confianza del usuario. Un copiloto que sugiere y se equivoca pierde al usuario en la primera partida. Un copiloto que informa con precisión y deja decidir, no.
+De un lado de la línea (permitido): *"el escenario más peligroso es que su Whimsicott lleve Pañuelo"*, *"este ataque no mata en 3 de 16 tiradas"*, *"si cambia a Incineroar, tu Archaludon queda expuesto"*, *"lo más relevante ahora es el orden de velocidad"*. Todo eso describe hechos, riesgos y consecuencias — información que el jugador no tiene tiempo de derivar solo.
+
+Del otro lado (prohibido): *"la opción más segura es Protect"*, *"conviene sacar a X"*, cualquier ranking de tus movimientos, cualquier etiqueta tipo "MEJOR". Eso ya es elegir por vos.
+
+**Regla operativa:** si algo se puede resolver con una calculadora de daño y datos conocidos, la app lo hace. Si algo requiere decidir *qué hacer con esa información*, esa decisión es siempre y exclusivamente del jugador. El copiloto puede mostrar la consecuencia de una acción hipotética ("¿qué pasa si uso X?"), pero nunca la ordena, nunca la resalta como la mejor, nunca la elige por vos.
+
+**Y toda descripción de riesgo tiene que poder explicarse.** Decir "el escenario más peligroso es X" sin poder mostrar de dónde salió es peor que no decirlo: es pedirle al jugador que confíe en una caja negra. Cada afirmación de este tipo se apoya en evidencia inspeccionable (`inference.md`).
+
+Esta regla no es solo filosófica: es la que sostiene la confianza del usuario. Un copiloto que sugiere jugadas y se equivoca pierde al usuario en la primera partida. Un copiloto que describe la posición con precisión, muestra su razonamiento y deja decidir, no.
 
 ## Filosofía central
 

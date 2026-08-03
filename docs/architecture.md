@@ -60,10 +60,12 @@ El flujo es estrictamente unidireccional: Percepción → Event Log → (Estado 
 | **Motor de Estado** | Estado determinista derivado de hechos: HP visibles, campo activo, contadores, PP | No especula |
 | **Motor de Inferencia** | Mantener, por Pokémon rival, el conjunto de sets/ítems/habilidades/movimientos aún compatibles con la evidencia (eliminación, no ajuste estadístico continuo) | No calcula daño ni decide qué mostrar |
 | **Motor de Cálculo** | Daño y velocidad exactos dado un estado y un set (hipotético o confirmado); agrega sobre el conjunto de hipótesis vigentes | No opina sobre qué set es más probable |
-| **Motor de Insights** | Traducir cambios de estado/creencias a las cinco preguntas del jugador; decidir qué amerita una alerta y qué se queda en silencio | No genera recomendaciones de jugada, nunca |
+| **Motor de Insights** | Traducir cambios de estado/creencias a las cinco preguntas del jugador; **jerarquizar** qué información sube a Glance según relevancia para la decisión del turno; describir riesgos y consecuencias; decidir qué amerita una alerta y qué se queda en silencio | No elige la jugada, nunca (`decisions.md` #21): ordena información y describe la posición, no la acción |
 | **Meta Data Service** | Empaquetar, versionar (por reglamento) y actualizar (semanalmente) los datasets de uso y sets del meta, combinando fuentes externas detrás de un adaptador por fuente (ver §10) | No se consulta en tiempo real durante el combate — todo lo que el motor usa en combate ya está local |
 | **Presentación** | Glance/Peek/Deep, corrección de errores en 1-2 taps, por cliente | No contiene lógica de dominio |
 | **Persistencia** | Guardar event logs de combates y snapshots del meta localmente | No requiere red para operar |
+
+**Estado real vs. diseñado (verificado 2026-08-03).** Esta tabla describe el diseño objetivo. En el código actual, las capas **Event Log**, **Motor de Estado** y **Motor de Inferencia** no están separadas: el estado vive en un objeto mutable (`B` en `hud.html`) y las dos reglas de inferencia que sí existen y funcionan (`solveBulk()` y `observeOrder()`) escriben su conclusión directo sobre el objeto del rival, descartando la evidencia que la produjo. Construir ese sustrato — no reescribir las reglas, que ya andan — es el trabajo central de la Fase 2. La especificación completa está en [`inference.md`](./inference.md); el plan por sprints, en `roadmap.md`.
 
 ## 3. Modelo de datos de alto nivel
 

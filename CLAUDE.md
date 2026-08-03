@@ -16,7 +16,7 @@ Champions HUD es un overlay Android personal/comunitario para Pokémon Champions
 
 ## Principios no negociables
 
-- **El copiloto nunca recomienda una jugada.** Ningún ranking de movimientos, ninguna sugerencia de "la mejor opción". Solo hechos, estimaciones con su evidencia, y consecuencias de una acción hipotética si el usuario la pide explícitamente.
+- **El copiloto describe la posición, nunca elige la acción** (decisiones #1 → #19 → #21, en ese orden de refinamiento). **Permitido:** hechos, estimaciones con su evidencia, jerarquizar qué información mostrar primero, y describir riesgos y consecuencias ("el escenario más peligroso es X", "si cambia a Y, tu Z queda expuesto"). **Prohibido sin excepción:** sugerir o elegir la jugada ("la opción más segura es Protect"), rankear los movimientos propios, cualquier etiqueta tipo "MEJOR". Ante un caso dudoso: ¿la frase enuncia un hecho sobre el estado del juego, o un imperativo sobre qué hacer? Y toda descripción de riesgo tiene que ser inspeccionable — sin cadena de evidencia, no se muestra.
 - **No duplicar lo que el juego ya muestra.** Contadores de Tailwind/clima/pantallas ya están en pantalla nativa del juego; el HUD solo agrega si aporta algo que el juego no da.
 - **Fallo ruidoso, nunca silencioso.** Ante datos inconsistentes o ausentes, reportar explícitamente. Nunca degradar en silencio un resultado y presentarlo como confiable — este es el patrón de bug más repetido en la historia del proyecto (ver `docs/audit.md`).
 - **Motor agnóstico de plataforma.** La lógica de dominio no depende de Android/Kotlin. El overlay Android es el cliente principal, no el motor mismo.
@@ -45,6 +45,7 @@ Ver `docs/audit.md` para el detalle completo. En resumen: la lógica de combate 
 | `docs/vision.md` | Filosofía y principios — leer primero |
 | `docs/product.md` | UX, flujo de batalla, personas |
 | `docs/architecture.md` | Diseño técnico y puntos de extensión |
+| `docs/inference.md` | Modelo de conocimiento: event log, hipótesis, reglas, evidencia, prioridad (Fase 2) |
 | `docs/decisions.md` | Por qué las cosas son como son (ADR) |
 | `docs/audit.md` | Estado real del código |
 | `docs/roadmap.md` | En qué fase estamos y qué sigue |

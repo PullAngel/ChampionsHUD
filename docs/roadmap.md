@@ -95,15 +95,77 @@ Diseño completo en `architecture.md` §10. No es una fase de una sola sesión; 
 2. ~~Traer standings de un torneo real e inspeccionar el subesquema real del campo `decklist`.~~ — **Hecho, 2026-08-01.** Verificado contra 2 jugadores de un torneo real (Reg M-B, 42 jugadores). Esquema documentado en `architecture.md` §10.1.1. Hallazgo importante que cambia lo que se conjeturaba: **no hay reparto de stats/EVs en ninguna muestra** — el `decklist` cubre especie/ítem/habilidad/movimientos/naturaleza, nunca el spread numérico, ni siquiera en torneos con teamlist abierto.
 3. Decidir el modelo de datos exacto de `MetaSnapshot` — **parcialmente resuelto:** el índice de combinaciones parciales (§10.3, pares/tríos de especies) no depende del spread, así que no está bloqueado. "Repartos habituales" (`vFoe()`, hoy alimentado por `meta.json` estimado a mano) es otra historia: se verificó también Pikalytics (2026-08-01, `architecture.md` §10.1.1) y en el mejor caso da una sola mención suelta del build más usado, sin el desglose por porcentaje que sí tienen movimientos/ítems/habilidades — **ninguna de las dos fuentes da hoy una base de repartos con cobertura real.** Queda una decisión de producto pendiente para cuando se retome esta fase (no resuelta acá, no es una ambigüedad para resolver por default técnico): ¿"Repartos habituales" se degrada a mostrar el único build conocido sin desglose, o sigue siendo estimado y marcado explícitamente como tal?
 
-**Resto de la fase (sesiones siguientes):**
-- Script generador completo: descarga con manejo de rate limits, enriquecimiento opcional con Pikalytics, filtrado por regulación, construcción del índice de combinaciones parciales (`architecture.md` §10.3-10.4).
-- Reemplazar el `meta.json` estimado a mano por el artefacto generado, versionado por reglamento (decisión #14).
-- Motor de inferencia rediseñado como eliminación de hipótesis sobre una base de sets conocidos (no ajuste estadístico continuo sobre un prior débil) — más simple, más explicable, y ahora sí alimentado con datos reales.
-- Sistema de confianza en tres niveles (Confirmado / Deducido / Estimado por meta) integrado en Peek y Deep.
-- Modo de importación manual de equipo como funcionalidad de primera clase, no como contingencia (decisión #15).
-- `roleInCore` y `speedControlMajority` como campos del `MetaSnapshot`, desde el diseño inicial del generador — no como parche después. Plan completo en `architecture.md` §10.6, salido de la sesión de asesoría VGC (`decisions.md` #20).
+### Plan por sprints (definido 2026-08-03, `decisions.md` #21/#22/#23)
 
-**Criterio de salida:** la pestaña de predicción de equipo deja de depender de un archivo estimado a mano y cada estimación es explicable con su cadena de evidencia.
+**El reencuadre que ordena todo esto:** revisando el código real se confirmó que el proyecto **ya tiene dos reglas de inferencia funcionando** (`solveBulk()` descarta repartos defensivos incompatibles con un daño observado; `observeOrder()` acota velocidad y deduce Pañuelo Elección solo). Lo que falta no es el motor — es el sustrato: ambas tiran la evidencia que produjo su conclusión, y por eso hoy no se puede explicar una inferencia, deshacerla, ni arrastrarla a un Bo3. Fase 2 construye ese sustrato debajo de lo que ya anda. Especificación completa en [`inference.md`](./inference.md).
+
+**Regla de secuencia, no negociable:** nada se construye encima del sustrato hasta que el sustrato reproduzca el comportamiento actual sin regresiones.
+
+**Prerrequisito — cerrar Fase 1.** Un combate real de punta a punta con la build actual. No es trabajo de código, es la verificación pendiente descrita arriba.
+
+---
+
+**Sprint 2.1 — Event log en paralelo** · *obligatorio*
+- **Objetivo:** registrar todos los hechos de la partida en un log append-only que corre **junto a** `B`, sin reemplazarlo. Riesgo cero por diseño: si el log está mal, nada se rompe todavía.
+- **Archivos:** `hud.html` (sección `ESTADO`), `tests/run.js`.
+- **Datos:** ninguno nuevo. Los tipos de evento del MVP están en `inference.md` §2.
+- **Tests:** cada acción del usuario que hoy muta `B` genera el evento correspondiente; el log sobrevive el ciclo de guardado/carga; `userCorrection` se registra como evento en vez de mutar en silencio.
+- **Aceptación:** para una partida sintética completa, el fold del log reproduce **exactamente** el `B` que produce el código actual. Verificable con un test de igualdad estructural.
+- **Riesgos:** que algún camino de mutación de `B` quede sin instrumentar y el log salga incompleto sin que nadie lo note — mitigación: el test de igualdad de arriba lo detecta.
+- **Terminado:** el test de equivalencia pasa y el log persiste entre sesiones.
+
+**Sprint 2.2 — Espacio de hipótesis + migrar R1/R2** · *obligatorio*
+- **Objetivo:** el primer beneficio visible. Conjuntos de hipótesis con evidencia adjunta (`inference.md` §3), y las dos reglas existentes migradas **sin cambiar su lógica** — solo pasan a declarar qué descartaron y por qué.
+- **Archivos:** `hud.html` (`solveBulk`, `observeOrder`, `vFoe`), `tests/run.js`.
+- **Datos:** ninguno nuevo.
+- **Tests:** los casos actuales de `solveBulk`/`observeOrder` siguen dando el mismo resultado; cada descarte trae su `byEvent`; los tres niveles de confianza se derivan del tamaño del conjunto; deshacer un evento restituye las hipótesis que había descartado.
+- **Aceptación:** en Peek se puede tocar "Pañuelo Elección — Deducido" y ver *"porque se movió antes que tu Sinistcha en el turno 3"*. Y el nivel de confianza sale del conjunto, no de una etiqueta a mano.
+- **Riesgos:** la migración cambia el comportamiento sin querer — mitigación: los tests actuales son la red, se corren antes y después.
+- **Terminado:** cero regresiones, "¿por qué?" contestable para las dos reglas, deshacer funciona.
+
+**Sprint 2.3 — `MetaSnapshot` + adaptador de Limitless** · *obligatorio*
+- **Objetivo:** reemplazar `meta.json` estimado a mano por datos reales de torneo. Es el corazón declarado de esta fase.
+- **Archivos:** `build_meta.py` (hoy un stub, `audit.md` §5.9), `validate_data.py`, `assets/meta.json`.
+- **Datos:** API de Limitless, esquema ya verificado (`architecture.md` §10.1.1). Incluye `roleInCore` y `speedControlMajority` (§10.6) desde el diseño inicial, no como parche.
+- **Tests:** el adaptador produce `MetaSnapshot` válido desde una respuesta real guardada como fixture; `partial: true` cuando una fuente falla; `validate_data.py` cruza el snapshot generado contra las tablas canónicas.
+- **Aceptación:** `meta.json` se genera desde torneos reales, con `regulation`/`generatedAt`/`sourceCounts`, y la app arranca con él sin cambios de código.
+- **Riesgos:** rate limits (mitigación: batch semanal con backoff, ya diseñado en §10.4); que la API cambie de forma (mitigación: fixture + validación que falla ruidosamente).
+- **Terminado:** un comando regenera el dataset completo y la validación pasa.
+
+**Sprint 2.4 — Motor de prioridad** · *obligatorio* (habilita `decisions.md` #21, parte 1)
+- **Objetivo:** que el HUD decida qué información sube a Glance según qué es más probable que cambie la decisión del turno (`inference.md` §10).
+- **Archivos:** `hud.html` (`vCompact`, `vField`), `tests/run.js`.
+- **Datos:** los conjuntos de hipótesis de 2.2 (para saber qué es incierto) y la tabla de peso base de `decisions.md` #20.
+- **Tests:** un rango de daño que abarca KO y no-KO puntúa más alto que uno que da 20%; un orden de velocidad que depende de un solo escenario sube; la fórmula es determinista y auditable.
+- **Aceptación:** Glance muestra primero lo que cruza una frontera de decisión. **Sin ranking de movimientos propios ni etiqueta "MEJOR"** — se ordena información, nunca opciones de juego (#19 sigue vigente).
+- **Riesgos:** repetir el error de `predict()` — un puntaje opaco ajustado a mano que no acierta (ver `future.md`). Mitigación: la fórmula es dos factores, ambos inspeccionables, sin pesos finos.
+- **Terminado:** tests de prioridad pasan y Angel confirma en uso real que el orden le ahorra buscar.
+
+**Sprint 2.5 — Reglas nuevas y datos que faltan** · *recomendable*
+- **Objetivo:** R3 (movimiento visto), R4 (habilidad que no se activó), R5 (objeto activado) — `inference.md` §5. Más PP por movimiento (`architecture.md` §11.2) y descripción de habilidad (§11.1, ya investigada, solo falta escribirla).
+- **Archivos:** `hud.html` (tabla `MV` para PP, registro de reglas), script de datos para PP, `tests/run.js`.
+- **Tests:** una por regla, aisladas, sin DOM ni Android.
+- **Aceptación:** entrar con Intimidate y no ver la bajada descarta las habilidades incompatibles, con su evidencia.
+- **Riesgos:** agregar PP a `MV` toca ~150 entradas — mitigación: script generado + validación, nunca a mano.
+- **Terminado:** las tres reglas con tests, PP visible en Peek.
+
+**Sprint 2.6 — Descripción de riesgo y consecuencia** · *recomendable* (habilita `decisions.md` #21, parte 2)
+- **Objetivo:** enunciar la posición: *"el escenario más peligroso es X"*, *"no mata en 3 de 16 tiradas"*, *"si cambia a X, tu Y queda expuesto"*.
+- **Dependencia dura:** **no se empieza antes de 2.2.** Una descripción de riesgo sin cadena de evidencia inspeccionable es exactamente la caja negra que #21 condiciona explícitamente.
+- **Tests:** cada afirmación de riesgo trae los eventos que la sostienen; ninguna se emite sin evidencia.
+- **Aceptación:** toda frase de riesgo contesta "¿por qué me mostrás esto?".
+- **Riesgos:** que el lenguaje se deslice de describir a sugerir — mitigación: la prueba de #21 (¿enuncia un hecho o un imperativo?) se aplica a cada string nuevo.
+- **Terminado:** descripciones activas, todas explicables, ninguna que diga qué hacer.
+
+---
+
+**Clasificación del resto:**
+- *Futuro (Fase 4)*: memoria de serie Bo3 y Open Team Sheets (R6). El event log de 2.1 los deja casi listos — `inference.md` §9.
+- *Futuro (Fase 4+)*: aprendizaje sobre las partidas propias del usuario, como consumidor del log guardado.
+- *Experimental, sin fecha*: rediseño del algoritmo de predicción de team preview (`future.md`) — depende de tener datos reales de 2.3 antes de volver a tocar sus pesos.
+- *Descartado con justificación*: Evidence Graph explícito, enumeración de repartos de 6 stats, ML, probabilidades numéricas sobre hipótesis — `inference.md` §11.
+
+**Criterio de salida de Fase 2:** la predicción de equipo deja de depender de un archivo estimado a mano, y cada estimación mostrada es explicable con su cadena de evidencia concreta.
 
 **Sesión de asesoría VGC, 2026-08-01/02 (`decisions.md` #20) — análisis y plan, sin código todavía (preferencia explícita de Angel: analizar → documentar → planear → recién después programar).** Investigación externa sobre qué distingue a un jugador de VGC profesional + una sesión larga de preguntas a Angel como jugador real, para no diseñar Fase 2 a ciegas. Conclusiones ya documentadas, listas para retomar cuando se pase a código:
 - `architecture.md` §10.6 — dos campos nuevos requeridos del `MetaSnapshot` (arriba).
@@ -120,8 +182,8 @@ Diseño completo en `architecture.md` §10. No es una fase de una sola sesión; 
 ## Fase 4 — Memoria y análisis post-combate
 
 - Resumen post-partida construido sobre el event log: qué acertó y qué falló el modelo, qué información se reveló de más.
-- Modo serie (Bo3) con persistencia de creencias confirmadas entre juegos (decisión #9).
-- Soporte para Open Team Sheets como un tipo de evento más (colapsa hipótesis a certeza desde el inicio del combate) — sin requerir ningún cambio en el motor de inferencia.
+- Modo serie (Bo3) con persistencia de creencias confirmadas entre juegos (decisión #9). **El event log del Sprint 2.1 lo deja casi listo:** al empezar el juego 2 se inyectan como eventos iniciales las hipótesis `confirmed` del juego 1; lo que solo estaba "vivo" no se arrastra, porque el rival puede traer otros 4. Esa distinción — arrastrar hechos, no suposiciones — es exactamente lo que el modelo de tres niveles permite expresar y el estado mutable de hoy no (`inference.md` §9).
+- Soporte para Open Team Sheets como un tipo de evento más (regla R6 en `inference.md` §5: colapsa hipótesis a certeza desde el inicio del combate) — sin requerir ningún cambio en el motor de inferencia.
 
 **Criterio de salida:** un jugador puede repasar una serie completa y entender qué patrones propios está repitiendo.
 

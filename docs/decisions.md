@@ -8,7 +8,7 @@ Formato: contexto → decisión → consecuencias → estado. Cuando un document
 **Contexto:** un diseño anterior incluía un modo "compacto" que ordenaba los cuatro movimientos propios por conveniencia — funcionalmente un recomendador, en contradicción directa con la filosofía de "nunca jugar por el usuario".
 **Decisión:** el producto informa (hechos, estimaciones, eliminación de hipótesis, consecuencias de una acción hipotética si se pide explícitamente) pero jamás rankea, sugiere o resalta una jugada como mejor que otra.
 **Consecuencias:** cualquier feature futura que se parezca a un ranking de acciones se descarta en revisión de diseño, no se implementa "a modo de prueba".
-**Estado:** Aceptada. **Supersede** el diseño previo de modo compacto/`suggest()`.
+**Estado:** Aceptada, **refinada dos veces — leer junto con #19 y #21, que son la forma vigente.** El núcleo (no rankear ni sugerir una jugada) nunca se revirtió. #19 aclaró que mostrar el resultado calculado de cada opción es información, no recomendación. #21 amplió a jerarquizar información y describir riesgos/consecuencias, manteniendo prohibido elegir la acción. **Supersede** el diseño previo de modo compacto/`suggest()`.
 
 ---
 
@@ -169,3 +169,40 @@ La alternativa sin ese riesgo — mantener el código fuente dividido en archivo
 6. **Resumen post-combate (Fase 4) puede esperar**, confirmado por Angel, pero con una nota de contexto que vale la pena preservar: incluso jugadores profesionales siguen prefiriendo Pokémon Showdown antes que el juego oficial en parte porque ahí la información es más fácil de acceder — valida el objetivo central de `vision.md` (el HUD existe para cerrar esa brecha de acceso a información dentro del juego real), no es una prioridad de feature en sí misma.
 **Decisión:** Fase 2 (`architecture.md` §10, `roadmap.md`) incorpora los campos de rol-por-core y bandera de control de velocidad mayoritario como parte del `MetaSnapshot`, no como extensión posterior. La descripción de habilidad se construye ya, fuera del pipeline de meta. El PP por movimiento queda especificado pero no construido en esta sesión.
 **Estado:** Aceptada. Ver `product.md` (Peek), `architecture.md` §10, `roadmap.md` Fase 1/Fase 2.
+
+---
+
+### 21. Segundo matiz a la decisión #1: el copiloto describe la posición, nunca elige la acción
+**Contexto:** Angel trajo una propuesta de diseño (elaborada con ayuda de ChatGPT, que no conocía la historia del proyecto) para una capa avanzada de datos e inferencia. Un punto de esa propuesta decía explícitamente *"NO existe una prohibición absoluta de recomendar"*, y habilitaba al HUD a "sugerir una línea de juego" o marcar la "opción más segura". Eso contradice frontalmente la sección más enfática de `vision.md`, la lista de principios no negociables de `CLAUDE.md`, y las decisiones #1/#19. No se aplicó por defecto: se le presentó a Angel la contradicción con tres opciones concretas y eligió la intermedia.
+**Decisión:** se amplía el alcance del copiloto en dos direcciones, y solo esas dos:
+1. **Jerarquizar información.** El HUD decide *qué mostrar primero* según qué dato es más probable que cambie la decisión del turno. Ordenar información no es recomendar una jugada.
+2. **Describir riesgo y consecuencia.** El HUD puede enunciar el estado y a dónde lleva cada escenario: *"el escenario más peligroso es que lleve Pañuelo"*, *"este ataque no mata en 3 de 16 tiradas"*, *"si cambia a X, tu Y queda expuesto"*.
+
+Lo que **sigue prohibido, sin excepción**: elegir o sugerir la acción a tomar (*"la opción más segura es Protect"*, *"conviene sacar a X"*), rankear los movimientos propios, o cualquier etiqueta de jerarquía tipo "MEJOR" (esto último ya lo fijaba #19 y no se toca).
+
+**La línea operativa, en una frase: describir la posición sí, elegir la acción no.** Ante un caso dudoso, la pregunta es si la frase enuncia un hecho sobre el estado del juego o un imperativo sobre qué hacer.
+
+**Condición inseparable:** toda descripción de riesgo tiene que ser inspeccionable. Si el HUD dice "el escenario más peligroso es X", tiene que poder contestar "¿por qué?" con la evidencia concreta. Sin eso, esta ampliación se convierte en la caja negra que #1 existía para evitar — la explicabilidad no es un extra de esta decisión, es lo que la hace admisible. Técnicamente esto depende del sustrato de `inference.md` (#22): **no se implementa ninguna descripción de riesgo antes de que exista la cadena de evidencia que la sostenga.**
+**Consecuencias:** `vision.md` cambia de título y contenido en su sección central (de "nunca recomienda una jugada" a "describe la posición; la jugada la elegís vos"). `product.md` incorpora el motor de prioridad como el criterio de qué entra en Glance/Peek/Deep. `architecture.md` §2 amplía la responsabilidad del Motor de Insights. Las decisiones #1 y #19 se mantienen vigentes en todo lo demás — esta las ajusta, no las revierte, igual que hizo #19 en su momento.
+**Estado:** Aceptada, 2026-08-03, con elección explícita de Angel entre tres alcances posibles. Ver `vision.md`, `product.md`, `inference.md` §10.
+
+---
+
+### 22. El trabajo de inferencia es construir el sustrato, no el motor — y sin Evidence Graph explícito
+**Contexto:** la propuesta de diseño asumía que había que construir un sistema de inferencia desde cero, e incluía un *Evidence Graph* (nodos de evento, nodos de hipótesis, aristas) como entidad de primera clase. Antes de aceptar nada se revisó el código real, y el diagnóstico resultó distinto: **el proyecto ya tiene dos reglas de inferencia funcionando.** `solveBulk()` enumera repartos defensivos compatibles con un daño observado y descarta el resto; `observeOrder()` acota velocidad por orden observado y deduce Pañuelo Elección por sí solo cuando el piso de velocidad supera el máximo alcanzable sin objeto. Lo que falta no son las reglas: es el sustrato debajo. Ambas escriben su conclusión directo sobre el objeto mutable del rival (`f.spdMin`, `f.itemSure=true`) y **tiran la evidencia**, por lo que hoy es imposible explicar una inferencia, deshacerla si el usuario cargó mal un dato, o arrastrarla al juego 2 de un Bo3.
+**Decisión:** el trabajo de Fase 2 se define como **construir el event log y el espacio de hipótesis debajo de las reglas que ya funcionan**, migrarlas sin cambiar su comportamiento, y recién después agregar reglas nuevas. Tres definiciones concretas:
+1. **Event log append-only como fuente de verdad**, con `B` pasando a ser una vista derivada. Migración en paralelo: el log corre junto a `B` sin reemplazarlo hasta que se verifique que reproduce el estado actual sin regresiones.
+2. **Sin Evidence Graph como estructura propia.** Un campo `byEvent` en cada hipótesis descartada/confirmada, más el log indexado por `id`, ya *son* el grafo — expresado como referencias en vez de una estructura paralela que hay que mantener sincronizada. Se pierde la consulta inversa directa ("qué depende del evento 17"), que con decenas de eventos por partida se resuelve con un barrido irrelevante en costo. Regla de oro del proyecto: más robusto y mantenible le gana a más sofisticado.
+3. **Conjuntos de hipótesis por eje, no repartos completos.** No se enumera el producto cartesiano de las 6 estadísticas (cientos de miles de combinaciones, inviable en un WebView bajo reloj); se mantienen rangos por eje (velocidad, resistencia), que es lo que las reglas reales necesitan y lo que el código ya hace.
+
+**Beneficio de diseño no buscado pero valioso:** los tres niveles de confianza de `product.md` dejan de ser etiquetas mantenidas a mano y pasan a derivarse del tamaño del conjunto de hipótesis vivas (uno solo → Deducido, varios → Estimado, ninguno → Contradicción). Eso elimina por construcción una instancia de la familia de bugs de `audit.md` §8 (dos representaciones de lo mismo que se desincronizan).
+**Consecuencias:** se crea `docs/inference.md` como especificación detallada. `architecture.md` §2 documenta explícitamente la brecha entre las capas diseñadas y el código real. La Fase 2 del roadmap se reestructura en sprints con el sustrato primero. No se reescribe `solveBulk()` ni `observeOrder()`: se migran conservando su lógica.
+**Estado:** Aceptada, 2026-08-03. Ver `inference.md` (completo), `architecture.md` §2, `roadmap.md` Fase 2.
+
+---
+
+### 23. El Motor consume `MetaSnapshot` y nada más — cada fuente externa vive detrás de su adaptador
+**Contexto:** ya estaba implícito en `architecture.md` §10.4, pero nunca se fijó como decisión. Con Fase 2 a punto de traer datos reales de Limitless y Pikalytics, conviene explicitarlo antes de que aparezca el primer atajo que acople el dominio a una fuente concreta.
+**Decisión:** ningún módulo del Motor conoce Limitless, Pikalytics ni ninguna fuente futura. Todas producen el mismo formato interno (`MetaSnapshot`, `architecture.md` §3 y §10.6) a través de un adaptador por fuente, y el Motor consume únicamente ese formato. Corolario que vale la pena escribir porque es el que se viola primero bajo presión: **un prior de meta nunca descarta una hipótesis, solo ordena las que siguen vivas.** Que un ítem sea raro en el formato no lo hace imposible en esta partida; tratarlo como imposible sería fabricar certeza — exactamente lo que prohíbe el principio de confianza calibrada de `vision.md`.
+**Consecuencias:** agregar o reemplazar una fuente es escribir un adaptador, sin tocar dominio ni modelo de datos. Si una fuente desaparece (riesgo real y ya identificado en `architecture.md` §10.5), el impacto queda contenido. La separación de los tres niveles de conocimiento — hecho observado / inferencia / prior de meta — es la que hace que esto sea verificable y no solo una intención (`inference.md` §1).
+**Estado:** Aceptada, 2026-08-03. Formaliza lo que `architecture.md` §10.4 ya describía. Ver `inference.md` §7.

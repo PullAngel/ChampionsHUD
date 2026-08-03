@@ -40,12 +40,19 @@ Toda la interfaz se organiza alrededor de estas cinco preguntas. Si un dato no r
 
 Tres niveles de profundidad, un gesto entre cada uno.
 
+**Qué entra en cada capa lo decide el motor de prioridad, no una lista fija.** Desde `decisions.md` #21, el HUD jerarquiza: calcula qué información es más probable que cambie la decisión de *este* turno y la sube a Glance; el resto baja a Peek y Deep. El criterio no es la importancia abstracta del dato sino si **cruza una frontera de decisión** — un cálculo que da 20% es información, uno que da 47–52% contra un rival al 50% de vida es decisivo. Detalle del cálculo en [`inference.md`](./inference.md) §10.
+
+Jerarquizar información **no es recomendar una jugada**: se ordena qué mirar, nunca qué hacer. Sigue sin haber ranking de movimientos propios ni etiqueta "MEJOR" (`decisions.md` #19).
+
+El orden de peso base salió de la sesión de asesoría VGC (`decisions.md` #20): orden de velocidad crítico › rango de KO › amenaza entrante › posibilidad de Protect/prioridad › back probable › el resto.
+
 ### Glance (siempre visible)
 
 Legible en menos de un segundo, en visión periférica mientras se mira el juego. Contiene únicamente:
 
 - Orden de velocidad estimado del turno actual.
 - La alerta activa más relevante, si existe una.
+- El dato de mayor relevancia calculada del turno, cuando cruza una frontera de decisión.
 
 **Importante:** Glance no repite contadores que Pokémon Champions ya muestra correctamente en pantalla (Tailwind, clima, pantallas, Trick Room, etc.). Repetir esa información es ruido visual sin valor. Un dato de campo solo aparece en el HUD cuando **agrega algo que el juego no muestra** — por ejemplo, cruzar la duración restante de un efecto con una estimación oculta ("le quedan 2 turnos de Tailwind y todavía no reveló su Pokémon más rápido") o señalar una interacción no obvia entre varios efectos simultáneos. Si hay duda sobre si algo agrega valor, la respuesta por defecto es no mostrarlo.
 
@@ -77,8 +84,11 @@ Nunca se muestran porcentajes de probabilidad sueltos ("68% Choice Specs") porqu
 - **✔ Confirmado** — observado directamente (ítem revelado por Knock Off, habilidad activada, movimiento usado).
 - **◆ Deducido** — descartado por eliminación a partir de evidencia ("superó en velocidad a un Pokémon que solo es posible con un ítem que aumenta la velocidad → los spreads lentos quedan descartados").
 - **○ Estimado por meta** — sin evidencia propia todavía, solo lo más común en los datos de uso disponibles.
+- **⚠ Contradicción** — la evidencia no es compatible con ninguna posibilidad conocida. No se resuelve relajando el filtro en silencio: se muestra y se ofrece deshacer.
 
-Cada estimación es expandible a la evidencia puntual que la sostiene. Cuando la evidencia contradice todos los sets conocidos, el sistema lo dice explícitamente ("fuera de lo esperado por el meta — confianza baja") en lugar de forzar un ajuste. Ver también el principio de fallo ruidoso en `vision.md`.
+Estos niveles **no se etiquetan a mano**: se derivan del tamaño del conjunto de hipótesis vivas de cada dato (uno solo → Deducido, varios → Estimado, ninguno → Contradicción). Ver [`inference.md`](./inference.md) §3.1 — que el vocabulario de producto salga del modelo de datos, y no de una etiqueta paralela que hay que acordarse de actualizar, es lo que evita que se desincronicen.
+
+Cada estimación es expandible a la evidencia puntual que la sostiene: qué evento la produjo y qué regla se aplicó. Esto vale también para las descripciones de riesgo que habilita `decisions.md` #21 — si el HUD dice "el escenario más peligroso es X", tiene que poder contestar "¿por qué me estás mostrando esto?". Cuando la evidencia contradice todos los sets conocidos, el sistema lo dice explícitamente en lugar de forzar un ajuste. Ver también el principio de fallo ruidoso en `vision.md`.
 
 ## Anti-patrones prohibidos
 
@@ -87,5 +97,5 @@ Cada estimación es expandible a la evidencia puntual que la sostiene. Cuando la
 - Diálogos de confirmación durante el combate.
 - Cualquier elemento que no pueda minimizarse o moverse en cualquier momento.
 - Sonido por defecto.
-- Cualquier variante de "el mejor movimiento es X" (ver `vision.md`, "El copiloto nunca recomienda una jugada").
+- Cualquier variante de "el mejor movimiento es X", o cualquier frase que le diga al jugador qué hacer en vez de describir la posición (ver `vision.md`, "El copiloto describe la posición; la jugada la elegís vos", y `decisions.md` #21).
 - Repetir en el HUD información que el juego ya muestra sin agregar valor.
