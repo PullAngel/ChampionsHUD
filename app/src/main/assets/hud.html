@@ -1447,7 +1447,13 @@ function parseMovesCard(lines){
   // veces se leen como texto) sin arriesgarse a sacar un nombre real.
   const clean=(lines||[]).filter(l=>l.t&&l.t.trim().length>1&&/[a-zA-Z]/.test(l.t));
   const byY=a=>a.slice().sort((x,y)=>x.y-y.y).map(l=>l.t);
-  const cols=splitColumns(clean);
+  // El hueco entre columnas tiene que ser grande de verdad. Sin este piso,
+  // una indentación chica (el ícono del ítem corre su línea unos píxeles)
+  // se tomaba como separación de columnas y partía la columna izquierda al
+  // medio. Se escala con la altura del texto para no depender de la
+  // resolución de la captura.
+  const alto=Math.max(14,...clean.map(l=>l.h||0));
+  const cols=splitColumns(clean,alto*2.5);
   if(cols&&cols.left.length&&cols.right.length){
     const L=byY(cols.left), R=byY(cols.right);
     return {dexName:L[0]||null, abilName:L[1]||null, itemName:L[2]||null,

@@ -561,6 +561,22 @@ check("parseMovesCard() cae al orden secuencial si la tarjeta tiene una sola col
   assertEqual(r.itemName, "Colbur Berry");
 });
 
+check("parseMovesCard() no confunde una indentación chica con una separación de columnas", () => {
+  // El ícono del ítem corre su línea unos píxeles. Sin un piso para el
+  // hueco, ese desplazamiento se tomaba como borde de columna y partía la
+  // columna izquierda: el ítem terminaba como movimiento.
+  const lines = [
+    { t: "Sinistcha", x: 245, y: 175, w: 90, h: 18 },
+    { t: "Hospitality", x: 252, y: 200, w: 90, h: 18 },
+    { t: "Colbur Berry", x: 264, y: 226, w: 95, h: 18 },
+  ];
+  const r = E.parseMovesCard(lines);
+  assertEqual(r.dexName, "Sinistcha");
+  assertEqual(r.abilName, "Hospitality");
+  assertEqual(r.itemName, "Colbur Berry", "el ítem no debe irse a la columna de movimientos");
+  assertEqual(r.moveNames.length, 0);
+});
+
 check("stripIconPrefix() también saca un dígito suelto (el número de tarjeta pegado)", () => {
   assertEqual(E.findMove("9 Iron Head"), E.findMove("Iron Head"), "el número de tarjeta no debería romper el match");
   assertEqual(E.findItem("5 Spell Tag"), E.findItem("Spell Tag"));
