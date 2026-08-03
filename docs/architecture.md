@@ -231,7 +231,7 @@ Salieron de la misma sesión (`decisions.md` #20), pero a diferencia de §10.6 n
 - **Cobertura confirmada: 201/201 habilidades encontradas**, incluidas las propias de Champions que no existen en los juegos principales (`eelevate`, `firemane`, `dragonize`, `megasol`, `hungerswitch`, `spicyspray`, `supersweetsyrup`, `supremeoverlord`, `piercingdrill`) — PokeAPI ya tiene estos datos cargados. No hay que prever un fallback de "sin descripción", el caso no aparece hoy (sí conviene que el código lo tolere igual, por las dudas de que la cobertura cambie).
 - Solo en inglés — no se tradujo a español porque no es información primordial (Angel) y la cobertura de `effect_entries` en español de PokeAPI es más floja para habilidades nuevas; mostrarla en inglés siempre es consistente con cómo ya se maneja el resto de los datos crudos del juego (decisión #7).
 
-### 11.2 Seguimiento de PP en movimientos clave (Peek/Campo)
+### 11.2 Seguimiento de PP de todos los movimientos (Peek/Campo)
 
 **Qué falta:** `product.md` ya prometía esto en la definición original de Peek y nunca se construyó (brecha real, confirmada por Angel: "muy pocas veces lo cuento... o cuando ya estamos en late game y no puedo recordar con precisión", preguntas 3 y 4).
 

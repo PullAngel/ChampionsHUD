@@ -58,7 +58,7 @@ Legible en menos de un segundo, en visión periférica mientras se mira el juego
 
 ### Peek (un tap)
 
-Panel expandido del rival activo: sets probables (con su estado de confianza), movimientos revelados vs. probables, rangos de daño relevantes contra el Pokémon activo propio, PP de movimientos clave (en particular movimientos como Protect, donde el conteo cambia decisiones — confirmado como brecha real por Angel: "muy pocas veces lo cuento... o cuando ya estamos en late game y no puedo recordar con precisión"; ver `roadmap.md`, todavía no construido).
+Panel expandido del rival activo: sets probables (con su estado de confianza), movimientos revelados vs. probables, rangos de daño relevantes contra el Pokémon activo propio, y el PP restante de **todos** los movimientos revelados (confirmado como brecha real por Angel: *"muy pocas veces lo cuento... o cuando ya estamos en late game y no puedo recordar con precisión"*; el alcance completo — no solo los movimientos "clave" — lo decidió él, ver `decisions.md` #20. Todavía no construido, Sprint 2.5 en `roadmap.md`).
 
 Descripción de la habilidad, expandible/secundaria — no aparece en el primer vistazo (no responde ninguna de las cinco preguntas de arriba por sí sola), pero está a un tap si hace falta consultarla. Angel, al ser consultado: *"no es información primordial, pero sería genial que la pueda dar si la necesito"*.
 

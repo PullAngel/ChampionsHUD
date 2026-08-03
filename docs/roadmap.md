@@ -186,7 +186,7 @@ Diseño completo en `architecture.md` §10. No es una fase de una sola sesión; 
 **Sesión de asesoría VGC, 2026-08-01/02 (`decisions.md` #20) — análisis y plan, sin código todavía (preferencia explícita de Angel: analizar → documentar → planear → recién después programar).** Investigación externa sobre qué distingue a un jugador de VGC profesional + una sesión larga de preguntas a Angel como jugador real, para no diseñar Fase 2 a ciegas. Conclusiones ya documentadas, listas para retomar cuando se pase a código:
 - `architecture.md` §10.6 — dos campos nuevos requeridos del `MetaSnapshot` (arriba).
 - `architecture.md` §11.1 — descripción de habilidad expandible en Peek. Fuente y método ya verificados end-to-end (PokeAPI, 201/201 habilidades encontradas, incluidas las propias de Champions) — falta solo escribir el código, no falta investigar nada más.
-- `architecture.md` §11.2 — seguimiento de PP en movimientos clave. Confirmado como brecha real (`product.md` lo prometía desde el principio y nunca se construyó). Necesita agregar PP máximo a la tabla `MV` primero (dato nuevo, ~150+ movimientos) antes de tocar la UI — plan completo en la sección, no se arrancó por el tamaño de esa migración de datos.
+- `architecture.md` §11.2 — seguimiento de PP de **todos** los movimientos (alcance decidido por Angel el 2026-08-03). Confirmado como brecha real (`product.md` lo prometía desde el principio y nunca se construyó). Necesita agregar PP máximo a la tabla `MV` primero (dato nuevo, ~150+ movimientos) antes de tocar la UI — plan completo en la sección, no se arrancó por el tamaño de esa migración de datos.
 
 ## Fase 3 — Formalizar la separación Motor / Cliente
 
