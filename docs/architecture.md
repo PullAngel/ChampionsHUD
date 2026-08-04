@@ -216,28 +216,25 @@ Estos tres campos se muestran en Rival/Previa como **tags informativos con su ni
 
 **No implementado todavía** — depende del script generador completo de §10.4, que todavía no existe. Documentado acá para que cuando se construya el generador, estos campos salgan desde el diseño inicial y no como un parche after-the-fact.
 
-## 11. Dos features chicas, independientes del pipeline de meta — planeadas, no implementadas
+## 11. Dos features chicas, independientes del pipeline de meta — ~~planeadas~~ **HECHAS, 2026-08-03**
 
-Salieron de la misma sesión (`decisions.md` #20), pero a diferencia de §10.6 no dependen del script generador de Fase 2: se pueden construir en cualquier momento, con datos que ya están disponibles hoy. Quedan documentadas y no implementadas a propósito — Angel prefiere separar la etapa de análisis/documentación/plan de la de escribir código, para no quemar ventana de contexto en cambios que todavía no se decidió hacer ahora mismo.
+Salieron de la sesión de asesoría VGC (`decisions.md` #20). Documentadas primero y no implementadas a propósito (Angel prefiere separar análisis/documentación/plan de escribir código); implementadas después, en la sesión de Fase 2 (sprint 2.5), una vez que ya había plan aprobado y tokens para ejecutarlo.
 
-### 11.1 Descripción de habilidad expandible (Peek)
+### 11.1 Descripción de habilidad expandible (Peek) — **HECHO**
 
-**Qué falta:** una tabla `ABIL_DESC` (slug → texto en inglés) en `hud.html`, al lado de `ABIL_I18N` (línea ~485). Se muestra en Peek (`vFoe()`) como texto secundario/expandible, nunca en Glance (`product.md`, regla de qué entra en el primer vistazo) — Angel: "no es información primordial, pero sería genial que la pueda dar si la necesito" (pregunta 5).
+**Implementado tal cual estaba planeado**, sin sorpresas: `ABIL_DESC` (slug → texto en inglés, 201/201 habilidades incluidas las propias de Champions) vive al lado de `ABIL_I18N` en `hud.html`. Se muestra en la fila "Habilidad" de `vFoe()` (Peek) al tocarla — mismo mecanismo `whyRow()` que ya mostraba la cadena de evidencia (sprint 2.2), extendido para combinar evidencia **y** descripción estática cuando hay las dos, o mostrar solo la que corresponda. No aparece en Glance.
 
-**Fuente y método, ya verificados end-to-end (2026-08-02) — no hace falta re-investigar, solo re-ejecutar:**
+**Fuente y método real, usado tal cual estaba verificado desde el 2026-08-02:**
 - PokeAPI (`https://pokeapi.co/api/v2/ability/<slug-con-guiones>`) — mismo origen que ya generó `ABIL_I18N` (decisión #7).
 - El slug de la API se arma a partir del **nombre en inglés ya guardado en `ABIL_I18N[x].en`** (ej. `"Armor Tail"` → `armor-tail`), no del slug interno de una palabra (`armortail`) — el slug interno no tiene los espacios que hacían falta para reconstruir el separador, es un callejón sin salida para este propósito.
 - Campo a extraer: `effect_entries` con `language.name === "en"`, tomar `short_effect`.
 - **Cobertura confirmada: 201/201 habilidades encontradas**, incluidas las propias de Champions que no existen en los juegos principales (`eelevate`, `firemane`, `dragonize`, `megasol`, `hungerswitch`, `spicyspray`, `supersweetsyrup`, `supremeoverlord`, `piercingdrill`) — PokeAPI ya tiene estos datos cargados. No hay que prever un fallback de "sin descripción", el caso no aparece hoy (sí conviene que el código lo tolere igual, por las dudas de que la cobertura cambie).
 - Solo en inglés — no se tradujo a español porque no es información primordial (Angel) y la cobertura de `effect_entries` en español de PokeAPI es más floja para habilidades nuevas; mostrarla en inglés siempre es consistente con cómo ya se maneja el resto de los datos crudos del juego (decisión #7).
 
-### 11.2 Seguimiento de PP de todos los movimientos (Peek/Campo)
+### 11.2 Seguimiento de PP de todos los movimientos (Peek/Campo) — **HECHO**
 
-**Qué falta:** `product.md` ya prometía esto en la definición original de Peek y nunca se construyó (brecha real, confirmada por Angel: "muy pocas veces lo cuento... o cuando ya estamos en late game y no puedo recordar con precisión", preguntas 3 y 4).
+`product.md` ya prometía esto en la definición original de Peek y nunca se había construido (brecha real, confirmada por Angel: "muy pocas veces lo cuento... o cuando ya estamos en late game y no puedo recordar con precisión"). El dato que faltaba (PP máximo por movimiento) salió de `build_dex.py` — Showdown's `moves.json` ya trae el campo `pp` directo, así que fue agregar un índice a `mv()` y a `MV[m.n]` en `loadDex()`, sin necesidad de una fuente nueva.
 
-**Por qué no se hizo en la misma sesión que 11.1:** a diferencia de la descripción de habilidad, esto necesita un dato nuevo que hoy no existe en ningún lado del proyecto — PP máximo por movimiento. La tabla `MV` (`hud.html`, línea ~364) no tiene ese campo (`mv(k)` expone `p,t,c,sp,self,pri,acc,note` — nunca PP). Antes de escribir código hace falta:
-1. Conseguir el PP máximo real de cada movimiento (PokeAPI `/move/<slug>` trae `pp`, mismo patrón de fuente que 11.1) y agregarlo como un nuevo índice a cada entrada de `MV` — esto es una migración de datos sobre una tabla que ya tiene ~150+ movimientos, no una tabla nueva chica; conviene un script dedicado con verificación (`validate_data.py`), no una edición a mano.
-2. Diseñar el estado: PP no se puede leer por OCR ni por texto en pantalla — es manual, igual que hoy es manual marcar qué movimientos ya se vieron (`f.moves`). Propuesta: `f.ppUsed = {}` (mapa `movimiento → veces usado`, inicializado vacío por Pokémon rival), con un botón "+1 usado" al lado de cada movimiento ya revelado en Peek, mostrando `PPmax - usado / PPmax`. Mismo patrón de interacción que ya existe (2 taps, sin teclado), no una UI nueva.
-3. ~~Decidir con Angel si esto se muestra para **todos** los movimientos revelados o solo para los "clave"~~ — **Resuelto 2026-08-03: se muestra el PP de todos los movimientos.** Angel: *"Sería bueno que muestre el pp de todos los ataques, si vamos a hacer las cosas hagámosla bien. Es info importante en algunos contextos."* La preocupación por el ruido en Glance se resuelve por otra vía y ya está cubierta: el motor de prioridad (`inference.md` §10) decide qué sube a Glance; el PP completo vive en Peek, que es la capa donde el detalle es bienvenido. No hace falta recortar el dato en origen — recortar por las dudas hubiera sido decidir por el usuario algo que él ya decidió.
+**Implementado tal cual el plan preveía:** `mv(k).pp` (`null` si no hay dex.json cargado — "no sabemos" y "no tiene PP" son estados distintos, mismo criterio de `Fase 1` para la naturaleza sin determinar). `f.ppUsed = {}` por Pokémon rival, un botón "−1 usado"/"+1" junto a cada movimiento visto en Peek, mostrando `restante/máximo`. **Se muestra para todos los movimientos vistos, no solo los "clave"** — decisión de Angel del 2026-08-03: *"Sería bueno que muestre el pp de todos los ataques, si vamos a hacer las cosas hagámosla bien."* El ruido en Glance lo resuelve el motor de prioridad (`inference.md` §10), no un recorte del dato en origen.
 
-Queda como el próximo candidato claro para retomar cuando se pase de "documentar y planear" a "escribir código" — el plan de arriba ya resuelve el cómo, falta solo ejecutarlo (Sprint 2.5, `roadmap.md`).
+La misma fila de cada movimiento es tocable para ver su efecto (`d`/`note` de `dex.json`, la descripción real de Showdown) — mismo mecanismo `whyRow()` de §11.1.

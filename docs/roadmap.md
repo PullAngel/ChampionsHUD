@@ -175,12 +175,16 @@ Diseño completo en `architecture.md` §10. No es una fase de una sola sesión; 
 - **Riesgos:** repetir el error de `predict()` — un puntaje opaco ajustado a mano que no acierta (ver `future.md`). Mitigación: la fórmula es dos factores, ambos inspeccionables, sin pesos finos.
 - **Terminado:** tests de prioridad pasan y Angel confirma en uso real que el orden le ahorra buscar.
 
-**Sprint 2.5 — Reglas nuevas y datos que faltan** · *recomendable*
-- **Objetivo:** R3 (movimiento visto), R4 (habilidad que no se activó), R5 (objeto activado) — `inference.md` §5. Más PP **de todos los movimientos** (`architecture.md` §11.2 — decidido con Angel el 2026-08-03: se muestra el PP completo en Peek, y el ruido en Glance lo resuelve el motor de prioridad del Sprint 2.4, no recortando el dato en origen) y descripción de habilidad (§11.1, ya investigada, solo falta escribirla).
-- **Archivos:** `hud.html` (tabla `MV` para PP, registro de reglas), script de datos para PP, `tests/run.js`.
-- **Tests:** una por regla, aisladas, sin DOM ni Android.
-- **Aceptación:** entrar con Intimidate y no ver la bajada descarta las habilidades incompatibles, con su evidencia.
-- **Riesgos:** agregar PP a `MV` toca ~150 entradas — mitigación: script generado + validación, nunca a mano.
+**Sprint 2.5 — Reglas nuevas y datos que faltan** · *recomendable* — **parcialmente hecho, 2026-08-03**
+- **PP de todos los movimientos — HECHO.** `build_dex.py` ahora extrae `pp` directo de `moves.json` de Showdown (ya lo traía, no hacía falta una fuente nueva) — `dex.json` regenerado, `mv(k).pp` y `MV` en `loadDex()` actualizados. `f.ppUsed` por rival, con botón −1/+1 junto a cada movimiento visto en Peek, mostrando `restante/máximo`. Para todos los movimientos, no solo los "clave" (decisión de Angel, `architecture.md` §11.2).
+- **Descripción de habilidad expandible — HECHO.** `ABIL_DESC` (201/201, PokeAPI) al lado de `ABIL_I18N`. Tocando la fila "Habilidad" en Peek se ve la descripción — mismo `whyRow()` del sprint 2.2, ahora combina evidencia y descripción estática.
+- **R5 (`itemActivated`) — ya estaba hecho, sin saberlo con ese nombre.** `itemHypothesis()` (sprint 2.2) ya confirma el objeto desde el evento `itemRevealed` — es exactamente lo que R5 pedía. No hizo falta código nuevo, solo reconocerlo acá.
+- **R3 (`moveSeen`) — mitad hecha.** "Confirmar el movimiento" ya funciona desde el sprint 2.1 (`f.moves`, evento `moveSeen`, ahora con PP y efecto visibles). La otra mitad — "descartar sets incompatibles" — necesita una dimensión de "sets conocidos" que hoy no existe: `meta.json` agrega movimientos por separado, no como combinaciones completas por Pokémon. Depende de ampliar el generador del sprint 2.3, no es trabajo de esta noche.
+- **R4 (`abilityNoTrigger`) — sin implementar, a propósito.** Es la única regla nueva que queda, y la más riesgosa: requiere saber con certeza qué habilidades **no** reaccionan a un disparador dado (ej. qué habilidades son inmunes a Intimidate) — una lista de mecánica de juego que, si sale mal, **descarta la habilidad correcta y deja al usuario confiando en una deducción falsa**. Es un tipo de error distinto y peor que los gaps de datos de este sprint (piedra mega faltante, reparto sin fuente): ahí "no sabemos" queda explícito; acá una regla mal escrita diría "sabemos" cuando no es cierto. No se improvisa sin una fuente verificada de esas interacciones — queda pendiente con esa condición explícita, no por falta de tiempo.
+- **Archivos:** `build_dex.py`, `assets/dex.json` (regenerado), `hud.html` (`mv()`, `loadDex()`, `ABIL_DESC`, `vMovesPP()`, `whyRow()`), `tests/run.js`.
+- **Tests:** 7 casos nuevos — PP null sin dex.json (no inventado), `ppUsed` arranca vacío, `ABIL_DESC` cubre las 201 de `ABIL_I18N` una por una (incluidas las de Champions), y `whyRow()` combinando evidencia+descripción, solo descripción, y ninguna de las dos.
+- **Aceptación parcial cumplida:** PP y descripción visibles y probados. La aceptación original (R4, Intimidate) queda pendiente por la razón de arriba.
+- **Riesgos:** el de agregar PP a ~150 entradas se evitó por completo — el dato ya estaba en la fuente que `build_dex.py` ya consumía, no hizo falta una migración aparte.
 - **Terminado:** las tres reglas con tests, PP visible en Peek.
 
 **Sprint 2.6 — Descripción de riesgo y consecuencia** · *recomendable* (habilita `decisions.md` #21, parte 2)

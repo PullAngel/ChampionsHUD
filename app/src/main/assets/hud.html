@@ -593,9 +593,153 @@ unnerve:{en:"Unnerve",es:"Nerviosismo"},unseenfist:{en:"Unseen Fist",es:"Puño I
 wanderingspirit:{en:"Wandering Spirit",es:"Alma Errante"},waterabsorb:{en:"Water Absorb",es:"Absorbe Agua"},waterbubble:{en:"Water Bubble",es:"Pompa"},weakarmor:{en:"Weak Armor",es:"Armadura Frágil"},
 whitesmoke:{en:"White Smoke",es:"Humo Blanco"},zerotohero:{en:"Zero to Hero",es:"Cambio Heroico"}
 };
+/** Descripción de cada habilidad, en inglés (PokeAPI, verificado 2026-08-02
+    — 201/201 encontradas, incluidas las propias de Champions: eelevate,
+    firemane, dragonize, megasol, hungerswitch, spicyspray, supersweetsyrup,
+    supremeoverlord, piercingdrill). Secundaria y expandible en Peek, nunca
+    en Glance (`product.md`) — Angel: "no es información primordial, pero
+    sería genial que la pueda dar si la necesito" (`architecture.md` §11.1,
+    `decisions.md` #20). Solo en inglés a propósito: no es dato primario del
+    juego como especie/movimiento/ítem, así que no exige el mismo estándar
+    bilingüe (decisión #7) que esos sí tienen. */
+const ABIL_DESC={
+adaptability:"Increases the same-type attack bonus from 1.5× to 2×.",
+aerilate:"Turns the bearer's Normal moves into Flying moves and strengthens them to 1.3× their power.",
+aftermath:"Damages the attacker for 1/4 its max HP when knocked out by a contact move.",
+analytic:"Strengthens moves to 1.3× their power when moving last.",
+angerpoint:"Raises Attack to the maximum of six stages upon receiving a critical hit.",
+anticipation:"Notifies all trainers upon entering battle if an opponent has a super-effective move, Self-Destruct, Explosion, or a one-hit KO move.",
+armortail:"Prevents the opponent from using any moves that have priority, such as Quick Attack.",
+aromaveil:"Protects allies against moves that affect their mental state.",battlearmor:"Protects against critical hits.",
+battlebond:"Transforms this Pokémon into Ash-Greninja after fainting an opponent. Water Shuriken's power is 20 and always hits three times.",
+berserk:"Raises this Pokémon's Special Attack by one stage every time its HP drops below half.",bigpecks:"Protects against Defense drops.",
+blaze:"Strengthens Fire moves to inflict 1.5× damage at 1/3 max HP or less.",bulletproof:"Protects against bullet, ball, and bomb-based moves.",
+cheekpouch:"Restores HP upon eating a Berry, in addition to the Berry's effect.",chlorophyll:"Doubles Speed during strong sunlight.",
+clearbody:"Prevents stats from being lowered by other Pokémon.",cloudnine:"Negates all effects of weather, but does not prevent the weather itself.",
+competitive:"Raises Special Attack by two stages upon having any stat lowered.",compoundeyes:"Increases moves' accuracy to 1.3×.",
+contrary:"Inverts stat changes.",corrosion:"This Pokémon can inflict poison on Poison and Steel Pokémon.",
+cudchew:"Causes the Pokémon to reuse an already consumed Berry at the end of the next turn.",
+curiousmedicine:"Resets all stat changes upon entering battlefield.",cursedbody:"Has a 30% chance of Disabling any move that hits the Pokémon.",
+cutecharm:"Has a 30% chance of infatuating attacking Pokémon on contact.",
+damp:"Prevents Self-Destruct, Explosion, and Aftermath from working while the Pokémon is in battle.",
+defiant:"Raises Attack two stages upon having any stat lowered.",disguise:"Prevents the first instance of battle damage.",
+dragonize:"The Pokémon's Normal-type moves become Dragon-type moves and their power is boosted by 20%.",
+drizzle:"Summons rain that lasts indefinitely upon entering battle.",drought:"Summons strong sunlight that lasts indefinitely upon entering battle.",
+dryskin:"Causes 1/8 max HP in damage each turn during strong sunlight, but heals for 1/8 max HP during rain. Increases damage from Fire moves to 1.25×, but absorbs Water moves, healing for 1/4 max HP.",
+earlybird:"Makes sleep pass twice as quickly.",eartheater:"Restores HP when hit by a Ground-type move.",
+eelevate:"The Pokémon floats off the ground, making it immune to Ground-type moves, as well as the Spikes, Toxic Spikes, and Sticky Web statuses. When the Pokémon knocks out a target with an attack, its highest stat is boosted by 1 stage.",
+effectspore:"Has a 30% chance of inflcting either paralysis, poison, or sleep on attacking Pokémon on contact.",
+electricsurge:"When this Pokémon enters battle, it changes the terrain to Electric Terrain.",
+electromorphosis:"When hit by an attack, the power of the next Electric-type move it uses is doubled.",
+fairyaura:"Strengthens Fairy moves to 1.33× their power for all friendly and opposing Pokémon.",
+filter:"Decreases damage taken from super-effective moves by 1/4.",firemane:"Boosts the power of the Pokémon's Fire-type moves by 50%.",
+flamebody:"Has a 30% chance of burning attacking Pokémon on contact.",
+flashfire:"Protects against Fire moves. Once one has been blocked, the Pokémon's own Fire moves inflict 1.5× damage until it leaves battle.",
+flowerveil:"Protects friendly Grass Pokémon from having their stats lowered by other Pokémon.",
+fluffy:"Damage from contact moves is halved. Damage from Fire moves is doubled.",forecast:"Changes Castform's type and form to match the weather.",
+forewarn:"Reveals the opponents' strongest move upon entering battle.",friendguard:"Decreases all direct damage taken by friendly Pokémon to 0.75×.",
+frisk:"Reveals an opponent's held item upon entering battle.",furcoat:"Halves damage from physical attacks.",
+galewings:"Raises Flying moves' priority by one stage.",gluttony:"Makes the Pokémon eat any held Berry triggered by low HP below 1/2 its max HP.",
+goodasgold:"Gives immunity to status moves.",gooey:"Lowers attacking Pokémon's Speed by one stage on contact.",
+guts:"Increases Attack to 1.5× with a major status ailment.",
+harvest:"Has a 50% chance of restoring a used Berry after each turn if the Pokémon has held no items in the meantime.",
+healer:"Has a 30% chance of curing each adjacent ally of any major status ailment after each turn.",
+heatproof:"Halves damage from Fire moves and burns.",heavymetal:"Doubles the Pokémon's weight.",
+hospitality:"When a Pokémon with Hospitality enters a battle, it restores HP for an ally by 25%.",hugepower:"Doubles Attack in battle.",
+hungerswitch:"Causes Morpeko to change its form each turn, alternating between Full Belly Mode and Hangry Mode",
+hustle:"Strengthens physical moves to inflict 1.5× damage, but decreases their accuracy to 0.8×.",
+hydration:"Cures any major status ailment after each turn during rain.",hypercutter:"Prevents Attack from being lowered by other Pokémon.",
+icebody:"Heals for 1/16 max HP after each turn during hail. Protects against hail damage.",illuminate:"Doubles the wild encounter rate.",
+illusion:"Takes the appearance of the last conscious party Pokémon upon being sent out until hit by a damaging move.",immunity:"Prevents poison.",
+imposter:"Transforms upon entering battle.",infiltrator:"Bypasses Light Screen, Reflect, and Safeguard.",
+innardsout:"When this Pokémon faints from an opponent's move, that opponent takes damage equal to the HP this Pokémon had remaining.",
+innerfocus:"Prevents flinching.",insomnia:"Prevents sleep.",intimidate:"Lowers opponents' Attack one stage upon entering battle.",
+ironfist:"Strengthens punch-based moves to 1.2× their power.",justified:"Raises Attack one stage upon taking damage from a Dark move.",
+keeneye:"Prevents accuracy from being lowered.",klutz:"Prevents the Pokémon from using its held item in battle.",
+leafguard:"Protects against major status ailments during strong sunlight.",levitate:"Evades Ground moves.",lightmetal:"Halves the Pokémon's weight.",
+lightningrod:"Redirects single-target Electric moves to this Pokémon where possible. Absorbs Electric moves, raising Special Attack one stage.",
+limber:"Prevents paralysis.",liquidvoice:"Sound-based moves become Water-type.",longreach:"This Pokémon's moves do not make contact.",
+magicbounce:"Reflects most non-damaging moves back at their user.",magicguard:"Protects against damage not directly caused by a move.",
+magician:"Steals the target's held item when the bearer uses a damaging move.",magmaarmor:"Prevents freezing.",
+marvelscale:"Increases Defense to 1.5× with a major status ailment.",megalauncher:"Strengthens aura and pulse moves to 1.5× their power.",
+megasol:"The Pokémon can use its moves as if the weather were harsh sunlight.",
+merciless:"This Pokémon's moves critical hit against poisoned targets.",mimicry:"Changes type depending on the terrain.",
+minus:"Increases Special Attack to 1.5× when a friendly Pokémon has Plus or Minus.",mirrorarmor:"Reflects any stat-lowering effects.",
+moldbreaker:"Bypasses targets' abilities if they could hinder or prevent a move.",
+moody:"Raises a random stat two stages and lowers another one stage after each turn.",motordrive:"Absorbs Electric moves, raising Speed one stage.",
+moxie:"Raises Attack one stage upon KOing a Pokémon.",multiscale:"Halves damage taken from full HP.",
+mummy:"Changes attacking Pokémon's abilities to Mummy on contact.",naturalcure:"Cures any major status ailment upon switching out.",
+noguard:"Ensures all moves used by and against the Pokémon hit.",oblivious:"Prevents infatuation and protects against Captivate.",
+opportunist:"Copies stat boosts by the opponent.",overcoat:"Protects against damage from weather.",
+overgrow:"Strengthens Grass moves to inflict 1.5× damage at 1/3 max HP or less.",owntempo:"Prevents confusion.",
+parentalbond:"Lets the bearer hit twice with damaging moves. The second hit has half power.",
+pickpocket:"Steals attacking Pokémon's held items on contact.",
+pickup:"Picks up other Pokémon's used and Flung held items. May also pick up an item after battle.",
+piercingdrill:"When the Pokémon uses contact moves, it can hit even targets that are protecting themselves.",
+pixilate:"Turns the bearer's Normal moves into Fairy moves and strengthens them to 1.3× their power.",
+plus:"Increases Special Attack to 1.5× when a friendly Pokémon has Plus or Minus.",
+poisonheal:"Heals for 1/8 max HP after each turn when poisoned in place of damage.",
+poisonpoint:"Has a 30% chance of poisoning attacking Pokémon on contact.",poisontouch:"Has a 30% chance of poisoning target Pokémon upon contact.",
+prankster:"Raises non-damaging moves' priority by one stage.",pressure:"Increases the PP cost of moves targetting the Pokémon by one.",
+protean:"Changes the bearer's type to match each move it uses.",purepower:"Doubles Attack in battle.",
+purifyingsalt:"Protects from status conditions and halves damage from Ghost-type moves.",
+queenlymajesty:"Opposing Pokémon cannot use priority attacks.",quickdraw:"Enables the Pokémon to move first occasionally.",
+quickfeet:"Increases Speed to 1.5× with a major status ailment.",raindish:"Heals for 1/16 max HP after each turn during rain.",
+receiver:"When an ally faints, this Pokémon gains its Ability.",reckless:"Strengthens recoil moves to 1.2× their power.",
+refrigerate:"Turns the bearer's Normal moves into Ice moves and strengthens them to 1.3× their power.",
+regenerator:"Heals for 1/3 max HP upon switching out.",ripen:"Doubles the effect of berries.",
+rivalry:"Increases damage inflicted to 1.25× against Pokémon of the same gender, but decreases damage to 0.75× against the opposite gender.",
+rockhead:"Protects against recoil damage.",roughskin:"Damages attacking Pokémon for 1/8 their max HP on contact.",
+sandforce:"Strengthens Rock, Ground, and Steel moves to 1.3× their power during a sandstorm. Protects against sandstorm damage.",
+sandrush:"Doubles Speed during a sandstorm. Protects against sandstorm damage.",sandspit:"Creates a sandstorm when hit by an attack.",
+sandstream:"Summons a sandstorm that lasts indefinitely upon entering battle.",
+sandveil:"Increases evasion to 1.25× during a sandstorm. Protects against sandstorm damage.",
+sapsipper:"Absorbs Grass moves, raising Attack one stage.",scrappy:"Lets the Pokémon's Normal and Fighting moves hit Ghost Pokémon.",
+screencleaner:"Nullifies effects of Light Screen, Reflect, and Aurora Veil.",shadowtag:"Prevents opponents from fleeing or switching out.",
+sharpness:"Powers up slicing moves.",shedskin:"Has a 33% chance of curing any major status ailment after each turn.",
+sheerforce:"Strengthens moves with extra effects to 1.3× their power, but prevents their extra effects.",shellarmor:"Protects against critical hits.",
+shielddust:"Protects against incoming moves' extra effects.",
+skilllink:"Extends two-to-five-hit moves and Triple Kick to their full length every time.",slushrush:"During Hail, this Pokémon has double Speed.",
+sniper:"Strengthens critical hits to inflict 3× damage rather than 2×.",
+snowcloak:"Increases evasion to 1.25× during hail. Protects against hail damage.",
+snowwarning:"Summons hail that lasts indefinitely upon entering battle.",
+solarpower:"Increases Special Attack to 1.5× but costs 1/8 max HP after each turn during strong sunlight.",
+solidrock:"Decreases damage taken from super-effective moves by 1/4.",soundproof:"Protects against sound-based moves.",
+speedboost:"Raises Speed one stage after each turn.",spicyspray:"When the Pokémon takes damage from a move, it burns the attacker.",
+stall:"Makes the Pokémon move last within its move's priority bracket.",stalwart:"Ignores moves and abilities that draw in moves.",
+stamina:"Raises this Pokémon's Defense by one stage when it takes damage from a move.",
+stancechange:"Changes Aegislash to Blade Forme before using a damaging move, or Shield Forme before using King’s Shield.",
+static:"Has a 30% chance of paralyzing attacking Pokémon on contact.",steadfast:"Raises Speed one stage upon flinching.",
+stench:"Has a 10% chance of making target Pokémon flinch with each hit.",stickyhold:"Prevents a held item from being removed by other Pokémon.",
+strongjaw:"Strengthens biting moves to 1.5× their power.",
+sturdy:"Prevents being KOed from full HP, leaving 1 HP instead. Protects against the one-hit KO moves regardless of HP.",
+suctioncups:"Prevents being forced out of battle by other Pokémon's moves.",superluck:"Raises moves' critical hit rates one stage.",
+supersweetsyrup:"Once per battle, when a Pokémon with Supersweet Syrup enters the battle, it lowers the evasion stat of all adjacent opponents by one stage.",
+supremeoverlord:"Attack and Special Attack are boosted for each party Pokémon that has been defeated.",
+surgesurfer:"Doubles this Pokémon's Speed on Electric Terrain.",swarm:"Strengthens Bug moves to inflict 1.5× damage at 1/3 max HP or less.",
+sweetveil:"Prevents friendly Pokémon from sleeping.",swiftswim:"Doubles Speed during rain.",
+symbiosis:"Passes the bearer's held item to an ally when the ally uses up its item.",
+synchronize:"Copies burns, paralysis, and poison received onto the Pokémon that inflicted them.",tangledfeet:"Doubles evasion when confused.",
+technician:"Strengthens moves of 60 base power or less to 1.5× their power.",telepathy:"Protects against friendly Pokémon's damaging moves.",
+thickfat:"Halves damage from Fire and Ice moves.",torrent:"Strengthens Water moves to inflict 1.5× damage at 1/3 max HP or less.",
+toughclaws:"Strengthens moves that make contact to 1.33× their power.",
+toxicdebris:"Scatters poison spikes at the feet of the opposing team when the Pokémon takes damage from physical moves.",
+trace:"Copies an opponent's ability upon entering battle.",unaware:"Ignores other Pokémon's stat modifiers for damage and accuracy calculation.",
+unburden:"Doubles Speed upon using or losing a held item.",unnerve:"Prevents opposing Pokémon from eating held Berries.",
+unseenfist:"Contact moves can strike through Protect/Detect.",vitalspirit:"Prevents sleep.",
+voltabsorb:"Absorbs Electric moves, healing for 1/4 max HP.",wanderingspirit:"Swaps abilities with opponents on contact.",
+waterabsorb:"Absorbs Water moves, healing for 1/4 max HP.",
+waterbubble:"Halves damage from Fire moves, doubles damage of Water moves, and prevents burns.",
+weakarmor:"Raises Speed and lowers Defense by one stage each upon being hit by a physical move.",
+whitesmoke:"Prevents stats from being lowered by other Pokémon.",zerotohero:"Transforms into its Hero Form when switching out.",
+};
 const abilName=slug=>{const r=ABIL_I18N[slug];return r?(LANG==="en"?r.en:r.es):slug};
 const mv=k=>{const m=MV[k];return m?{p:m[0],t:m[1],c:m[2],
-  sp:m[3]===1||m[3]===2,self:m[3]===2,pri:m[4],acc:m[5],note:m[6]}:null};
+  sp:m[3]===1||m[3]===2,self:m[3]===2,pri:m[4],acc:m[5],note:m[6],
+  // PP solo viene de dex.json (índice 8) — la tabla embebida de respaldo no
+  // lo trae. null, no 0: "no sabemos" y "no tiene PP" son cosas distintas,
+  // mismo criterio que el resto del proyecto usa para "sin dato" (§11.2).
+  pp:m[8]||null}:null};
 /** Solo los que hacen daño sirven para calcular. */
 const DMG=MOVES.filter(k=>MV[k][2]!=="E"&&MV[k][0]>0);
 /* Ordenadas por el nombre que se muestra, para poder encontrarlas. */
@@ -830,7 +974,7 @@ function loadDex(){
   // movimientos
   for(const k in d.moves){
     const m=d.moves[k];
-    MV[m.n]=[m.p,m.t,m.c,m.r,m.pr,m.ac,m.d,m.n];
+    MV[m.n]=[m.p,m.t,m.c,m.r,m.pr,m.ac,m.d,m.n,m.pp||0];
     MVKEY[k]=m.n;
   }
   LEARN=d.learnsets; DEX=d;
@@ -1149,13 +1293,20 @@ let WHY_OPEN={};
 /** Fila de dato con confianza + "por qué" desplegable en un tap
     (`vision.md`, "explicable en un tap"). Sin evento que citar, es una fila
     normal — no todo dato viene de una inferencia con evidencia puntual. */
-function whyRow(key,label,valueHtml,cls,byEvent){
-  const has=byEvent&&(Array.isArray(byEvent)?byEvent.length:true);
+/** `extra` es texto informativo estático (ej. la descripción de una
+    habilidad) que no viene de un evento — se muestra junto al "por qué"
+    cuando la fila se abre, con la misma interacción de un tap, en vez de
+    sumar una segunda forma de expandir en la misma fila. */
+function whyRow(key,label,valueHtml,cls,byEvent,extra){
+  const hasEv=byEvent&&(Array.isArray(byEvent)?byEvent.length:true);
+  const has=hasEv||extra;
   const open=has&&WHY_OPEN[key];
   return `<div class="row"${has?` data-why="${key}" style="cursor:pointer"`:""}>
-    <b>${label}${has?`<s>${open?"ocultar por qué":"tocá para ver por qué"}</s>`:""}</b>
+    <b>${label}${has?`<s>${open?"ocultar":"tocá para más info"}</s>`:""}</b>
     <u class="${cls}">${valueHtml}</u></div>
-    ${open?`<div class="msg" style="margin:-3px 0 5px">${esc(whyText(byEvent))}</div>`:""}`;
+    ${open?`<div class="msg" style="margin:-3px 0 5px">${
+      [hasEv?esc(whyText(byEvent)):"",extra?esc(extra):""].filter(Boolean).join(" — ")
+    }</div>`:""}`;
 }
 /** Texto de "por qué", a partir del/los evento(s) citados por una hipótesis.
     Reusa describeEvent() — una sola fuente para el texto de un evento, la
@@ -1235,7 +1386,7 @@ function undoEvent(id){
 const UNDOABLE=new Set(["itemRevealed","abilityRevealed","moveSeen","order","damage","ko","revived","brought","broughtCleared"]);
 
 const mkFoe=(dex,c,sh)=>({dex,confidence:c,shiny:!!sh,item:null,itemSure:false,abil:null,
-  moves:[],spdMin:0,spdMax:9999,spdSure:false,out:false,seen:0,brought:false});
+  moves:[],spdMin:0,spdMax:9999,spdSure:false,out:false,seen:0,brought:false,ppUsed:{}});
 /** Los 4 (o menos) rivales confirmados en esta partida — hasta que no se
     marcan, todavía no sabemos quién entró de verdad, más allá de team
     preview (que muestra los 6). */
@@ -2346,8 +2497,8 @@ function vFoe(){
     ${whyRow("speed","Velocidad",`${r.min}–${r.max}`,f.spdSure?"cf":"",speedHypothesis(B.pick).byEvent)}
     ${whyRow("item","Objeto",f.item?esc(itName(f.item))+(itemHypothesis(B.pick).level==="deduced"?" (deducido)":""):"?",
       f.itemSure?"cf":"",itemHypothesis(B.pick).byEvent)}
-    ${whyRow("abil","Habilidad",f.abil?esc(abilName(f.abil)):"?",f.abil?"cf":"",abilityHypothesis(B.pick).byEvent)}
-    <div class="row"><b>Vistos</b><u>${f.moves.length?esc(f.moves.map(mvName).join(", ")):"—"}</u></div>
+    ${whyRow("abil","Habilidad",f.abil?esc(abilName(f.abil)):"?",f.abil?"cf":"",
+      abilityHypothesis(B.pick).byEvent,f.abil&&ABIL_DESC[f.abil])}
     ${f.bulk?whyRow("bulk","Resistencia deducida",
       `PS ${f.bulk.hp[0]}–${f.bulk.hp[1]} · Def ${f.bulk.df[0]}–${f.bulk.df[1]}`,"cf",f.bulk.byEvent):""}</div>
   <div class="card d"><span class="hd">Observar</span><div class="pills">
@@ -2372,8 +2523,36 @@ function vFoe(){
     <div class="card"><span class="hd">Repartos habituales</span>${
       m.spreads.map(s=>`<div class="row"><b>${esc(s.label)}<s>${esc(s.nat)}</s></b><u>${s.sp.join("/")}<s>${s.pct}%</s></u></div>`).join("")}</div>`;
   }
+  h+=vMovesPP(f);
   h+=vEvidence(B.pick);
   return h;
+}
+
+/** PP y efecto de los movimientos ya vistos (Fase 2, sprint 2.5,
+    `architecture.md` §11.2). Decidido por Angel el 2026-08-03: se muestra
+    para TODOS los movimientos vistos, no solo los "clave" — el ruido en
+    Glance lo resuelve el motor de prioridad (`decisions.md` #21), no
+    recortar el dato acá. El PP es manual (no hay forma de leerlo de
+    pantalla): un tap resta 1, mismo espíritu que "Se movió antes/después".
+    Sin dex.json cargado no hay PP máximo — se muestra el efecto igual, sin
+    el contador, en vez de fingir un número. */
+function vMovesPP(f){
+  if(!f.moves.length)return "";
+  return `<div class="card"><span class="hd">PP y efecto<em>tocá el nombre para el efecto</em></span>
+    ${f.moves.map(k=>{
+      const d=mv(k);
+      const openKey="mv_"+k;
+      const open=WHY_OPEN[openKey];
+      const used=f.ppUsed[k]||0;
+      const max=d&&d.pp;
+      const left=max?Math.max(0,max-used):null;
+      return `<div class="row" data-why="${esc(openKey)}" style="cursor:pointer">
+          <b>${esc(mvName(k))}${open?`<s>${esc(d&&d.note||"sin descripción cargada")}</s>`:""}</b>
+          <u>${max?`${left}/${max}`:"PP ?"}</u></div>
+        ${max?`<div class="pills" style="margin:-2px 0 6px">
+          <button class="p" data-pp="${esc(k)}" data-d="-1">−1 usado</button>
+          <button class="p" data-pp="${esc(k)}" data-d="1">+1</button></div>`:""}`;
+    }).join("")}</div>`;
 }
 
 /* ── Registro de evidencia (Fase 2, sprint 2.1) ──
@@ -2568,6 +2747,9 @@ function wire(){
     try{localStorage.setItem("hudOcrTarget",OCR_TARGET)}catch(x){}});
   on("[data-why]",e=>{const k=e.dataset.why;WHY_OPEN[k]=!WHY_OPEN[k]});
   on("[data-undo]",e=>undoEvent(+e.dataset.undo));
+  on("[data-pp]",e=>{const k=e.dataset.pp,d=+e.dataset.d,f=B.team[B.pick];if(!f)return;
+    const max=(mv(k)||{}).pp||99;
+    f.ppUsed[k]=Math.max(0,Math.min(max,(f.ppUsed[k]||0)+d))});
   on("[data-item]",e=>{const f=B.team[B.pick],v=e.dataset.item;
     f.item=f.item===v?null:v;f.itemSure=!!f.item;
     logEvent(f.item?"itemRevealed":"itemCleared",{foe:B.pick,dex:f.dex,item:v})});

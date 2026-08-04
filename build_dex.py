@@ -124,6 +124,7 @@ def main():
             "pr": m.get("priority", 0),
             "ac": 100 if acc is True else int(acc or 100),
             "d": (m.get("shortDesc") or m.get("desc") or "")[:110],
+            "pp": m.get("pp", 0),
         }
     print(f"Movimientos: {len(mv)}")
 

@@ -85,6 +85,10 @@ function loadEngine() {
     this.setOcrTarget = function (v) { OCR_TARGET = v; };
     this.statIndexOf = statIndexOf;
     this.natMul = natMul;
+    this.mv = mv;
+    this.ABIL_DESC = ABIL_DESC;
+    this.ABIL_I18N_keys = function () { return Object.keys(ABIL_I18N); };
+    this.whyRow = whyRow;
     this.logEvent = logEvent;
     this.logOf = logOf;
     this.eventsOfFoe = eventsOfFoe;
@@ -1086,6 +1090,54 @@ check("abilityHypothesis(): confirmado solo por revelación, nada más (R4 todav
   assertEqual(h.level, "confirmed");
   assertEqual(h.value, "torrent");
   assertEqual(h.byEvent, ev.id);
+});
+
+// ── PP y descripción de habilidad (Fase 2, sprint 2.5) ──
+console.log("\nPP de movimientos y descripción de habilidad:");
+
+check("mv() expone PP null cuando la tabla no lo trae (sandbox, sin dex.json)", () => {
+  // El sandbox de tests corre con las tablas embebidas, que nunca traen PP
+  // (solo dex.json lo tiene) — mv().pp tiene que ser null, no 0 ni undefined,
+  // para poder distinguir "no sabemos" de "no tiene PP".
+  const m = E.mv("Protección");
+  assert(m !== null, "Protección tiene que existir en la tabla embebida");
+  assertEqual(m.pp, null, "sin dex.json no hay PP máximo — null, no inventado");
+});
+
+check("mkFoe() arranca con ppUsed vacío", () => {
+  assertEqual(Object.keys(E.mkFoe(6, 0.9).ppUsed).length, 0);
+});
+
+check("ABIL_DESC cubre exactamente las mismas habilidades que ABIL_I18N (201)", () => {
+  const slugs = E.ABIL_I18N_keys();
+  assertEqual(Object.keys(E.ABIL_DESC).length, slugs.length);
+  for (const s of slugs) assert(typeof E.ABIL_DESC[s] === "string" && E.ABIL_DESC[s].length > 0,
+    `falta descripción para "${s}"`);
+});
+
+check("ABIL_DESC cubre las habilidades propias de Champions, no solo las de los juegos principales", () => {
+  for (const s of ["eelevate", "firemane", "dragonize", "megasol", "hungerswitch",
+                    "spicyspray", "supersweetsyrup", "supremeoverlord", "piercingdrill"]) {
+    assert(E.ABIL_DESC[s], `"${s}" es una habilidad de Champions y tiene que tener descripción`);
+  }
+});
+
+check("whyRow() combina evidencia y descripción estática cuando hay las dos", () => {
+  const html = E.whyRow("k1", "Habilidad", "Intimidación", "cf", 5, "baja el Ataque rival al entrar");
+  assert(/data-why="k1"/.test(html), "tiene que ser tocable si hay algo que mostrar");
+});
+
+check("whyRow() es tocable con SOLO descripción, sin evidencia de ningún evento", () => {
+  // Caso real: una habilidad conocida por el juego (fija por especie, no
+  // revelada) igual tiene descripción para consultar, aunque no haya un
+  // evento que la sostenga.
+  const html = E.whyRow("k2", "Habilidad", "Levitación", "", null, "evade movimientos de Tierra");
+  assert(/data-why="k2"/.test(html));
+});
+
+check("whyRow() no es tocable si no hay ni evidencia ni descripción", () => {
+  const html = E.whyRow("k3", "Objeto", "?", "", null, null);
+  assert(!/data-why/.test(html));
 });
 
 // ── amenazas: de dónde salen los movimientos del rival (bug real de Angel) ──
