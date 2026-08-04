@@ -993,12 +993,66 @@ const STATUS=["—","quemado","paralizado","envenenado","dormido","congelado"];
 const actNew=()=>({sta:null,bo:[0,0,0,0,0]});
 const slot=d=>({dex:d,sp:[0,32,0,0,2,32],up:1,dn:3,item:"—",abil:(ABIL[d]||["—"])[0],
   mega:false,moves:["","","",""]});
-const NEW=()=>({v:4,doubles:true,turn:1,mine:[0,1],foe:[0,1],team:[],myBrought:[],
+const NEW=()=>({v:5,doubles:true,turn:1,mine:[0,1],foe:[0,1],team:[],myBrought:[],
   hp:{m0:100,m1:100,f0:100,f1:100},
   act:{m0:actNew(),m1:actNew(),f0:actNew(),f1:actNew()},
   weather:null,wTurns:0,terrain:null,tTurns:0,tw:{me:0,them:0},tr:0,
   screen:{me:0,them:0},pick:0,mpick:0,apick:"m0",tab:"field",pinned:false,compact:false,focus:0,
-  obs:{a:0,m:"Terremoto",p:50}});
+  obs:{a:0,m:"Terremoto",p:50},log:[]});
+
+/* ═════ EVENT LOG (Fase 2, sprint 2.1) ═════
+   Registro append-only de los HECHOS OBSERVADOS que producen o corrigen una
+   inferencia sobre el rival. No registra el estado de campo (clima, PS,
+   etapas): eso sigue viviendo en B — ver `inference.md` §2.1 para por qué el
+   alcance es ese y no "todo B derivado del log".
+
+   Un evento nunca se edita ni se borra. Corregir es agregar otro evento.
+   Eso es lo que después permite responder "¿por qué creés esto?", deshacer
+   una inferencia sin resetear el combate, y arrastrar al juego 2 de un Bo3
+   solo lo confirmado (`inference.md` §9).
+
+   Vive dentro de B, así que se guarda y se restaura con el mismo mecanismo
+   de siempre, sin tocar Kotlin. */
+const logOf=()=>Array.isArray(B.log)?B.log:(B.log=[]);
+/** id monotónico derivado del propio log — sobrevive al guardado/restaurado
+    sin necesidad de un contador global que mantener en sincronía. */
+const nextEventId=()=>logOf().reduce((m,e)=>Math.max(m,e.id||0),0)+1;
+function logEvent(kind,data){
+  const ev=Object.assign({id:nextEventId(),turn:B.turn,kind},data||{});
+  logOf().push(ev);
+  return ev;
+}
+/** Eventos de un rival concreto, por índice en B.team. */
+const eventsOfFoe=i=>logOf().filter(e=>e.foe===i);
+/** Un evento en texto legible. Es dominio, no presentación: el mismo texto
+    lo va a reusar la cadena de evidencia del sprint 2.2 para contestar
+    "¿por qué creés esto?" — por eso vive acá y no dentro de la vista.
+    Tolera eventos incompletos (un guardado viejo, un tipo que todavía no
+    conoce) devolviendo algo legible en vez de romper el render. */
+function describeEvent(e){
+  if(!e||!e.kind)return "—";
+  const mv=k=>esc(mvName(k)), it=k=>esc(itName(k)), ab=k=>esc(abilName(k));
+  switch(e.kind){
+    case "teamPreview":     return `Team preview: ${(e.team||[]).length} leídos`;
+    case "brought":         return "Confirmado en la partida";
+    case "broughtCleared":  return "Desmarcado de la partida";
+    case "moveSeen":        return `Usó ${mv(e.move)}`;
+    case "moveCleared":     return `Se desmarcó ${mv(e.move)}`;
+    case "itemRevealed":    return `Objeto revelado: ${it(e.item)}`;
+    case "itemCleared":     return `Se quitó el objeto ${it(e.item)}`;
+    case "abilityRevealed": return `Habilidad revelada: ${ab(e.ability)}`;
+    case "abilityCleared":  return `Se quitó la habilidad ${ab(e.ability)}`;
+    case "order":           return `Se movió ${e.faster?"antes":"después"} que ${
+                              esc(nm(e.vs&&e.vs.dex))} (velocidad ${e.vs&&e.vs.eff})`;
+    case "damage":          return e.ok
+                              ? `${mv(e.move)} le hizo ${e.pct}% — quedan ${e.n} repartos posibles`
+                              : `${mv(e.move)} le hizo ${e.pct}% — ningún reparto normal da ese número`;
+    case "ko":              return "Debilitado";
+    case "revived":         return "Marcado como no debilitado";
+    case "speciesCorrected":return `Especie corregida a mano (era ${esc(nm(e.was))})`;
+    default:                return esc(e.kind);
+  }
+}
 const mkFoe=(dex,c,sh)=>({dex,confidence:c,shiny:!!sh,item:null,itemSure:false,abil:null,
   moves:[],spdMin:0,spdMax:9999,spdSure:false,out:false,seen:0,brought:false});
 /** Los 4 (o menos) rivales confirmados en esta partida — hasta que no se
@@ -1073,7 +1127,12 @@ function boot(){
     if(loadDex()){ DEXN=Object.keys(SPD).map(Number).filter(d=>d<900000)
       .sort((a,b)=>S(a).n.localeCompare(S(b).n)); }
     try{META=JSON.parse(Android.loadMeta())||META}catch(e){}
-    try{const r=JSON.parse(Android.loadBattle());if(r&&r.v===4)B=Object.assign(NEW(),r)}catch(e){}
+    // v4 (sin event log) se acepta y se migra sola: Object.assign deja el
+    // log vacío de NEW() si el guardado no lo trae. Un combate v4 en curso
+    // no se pierde por estrenar el log.
+    try{const r=JSON.parse(Android.loadBattle());
+      if(r&&(r.v===4||r.v===5)){B=Object.assign(NEW(),r);B.v=5;
+        if(!Array.isArray(B.log))B.log=[]}}catch(e){}
   }
   if(!B.team.length)B.team=[6,500,547,94,150,9].map(d=>mkFoe(d,.9));
   syncFoe();render();
@@ -2092,8 +2151,15 @@ function vFoe(){
   h+=`<div class="cols"><div class="card f"><span class="hd">${esc(sp.n)}<em>${m?m.usage+"%":"sin datos"}</em></span>
     <div class="cap" style="margin-top:2px">${f.confidence<.5?"¿Mal leído? Corregí acá":"Especie"}</div>
     ${sel(DEXN,f.dex,x=>S(x).n,v=>{
+      const antes=f.dex;
       f.dex=+v;f.confidence=1;f.item=null;f.itemSure=false;f.abil=null;f.moves=[];
-      f.spdMin=0;f.spdMax=9999;f.spdSure=false;f.bulk=null;syncFoe();save()
+      f.spdMin=0;f.spdMax=9999;f.spdSure=false;f.bulk=null;syncFoe();
+      // Corregir la especie invalida todo lo deducido sobre ese rival. Queda
+      // registrado como evento en vez de borrarse en silencio: es la
+      // corrección de usuario que `inference.md` §2 llama userCorrection, y
+      // es lo que hace que el resto del log siga siendo interpretable.
+      logEvent("speciesCorrected",{foe:B.pick,dex:+v,was:antes});
+      save()
     },"Corregir especie")}
     ${f.shiny?`<div class="row"><b>Variocolor</b><u class="cf">✦</u></div>`:""}
     <div class="row"><b>Velocidad</b><u class="${f.spdSure?"cf":""}">${r.min}–${r.max}</u></div>
@@ -2123,7 +2189,23 @@ function vFoe(){
     <div class="card"><span class="hd">Repartos habituales</span>${
       m.spreads.map(s=>`<div class="row"><b>${esc(s.label)}<s>${esc(s.nat)}</s></b><u>${s.sp.join("/")}<s>${s.pct}%</s></u></div>`).join("")}</div>`;
   }
+  h+=vEvidence(B.pick);
   return h;
+}
+
+/* ── Registro de evidencia (Fase 2, sprint 2.1) ──
+   Lo observado sobre un rival, en orden, tal como quedó en el event log.
+   Son HECHOS, no deducciones: acá no se interpreta nada. La cadena
+   "evento → hipótesis descartada" llega en el sprint 2.2 (`inference.md`). */
+function vEvidence(i){
+  const evs=eventsOfFoe(i);
+  if(!evs.length)return `<div class="card d"><span class="hd">Qué observamos</span>
+    <div class="msg">Todavía nada de este rival. Lo que marques acá arriba —
+    movimientos, objeto, orden de velocidad, daño — queda registrado y se puede repasar.</div></div>`;
+  return `<div class="card d"><span class="hd">Qué observamos<em>${evs.length} en el registro</em></span>
+    ${evs.map(e=>`<div class="row"><b>T${e.turn}<s>${describeEvent(e)}</s></b></div>`).join("")}
+    <div class="msg" style="margin-top:5px">Hechos observados, sin interpretar. Nada de esto se
+    edita: corregir algo agrega una entrada nueva.</div></div>`;
 }
 
 function vMine(){
@@ -2300,20 +2382,33 @@ function wire(){
   on("[data-lang]",e=>{LANG=e.dataset.lang;try{localStorage.setItem("hudLang",LANG)}catch(x){}});
   on("[data-ocrt]",e=>{OCR_TARGET=e.dataset.ocrt;
     try{localStorage.setItem("hudOcrTarget",OCR_TARGET)}catch(x){}});
-  on("[data-item]",e=>{const f=B.team[B.pick],v=e.dataset.item;f.item=f.item===v?null:v;f.itemSure=!!f.item});
-  on("[data-fab]",e=>{const f=B.team[B.pick],v=e.dataset.fab;f.abil=f.abil===v?null:v});
-  on("[data-brf]",e=>{const f=B.team[+e.dataset.brf];f.brought=!f.brought;syncActiveFoe()});
+  on("[data-item]",e=>{const f=B.team[B.pick],v=e.dataset.item;
+    f.item=f.item===v?null:v;f.itemSure=!!f.item;
+    logEvent(f.item?"itemRevealed":"itemCleared",{foe:B.pick,dex:f.dex,item:v})});
+  on("[data-fab]",e=>{const f=B.team[B.pick],v=e.dataset.fab;
+    f.abil=f.abil===v?null:v;
+    logEvent(f.abil?"abilityRevealed":"abilityCleared",{foe:B.pick,dex:f.dex,ability:v})});
+  on("[data-brf]",e=>{const i=+e.dataset.brf,f=B.team[i];f.brought=!f.brought;syncActiveFoe();
+    logEvent(f.brought?"brought":"broughtCleared",{foe:i,dex:f.dex})});
   on("[data-brm]",e=>{const i=+e.dataset.brm,p=B.myBrought.indexOf(i);
     if(p>=0)B.myBrought.splice(p,1);
     else if(B.myBrought.length<4)B.myBrought.push(i);
     syncActiveMine()});
   on("[data-mvk]",e=>{const f=B.team[B.pick],v=e.dataset.mvk,i=f.moves.indexOf(v);
-    i<0?f.moves.push(v):f.moves.splice(i,1)});
+    i<0?f.moves.push(v):f.moves.splice(i,1);
+    logEvent(i<0?"moveSeen":"moveCleared",{foe:B.pick,dex:f.dex,move:v})});
   on("[data-obs]",e=>{const f=B.team[B.pick],k=e.dataset.obs;
-    if(k==="out"){f.out=!f.out;syncFoe();return}
+    if(k==="out"){f.out=!f.out;syncFoe();
+      logEvent(f.out?"ko":"revived",{foe:B.pick,dex:f.dex});return}
     const m=MY[B.mine[0]];if(!m)return;
     const a=B.act.m0||actNew();
-    observeOrder(f,effSpd(myStat(m,5),"me",a.sta),k==="fast")});
+    const eff=effSpd(myStat(m,5),"me",a.sta);
+    observeOrder(f,eff,k==="fast");
+    // El "contra qué velocidad" es parte del hecho: sin él, "se movió antes"
+    // no se puede volver a evaluar si después se corrige el equipo propio.
+    logEvent("order",{foe:B.pick,dex:f.dex,faster:k==="fast",
+      vs:{dex:myDex(m),eff:shown(eff)},
+      spdMin:f.spdMin,spdMax:f.spdMax,item:f.itemSure?f.item:null})});
 
 
   document.querySelectorAll("input[type=range]").forEach(inp=>{
@@ -2351,6 +2446,12 @@ function wire(){
     const f=B.team[B.pick],m=MY[B.obs.a]||MY[0];
     const res=solveBulk(myDex(m),f.dex,B.obs.m,B.obs.p,
       {...ctxFor("me"),doubles:B.doubles,aStat:statsOf(m),aItem:m.item==="—"?null:m.item,aAb:m.abil});
+    // El daño observado es un hecho; lo que solveBulk() deduce de él es una
+    // inferencia. Se registra el hecho SIEMPRE — también cuando no cierra
+    // con ningún reparto, que es justamente el caso más informativo.
+    logEvent("damage",{foe:B.pick,dex:f.dex,move:B.obs.m,pct:B.obs.p,
+      by:{dex:myDex(m)},ok:!!res.ok,
+      ...(res.ok?{n:res.n,hp:res.hp,df:res.df}:{})});
     if(!res.ok)$("#oOut").textContent="Ningún reparto normal da ese número: sospechá de baya de resistencia, pantalla o crítico.";
     else{ f.bulk=res;   // queda anclado: el HUD lo recuerda el resto del combate
       $("#oOut").textContent=`${res.n} repartos posibles. PS ${res.hp[0]}–${res.hp[1]} SP, defensa ${res.df[0]}–${res.df[1]} SP. Anclado.`}
@@ -2432,6 +2533,12 @@ window.onScan=function(json){
     `<div class="card f"><div class="msg w">${esc(d.error)}</div></div>`);return}
   if(!d.team?.length)return;
   B.team=d.team.map(x=>mkFoe(x.dex,x.confidence,x.shiny));
+  // Un team preview nuevo es una partida nueva: los índices `foe` del log
+  // anterior apuntarían a otros Pokémon. Se reinicia y el primer evento es
+  // la lectura misma — reinterpretar evidencia vieja contra un equipo
+  // distinto sería peor que no tenerla.
+  B.log=[];
+  logEvent("teamPreview",{team:B.team.map(f=>f.dex),quality:d.quality??null});
   B.pick=0;B.foe=[0,1];syncFoe();buzz(1);save();
   // Solo saltamos a PREVIA si la lectura vale la pena. Antes saltaba siempre,
   // y parecía que había funcionado aunque hubiera leído tres borrones.

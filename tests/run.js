@@ -85,6 +85,13 @@ function loadEngine() {
     this.setOcrTarget = function (v) { OCR_TARGET = v; };
     this.statIndexOf = statIndexOf;
     this.natMul = natMul;
+    this.logEvent = logEvent;
+    this.logOf = logOf;
+    this.eventsOfFoe = eventsOfFoe;
+    this.describeEvent = describeEvent;
+    this.nextEventId = nextEventId;
+    this.NEW = NEW;
+    this.setB = function (v) { B = v; };
     this.naturalezaDeTarjeta = naturalezaDeTarjeta;
     this.megaTargetsMissing = function () {
       return Object.keys(MEGA).filter(function (k) { return !SPD[MEGA[k][0]]; });
@@ -842,6 +849,90 @@ check("finishOwnScan() con OCR_TARGET='active' actualiza el equipo activo en vez
   assertEqual(E.activeTeam().team.length, 6, "sigue teniendo 6 slots");
   assertEqual(E.S(E.activeTeam().team[0].dex).n, "Sinistcha", "pero el slot 1 se reemplazó por lo escaneado");
   E.setOcrTarget("new"); // no dejar el sandbox en un estado raro
+});
+
+// ── event log (Fase 2, sprint 2.1) ──
+console.log("\nevent log:");
+
+check("logEvent() agrega al log con id monotónico y el turno del momento", () => {
+  const B = E.getB();
+  B.log = []; B.turn = 3;
+  const a = E.logEvent("moveSeen", { foe: 0, move: "Terremoto" });
+  const b = E.logEvent("ko", { foe: 1 });
+  assertEqual(a.id, 1);
+  assertEqual(b.id, 2, "los ids no se repiten");
+  assertEqual(a.turn, 3, "el evento guarda en qué turno pasó");
+  assertEqual(E.logOf().length, 2);
+});
+
+check("los ids siguen creciendo después de guardar y restaurar el combate", () => {
+  const B = E.getB();
+  // Simula el ciclo real: el log viaja dentro de B, se serializa y vuelve.
+  B.log = []; B.turn = 1;
+  E.logEvent("moveSeen", { foe: 0, move: "Terremoto" });
+  E.logEvent("ko", { foe: 0 });
+  const restaurado = JSON.parse(JSON.stringify(B));
+  E.setB(Object.assign(E.NEW(), restaurado));
+  assertEqual(E.nextEventId(), 3, "el id sale del propio log, no de un contador en memoria");
+  const nuevo = E.logEvent("brought", { foe: 1 });
+  assertEqual(nuevo.id, 3, "no pisa un id ya usado");
+});
+
+check("el log es append-only: corregir agrega, no edita ni borra", () => {
+  const B = E.getB();
+  B.log = []; B.turn = 1;
+  E.logEvent("itemRevealed", { foe: 0, dex: 445, item: "Vidasfera" });
+  E.logEvent("itemCleared", { foe: 0, dex: 445, item: "Vidasfera" });
+  const evs = E.eventsOfFoe(0);
+  assertEqual(evs.length, 2, "la corrección queda registrada, no reemplaza al hecho anterior");
+  assertEqual(evs[0].kind, "itemRevealed");
+  assertEqual(evs[1].kind, "itemCleared");
+});
+
+check("eventsOfFoe() separa por rival y no mezcla", () => {
+  const B = E.getB();
+  B.log = []; B.turn = 1;
+  E.logEvent("moveSeen", { foe: 0, move: "Terremoto" });
+  E.logEvent("moveSeen", { foe: 2, move: "Protección" });
+  E.logEvent("ko", { foe: 0 });
+  assertEqual(E.eventsOfFoe(0).length, 2);
+  assertEqual(E.eventsOfFoe(2).length, 1);
+  assertEqual(E.eventsOfFoe(5).length, 0, "un rival sin eventos devuelve lista vacía, no undefined");
+});
+
+check("describeEvent() da texto legible para cada tipo del MVP", () => {
+  const casos = [
+    ["teamPreview", { team: [1, 2, 3] }, /3 leídos/],
+    ["brought", {}, /Confirmado/],
+    ["moveSeen", { move: "Terremoto" }, /Terremoto/],
+    ["itemRevealed", { item: "Vidasfera" }, /Vidasfera|Life Orb/],
+    ["abilityRevealed", { ability: "intimidate" }, /Intimidate|Intimidación/],
+    ["order", { faster: true, vs: { dex: 445, eff: 120 } }, /antes/],
+    ["damage", { ok: true, move: "Terremoto", pct: 43, n: 12 }, /43%/],
+    ["damage", { ok: false, move: "Terremoto", pct: 43 }, /ningún reparto/],
+    ["ko", {}, /Debilitado/],
+    ["speciesCorrected", { was: 445 }, /corregida/],
+  ];
+  for (const [kind, data, re] of casos) {
+    const txt = E.describeEvent(Object.assign({ kind }, data));
+    assert(typeof txt === "string" && txt.length > 0, `${kind} sin descripción`);
+    assert(re.test(txt), `${kind}: "${txt}" no coincide con ${re}`);
+  }
+});
+
+check("describeEvent() no rompe con un evento incompleto o desconocido", () => {
+  assertEqual(E.describeEvent(null), "—");
+  assertEqual(E.describeEvent({}), "—");
+  assert(E.describeEvent({ kind: "algoNuevo" }).length > 0, "un tipo desconocido no debería romper el render");
+  assert(E.describeEvent({ kind: "order" }).length > 0, "un 'order' sin vs tampoco");
+});
+
+check("un combate guardado en v4 (sin log) se migra sin perderse", () => {
+  const viejo = Object.assign(E.NEW(), { v: 4, turn: 7 });
+  delete viejo.log;
+  const migrado = Object.assign(E.NEW(), viejo);
+  assert(Array.isArray(migrado.log), "el log vacío de NEW() sobrevive al Object.assign");
+  assertEqual(migrado.turn, 7, "y el estado del combate viejo se conserva");
 });
 
 // ── amenazas: de dónde salen los movimientos del rival (bug real de Angel) ──

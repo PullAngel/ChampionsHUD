@@ -104,7 +104,11 @@ Si algo sigue sin andar, mandá la captura del diagnóstico del paso 1 — muest
 
 **Criterio de salida:** un combate completo se juega con el presupuesto de interacción manual definido en `product.md`, salvo fallos puntuales de reconocimiento.
 
-**Estado, 2026-08-03: código completo y revisado (6 vueltas de QA, 65 tests), pendiente del único paso que no se puede dar sin el teléfono de Angel — jugar un combate real de punta a punta sin que nada rompa el flujo.** No hay ningún bug conocido sin corregir en este momento. El bloqueo real para cerrar la fase es de verificación, no de código: cada vuelta de feedback encontró bugs nuevos que ninguna lectura de código adelantó (la colisión de nombres en `scanOwnTeam()`, el header contaminando `clusterCards()`), así que declarar la fase cerrada sin ese combate real sería exactamente el patrón que `audit.md` viene señalando como el error repetido del proyecto — degradar en silencio la confianza de un resultado. En cuanto Angel confirme un combate completo sin bugs nuevos (o reporte los que aparezcan y se corrijan), la Fase 1 cierra formalmente y el proyecto pasa de lleno a Fase 2 — cuyo primer hito ya se adelantó más abajo, dado que no depende del teléfono.
+**FASE 1 CERRADA, 2026-08-03.** Angel confirmó en dispositivo real: *"Ok, funciona bien, hay ciertas cosas para mejorar, pero lo podemos hacer después"*. Se cumplió el criterio de salida: el equipo propio se captura solo, el rival se lee del team preview, y el combate se juega con el presupuesto de interacción de `product.md`.
+
+Costó **siete vueltas de corrección contra uso real**, y vale la pena registrar por qué: cada una encontró bugs que ninguna lectura de código había adelantado (la colisión de nombres en `scanOwnTeam()`, el header contaminando `clusterCards()`, las dos columnas intercaladas por Y, la fila de abajo cayendo en la banda del medio, las piedras mega apuntando a formas inexistentes, la naturaleza que se inventaba en silencio). El patrón que sí funcionó fue **hacer visible el diagnóstico antes que adivinar la causa**: en cuanto la app mostró qué texto había caído en qué campo, cada vuelta siguiente resolvió el problema de raíz en vez de por aproximación. Es la lección a repetir en Fase 2, donde el riesgo equivalente es que una inferencia salga mal sin que se pueda ver por qué.
+
+**Mejoras conocidas que quedan abiertas, sin bloquear nada:** naturaleza por análisis de color (`audit.md` §5.13), cobertura de piedras mega (§5.10), consumo de batería y renovación del permiso de captura, y el rediseño de Presentación a vista contextual única.
 
 ## Fase 2 — Datos de meta reales y motor de inferencia por eliminación
 
@@ -125,14 +129,13 @@ Diseño completo en `architecture.md` §10. No es una fase de una sola sesión; 
 
 ---
 
-**Sprint 2.1 — Event log en paralelo** · *obligatorio*
-- **Objetivo:** registrar todos los hechos de la partida en un log append-only que corre **junto a** `B`, sin reemplazarlo. Riesgo cero por diseño: si el log está mal, nada se rompe todavía.
-- **Archivos:** `hud.html` (sección `ESTADO`), `tests/run.js`.
-- **Datos:** ninguno nuevo. Los tipos de evento del MVP están en `inference.md` §2.
-- **Tests:** cada acción del usuario que hoy muta `B` genera el evento correspondiente; el log sobrevive el ciclo de guardado/carga; `userCorrection` se registra como evento en vez de mutar en silencio.
-- **Aceptación:** para una partida sintética completa, el fold del log reproduce **exactamente** el `B` que produce el código actual. Verificable con un test de igualdad estructural.
-- **Riesgos:** que algún camino de mutación de `B` quede sin instrumentar y el log salga incompleto sin que nadie lo note — mitigación: el test de igualdad de arriba lo detecta.
-- **Terminado:** el test de equivalencia pasa y el log persiste entre sesiones.
+**Sprint 2.1 — Event log en paralelo** · *obligatorio* — ~~**HECHO, 2026-08-03**~~
+- **Objetivo:** registrar los hechos de la partida en un log append-only que corre **junto a** `B`, sin reemplazarlo. Riesgo cero por diseño: si el log está mal, nada se rompe todavía.
+- **Alcance ajustado al implementarlo** (justificación completa en `inference.md` §2.1): el criterio de aceptación original era "el fold del log reproduce **exactamente** `B`". Eso obliga a re-implementar toda la lógica de mutación de la app dentro de un reductor — trabajo grande, lógica duplicada, riesgo alto de regresión — **y no aporta nada al objetivo de la fase**, que es que las inferencias sean explicables, reversibles y arrastrables a un Bo3. Ninguna de las tres necesita que el clima o los PS vengan del log. El log registra los **hechos que producen o corrigen inferencia**; el estado de campo sigue en `B`. El formato de evento no asume ese recorte: cuando la Fase 4 necesite reconstruir la partida turno a turno se agregan tipos nuevos al mismo log, sin migrar lo guardado.
+- **Hecho:** `logEvent()`/`logOf()`/`eventsOfFoe()`/`describeEvent()` en la sección `ESTADO` de `hud.html`. Instrumentados los diez puntos donde hoy se produce evidencia: team preview, confirmado en partida, movimiento visto, objeto revelado, habilidad revelada, orden de velocidad observado, daño observado (con su resultado, **también cuando no cierra con ningún reparto** — el caso más informativo), debilitado/revivido, y corrección manual de especie. El log viaja dentro de `B`, así que persiste con el mecanismo de siempre sin tocar Kotlin. Formato de guardado v4→v5 con migración automática: un combate v4 en curso no se pierde.
+- **Valor visible ya:** tarjeta "Qué observamos" en RIVAL, con el registro de ese Pokémon en orden. Son hechos sin interpretar — la cadena "evento → hipótesis descartada" es el sprint 2.2.
+- **Tests:** 8 casos nuevos — ids monotónicos que sobreviven al ciclo de guardado/restaurado (el id sale del propio log, no de un contador en memoria), append-only verificado (corregir agrega, no edita), separación por rival, `describeEvent()` para todos los tipos del MVP, tolerancia a eventos incompletos o de un tipo desconocido, y migración de un guardado v4 sin log.
+- **Terminado:** 79 casos en verde, `validate_data.py` limpio.
 
 **Sprint 2.2 — Espacio de hipótesis + migrar R1/R2** · *obligatorio*
 - **Objetivo:** el primer beneficio visible. Conjuntos de hipótesis con evidencia adjunta (`inference.md` §3), y las dos reglas existentes migradas **sin cambiar su lógica** — solo pasan a declarar qué descartaron y por qué.

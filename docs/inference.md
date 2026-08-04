@@ -64,13 +64,28 @@ Tipos de evento del MVP (los que el HUD ya puede capturar o el usuario ya marca 
 
 **`userCorrection` es la pieza que hace todo lo demás reversible.** Hoy, si el usuario se equivoca al marcar una especie, la inferencia derivada de ese error queda incrustada sin forma de limpiarla. Con el log, la corrección es un evento más y el estado se re-deriva desde cero.
 
-### 2.1 Estado derivado, no estado mutado
+### 2.1 Qué deriva del log y qué no — alcance ajustado, 2026-08-03
+
+El diseño original decía que `B` (el objeto de estado actual) pasaría a ser **una vista derivada del log**, con el criterio de aceptación "el fold del log reproduce `B` exactamente". **Al ir a implementarlo se ajustó, y conviene dejar escrito por qué**, porque suena a recorte y no lo es.
+
+`B` mezcla dos cosas de naturaleza muy distinta:
+
+| En `B` | Ejemplos | ¿Alimenta inferencia? |
+|---|---|---|
+| **Estado de campo y de UI** | turno, clima, terreno, Tailwind, pantallas, PS, etapas, quién está activo, pestaña abierta | No |
+| **Evidencia sobre el rival** | daño observado, orden de acción observado, movimiento visto, ítem revelado, habilidad confirmada | Sí |
+
+Derivar lo primero desde un log significa re-implementar toda la lógica de mutación de la app dentro de un reductor — trabajo grande, duplicación de lógica, y riesgo alto de regresión — **a cambio de nada para el objetivo de esta fase**, que es que las inferencias sean explicables, reversibles y arrastrables a un Bo3. Ninguna de esas tres cosas necesita que el clima venga del log.
+
+**Alcance vigente:** el event log registra los **hechos que producen o corrigen inferencia**, que es el subconjunto de §2 marcado como MVP. El estado de campo sigue viviendo en `B` y persistiéndose como hasta ahora. El log viaja dentro de `B`, así que se guarda y se restaura con el mismo mecanismo, sin tocar Kotlin.
+
+**Qué queda abierto, a propósito:** el formato de evento no asume nada sobre este recorte. Cuando la Fase 4 (resumen post-combate) necesite reconstruir la partida turno a turno, se agregan los tipos de evento de estado de campo al mismo log, sin migrar lo ya guardado. La puerta queda abierta; simplemente no se paga hoy por atravesarla.
 
 ```
-Event Log  ──(fold)──►  Knowledge  ──(render)──►  vistas
+Event Log (evidencia)  ──(reglas)──►  Hipótesis  ──┐
+                                                    ├──►  vistas
+B (estado de campo)  ─────────────────────────────┘
 ```
-
-`B` (el objeto de estado actual) pasa a ser **una vista derivada del log**, no la fuente de verdad. La migración es incremental y se detalla en el plan de sprints (`roadmap.md`): primero el log corre *en paralelo* a `B` sin reemplazarlo (así nada se rompe), y solo cuando la derivación reproduce `B` exactamente se invierte la dependencia.
 
 **Costo a vigilar:** re-derivar todo el estado en cada evento es O(eventos × reglas). Una partida de VGC son decenas de eventos, no miles — es despreciable. Si alguna vez deja de serlo (análisis batch de cientos de partidas, §9), se cachea el fold incremental. No optimizar antes de tener el problema.
 
