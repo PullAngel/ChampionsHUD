@@ -283,7 +283,21 @@ const MEGA={
 "Blazikenita":[902571,257],"Salamencita":[903731,373],"Metagrossita":[903761,376],
 "Garchompita":[904451,445],"Lucarita":[904481,448],
 "Swampertite":[901261,260],"Sablenita":[903021,302],"Mawilita":[903031,303],
-"Venusaurite":[990003,3]};
+"Venusaurite":[990003,3],
+// Generadas el 2026-08-03 desde items.js de Pokémon Showdown (campo
+// megaStone), cruzadas contra las especies mega que dex.json ya trae con
+// stats reales — no adivinadas. Antes cubría 13 especies de las 76 formas
+// mega de dex.json; con esto pasa a 40. Quedan sin resolver Diancie/
+// Latias/Latios/Mewtwo X/Mewtwo Y: sus formas mega no están en dex.json hoy
+// (no serían legales en Champions según sprite_index.json, o el pipeline de
+// datos las está dejando afuera) — ver audit.md §5.10.
+"Beedrillite":[990151,15],"Pidgeotite":[990181,18],"Alakazite":[990651,65],"Slowbronite":[990801,80],
+"Kangaskhanite":[991151,115],"Pinsirite":[991271,127],"Aerodactylite":[991421,142],"Ampharosite":[991811,181],
+"Steelixite":[992081,208],"Scizorite":[992121,212],"Heracronite":[992141,214],"Houndoominite":[992291,229],
+"Sceptilite":[992541,254],"Gardevoirite":[992821,282],"Aggronite":[993061,306],"Medichamite":[993081,308],
+"Manectite":[993101,310],"Sharpedonite":[993191,319],"Cameruptite":[993231,323],"Altarianite":[993341,334],
+"Banettite":[993541,354],"Absolite":[993591,359],"Glalitite":[993621,362],"Lopunnite":[994281,428],
+"Abomasite":[994601,460],"Galladite":[994751,475],"Audinite":[995311,531]};
 Object.assign(SPD,{
 900061:["Charizard-Mega Y",78,104,78,159,115,100,"FIR","FLY"],
 900062:["Charizard-Mega X",78,130,111,130,85,100,"FIR","DRA"],
@@ -305,7 +319,35 @@ Object.assign(SPD,{
 903031:["Mawile-Mega",50,105,125,55,95,50,"STE","FAI"],
 // Venusaurite faltaba entera en MEGA. Clave en 99xxxx a propósito: loadDex()
 // genera las suyas como 900000+num*10+n y podría pisar una 9000xx.
-990003:["Venusaur-Mega",80,100,123,122,120,80,"GRA","POI"]});
+990003:["Venusaur-Mega",80,100,123,122,120,80,"GRA","POI"],
+// Las 27 de arriba (items.js de Showdown, cruzadas contra dex.json).
+990151:["Beedrill-Mega",65,150,40,15,80,145,"BUG","POI"],
+990181:["Pidgeot-Mega",83,80,80,135,80,121,"NOR","FLY"],
+990651:["Alakazam-Mega",55,50,65,175,105,150,"PSY"],
+990801:["Slowbro-Mega",95,75,180,130,80,30,"WAT","PSY"],
+991151:["Kangaskhan-Mega",105,125,100,60,100,100,"NOR"],
+991271:["Pinsir-Mega",65,155,120,65,90,105,"BUG","FLY"],
+991421:["Aerodactyl-Mega",80,135,85,70,95,150,"ROC","FLY"],
+991811:["Ampharos-Mega",90,95,105,165,110,45,"ELE","DRA"],
+992081:["Steelix-Mega",75,125,230,55,95,30,"STE","GRO"],
+992121:["Scizor-Mega",70,150,140,65,100,75,"BUG","STE"],
+992141:["Heracross-Mega",80,185,115,40,105,75,"BUG","FIG"],
+992291:["Houndoom-Mega",75,90,90,140,90,115,"DAR","FIR"],
+992541:["Sceptile-Mega",70,110,75,145,85,145,"GRA","DRA"],
+992821:["Gardevoir-Mega",68,85,65,165,135,100,"PSY","FAI"],
+993061:["Aggron-Mega",70,140,230,60,80,50,"STE"],
+993081:["Medicham-Mega",60,100,85,80,85,100,"FIG","PSY"],
+993101:["Manectric-Mega",70,75,80,135,80,135,"ELE"],
+993191:["Sharpedo-Mega",70,140,70,110,65,105,"WAT","DAR"],
+993231:["Camerupt-Mega",70,120,100,145,105,20,"FIR","GRO"],
+993341:["Altaria-Mega",75,110,110,110,105,80,"DRA","FAI"],
+993541:["Banette-Mega",64,165,75,93,83,75,"GHO"],
+993591:["Absol-Mega",65,150,60,115,60,115,"DAR"],
+993621:["Glalie-Mega",80,120,80,120,80,100,"ICE"],
+994281:["Lopunny-Mega",65,136,94,54,96,135,"NOR","FIG"],
+994601:["Abomasnow-Mega",90,132,105,132,105,30,"GRA","ICE"],
+994751:["Gallade-Mega",68,165,95,65,115,110,"PSY","FIG"],
+995311:["Audino-Mega",103,60,126,80,126,50,"NOR","FAI"]});
 const S=d=>{const r=SPD[d];return r?{n:r[0],s:[r[1],r[2],r[3],r[4],r[5],r[6]],t:r.slice(7)}:null};
 let DEXN=Object.keys(SPD).map(Number).filter(d=>d<900000).sort((a,b)=>S(a).n.localeCompare(S(b).n));
 /** Piedra equipada válida para esta especie. */

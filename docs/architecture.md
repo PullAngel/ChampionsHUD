@@ -126,7 +126,7 @@ Si en el futuro existe otra plataforma o cliente (otro sistema operativo, una vi
 
 ## 10. Pipeline de datos de meta
 
-Diseño concreto del `Meta Data Service`, resultado de la investigación de fuentes. Reemplaza al stub actual `build_meta.py` (`fetch_usage()` devuelve `{}` siempre — ver `audit.md` §5). Corre en la PC del desarrollador, no en el teléfono; el artefacto que produce se copia a `assets/` y/o se sube a la URL de actualización remota que la app ya soporta (`Android.updateMeta(url)`).
+Diseño concreto del `Meta Data Service`, resultado de la investigación de fuentes. `build_meta.py` implementa este diseño desde el 2026-08-03 (Fase 2, sprint 2.3 — ver `roadmap.md`) y ya se corrió contra la API real (`audit.md` §5.9). Corre en la PC del desarrollador, no en el teléfono; el artefacto que produce se copia a `assets/` y/o se sube a la URL de actualización remota que la app ya soporta (`Android.updateMeta(url)`).
 
 ### 10.1 Fuentes, en orden de prioridad
 
