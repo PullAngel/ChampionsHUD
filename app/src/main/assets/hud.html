@@ -2262,14 +2262,23 @@ function topThreats(){
     más fuerte contra el propio enfocado si el rival lo manda. No predice que
     vaya a pasar — describe la peor consecuencia posible de un cambio, con la
     misma marca de fuente (visto/meta/posible) que ya usa "Mayores amenazas"
-    en Previa, para que sea inspeccionable igual que el resto. */
+    en Previa, para que sea inspeccionable igual que el resto.
+    Mismo criterio que ya usa `vField()` (`foesBrought=broughtFoes().length?
+    broughtFoes():foes`): si el jugador ya marcó quién entró de verdad, los
+    2 que quedaron en banca de la team preview NO son candidatos — no pueden
+    entrar a esta partida, y tratarlos como amenaza real sería inventar una
+    amenaza que no existe. Antes de marcar nada (broughtFoes() vacío), se
+    sigue considerando el equipo completo, igual que Previa. */
 function benchThreat(mine,foes,fi){
   const mi=mine[fi]; if(mi===undefined)return null;
   const m=MY[mi]; if(!m)return null;
   const activeSet=new Set(foes);
+  const brought=broughtFoes();
+  const eligible=brought.length?new Set(brought):null;
   let worst=null;
   B.team.forEach((f,fIdx)=>{
     if(!f||!f.dex||!S(f.dex)||activeSet.has(fIdx)||f.out)return;
+    if(eligible&&!eligible.has(fIdx))return;
     const pool=foeMovePool(f);
     const r=best(f.dex,myDex(m),{doubles:B.doubles,aItem:f.item,aAb:f.abil,
       dStat:statsOf(m),dAb:m.abil},pool.moves);
@@ -2311,8 +2320,12 @@ function speedCriticalPair(mine,foes,fi){
 /** `S1` (de `suggest()`), `worst`/`wv` (la amenaza calculada) ya vienen
     computados por quien llama — esta función no recalcula daño, solo
     decide cuál de las señales ya disponibles vale más la pena mostrar
-    primero. Devuelve `null` si ninguna cruza una frontera real. */
-function priorityAlert(mine,foes,fi,S1,worst,wv){
+    primero. Devuelve `null` si ninguna cruza una frontera real.
+    `myHp` es el HP ACTUAL del propio enfocado (no el máximo) — lo necesita
+    la señal `back` para juzgar si un cambio del rival lo mataría de verdad
+    ahora mismo, no en un hipotético a full vida. Si no se pasa (compatible
+    con llamadas viejas), se asume vida completa. */
+function priorityAlert(mine,foes,fi,S1,worst,wv,myHp){
   const candidatos=[];
   const spdFoe=speedCriticalPair(mine,foes,fi);
   if(spdFoe)candidatos.push({tipo:"speed",peso:PRIORITY_WEIGHTS.speed,
@@ -2340,7 +2353,7 @@ function priorityAlert(mine,foes,fi,S1,worst,wv){
   const mi=mine[fi],m=mi!==undefined?MY[mi]:null;
   const bench=m?benchThreat(mine,foes,fi):null;
   if(bench){
-    const vdBench=verdict(bench.r,bench.r.maxHP);
+    const vdBench=verdict(bench.r,myHp??bench.r.maxHP);
     if(typeof vdBench.ko==="number"&&vdBench.ko>0){
       const marca={visto:"ya se lo vimos usar",meta:"común en el meta",posible:"solo por learnset"}[bench.src]||"";
       candidatos.push({tipo:"back",peso:PRIORITY_WEIGHTS.back,
@@ -2432,7 +2445,7 @@ function vCompact(){
   const wv=worst?verdict(worst.r,myHp):null;
   // Sprint 2.4: qué señal es más probable que cambie la decisión de este
   // turno, primero en Glance — no elige la jugada, ordena qué mirar.
-  const alerta=priorityAlert(mine,foes,fi,S1,worst,wv);
+  const alerta=priorityAlert(mine,foes,fi,S1,worst,wv,myHp);
 
   return `<div class="card d" style="padding:6px">
     <div class="pills">${mine.map((mi,i)=>

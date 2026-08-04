@@ -1259,6 +1259,54 @@ check("priorityAlert() describe la exposición a un cambio cuando nada más cruz
   assert(a.texto.includes("Garchomp") && a.texto.includes("Gengar"), "el texto tiene que nombrar quién amenaza a quién, no un puntaje opaco");
 });
 
+// Bug real de QA (2026-08-04): benchThreat() no filtraba por f.brought — un
+// rival que quedó en banca de la TEAM PREVIEW (nunca entró de verdad a esta
+// partida) contaba igual como "amenaza si cambia a X", una amenaza inventada
+// exactamente del tipo que el proyecto prohíbe. Mismo criterio que ya usa
+// vField() (broughtFoes().length?broughtFoes():foes).
+check("benchThreat() ignora a un rival que NO fue confirmado 'brought' una vez que hay al menos uno marcado", () => {
+  const B = E.getB();
+  const bench = E.mkFoe(445, 0.9); // Garchomp: nunca se marcó que entró a la partida
+  bench.moves = ["Terremoto"];
+  const otro = E.mkFoe(6, 0.9);
+  otro.brought = true; // este sí se confirmó — es el único candidato real
+  B.team = [bench, otro];
+  const MY = E.getMY();
+  MY.length = 0; MY.push(E.slot(94));
+  const t = E.benchThreat([0], [], 0);
+  assert(t === null || t.f.dex !== 445, "Garchomp no puede ser una amenaza de banca si nunca se confirmó que entró a la partida");
+});
+
+check("benchThreat() sigue considerando el equipo completo si todavía no se marcó ningún 'brought'", () => {
+  const B = E.getB();
+  const bench = E.mkFoe(445, 0.9);
+  bench.moves = ["Terremoto"];
+  B.team = [bench]; // fase temprana: nada marcado todavía, igual que Previa
+  const MY = E.getMY();
+  MY.length = 0; MY.push(E.slot(94));
+  assert(E.benchThreat([0], [], 0) !== null, "sin nada marcado, el equipo completo sigue siendo candidato");
+});
+
+// Segundo bug real de QA: priorityAlert() no recibía el HP actual del propio
+// enfocado para la señal "back" y siempre evaluaba a vida completa — un golpe
+// que a full vida es mixto puede ser un KO garantizado con el HP real ya
+// dañado, y el texto tiene que reflejar eso, no un escenario hipotético.
+// Garchomp/Terremoto vs Incineroar: a vida completa da 44% (mixto); a HP bajo
+// da KO garantizado — matchup real elegido para no simular el daño a mano.
+check("priorityAlert() evalúa la amenaza de banca contra el HP actual, no el máximo", () => {
+  const B = E.getB();
+  B.doubles = true; // otro test de la suite deja B.doubles=false sin resetear — fijarlo acá para no depender del orden
+  const bench = E.mkFoe(445, 0.9);
+  bench.moves = ["Terremoto"];
+  B.team = [bench];
+  const MY = E.getMY();
+  MY.length = 0; MY.push(E.slot(727)); // Incineroar
+  const aFull = E.priorityAlert([0], [], 0, [], null, null);
+  assert(aFull.texto.includes("44%"), "sin pasar myHp (compatibilidad hacia atrás), asume vida completa: el resultado real ahí es mixto");
+  const aBajo = E.priorityAlert([0], [], 0, [], null, null, 40);
+  assert(aBajo.texto.includes("KO"), "con el propio ya dañado (HP real bajo), el mismo golpe mata seguro — no puede seguir diciendo 'mixto'");
+});
+
 // ── "descartar sets incompatibles" (Fase 2, sprint 2.5 R3, build_meta.py) ──
 check("compatibleSets() angosta con lo que ya se vio, no descarta a ciegas", () => {
   const B = E.getB();
