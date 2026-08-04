@@ -191,13 +191,16 @@ Diseño completo en `architecture.md` §10. No es una fase de una sola sesión; 
 - **Riesgos:** el de agregar PP a ~150 entradas se evitó por completo — el dato ya estaba en la fuente que `build_dex.py` ya consumía, no hizo falta una migración aparte.
 - **Terminado:** las tres reglas con tests, PP visible en Peek.
 
-**Sprint 2.6 — Descripción de riesgo y consecuencia** · *recomendable* (habilita `decisions.md` #21, parte 2)
+**Sprint 2.6 — Descripción de riesgo y consecuencia** · *recomendable* (habilita `decisions.md` #21, parte 2) — **parcialmente hecho, 2026-08-04**
 - **Objetivo:** enunciar la posición: *"el escenario más peligroso es X"*, *"no mata en 3 de 16 tiradas"*, *"si cambia a X, tu Y queda expuesto"*.
-- **Dependencia dura:** **no se empieza antes de 2.2.** Una descripción de riesgo sin cadena de evidencia inspeccionable es exactamente la caja negra que #21 condiciona explícitamente.
-- **Tests:** cada afirmación de riesgo trae los eventos que la sostienen; ninguna se emite sin evidencia.
-- **Aceptación:** toda frase de riesgo contesta "¿por qué me mostrás esto?".
-- **Riesgos:** que el lenguaje se deslice de describir a sugerir — mitigación: la prueba de #21 (¿enuncia un hecho o un imperativo?) se aplica a cada string nuevo.
-- **Terminado:** descripciones activas, todas explicables, ninguna que diga qué hacer.
+- **"No mata en N de 16 tiradas" — ya estaba hecho desde el sprint 2.4** (los tipos `ko`/`threat` de `priorityAlert()` son exactamente esa frase). Reconocido acá, no reconstruido.
+- **"Si cambia a X, tu Y queda expuesto" — HECHO.** `benchThreat(mine,foes,fi)` recorre `B.team` excluyendo a los activos (`foes`) y a los ya confirmados afuera (`f.out`), y encuentra cuál de los rivales en banca pegaría más fuerte contra el propio enfocado si el rival lo manda a la cancha — mismo motor de daño que usa "Mayores amenazas" (`best()`/`foeMovePool()`), no uno nuevo. Se suma como cuarto tipo de señal en `priorityAlert()` (`PRIORITY_WEIGHTS.back=70`, por debajo de amenaza entrante — orden de `decisions.md` #20/`inference.md` §10: "amenaza entrante > ... > back probable"), y solo aparece si hay chance real de KO (mixta o garantizada) — no por el simple hecho de que exista un rival en banca. **No predice que el cambio vaya a pasar**, describe la consecuencia si pasara; la fuente del movimiento (visto/meta/posible) viaja en el texto, igual que en Previa, para que se pueda auditar de dónde salió el dato.
+- **"El escenario más peligroso es X" — sin implementar.** Es una síntesis de más alto nivel (cruzar riesgo actual + riesgo de banca + velocidad en una sola frase) que hoy `priorityAlert()` ya aproxima al elegir la señal de mayor peso, pero no hay una frase dedicada que lo enuncie así explícitamente. Queda pendiente, no es un gap de datos — es una decisión de redacción que vale la pena revisar con Angel en uso real antes de escribirla, para no terminar sonando a recomendación disfrazada.
+- **Archivos:** `hud.html` (`benchThreat()`, `PRIORITY_WEIGHTS.back`, `priorityAlert()`), `tests/run.js`.
+- **Tests:** 3 casos nuevos — `benchThreat()` encuentra la peor amenaza en banca (Garchomp con Terremoto visto vs. Gengar, OHKO garantizado por el x2 de Tierra a Veneno, matchup elegido para no depender de una tirada incierta); ignora a los rivales ya activos (no son "un cambio posible"); `priorityAlert()` emite el tipo `back` con su peso cuando nada más cruza una frontera, y el texto nombra a ambos Pokémon, no un puntaje opaco.
+- **Aceptación parcial cumplida:** toda frase de riesgo nueva contesta "¿por qué me mostrás esto?" (movimiento nombrado, número de KO, fuente marcada). La síntesis de "escenario más peligroso" queda para una vuelta futura.
+- **Riesgos:** vigilado — `benchThreat()` describe una consecuencia condicional ("si cambia a X"), nunca sugiere protegerse ni cambiar; se revisó cada string nuevo contra la prueba de #21 (¿hecho o imperativo?) antes de commitear.
+- **Terminado:** 105 tests en verde, `validate_data.py` limpio. Confirmación de Angel en uso real, pendiente (igual que 2.4).
 
 ---
 

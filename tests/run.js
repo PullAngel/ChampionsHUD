@@ -91,6 +91,7 @@ function loadEngine() {
     this.whyRow = whyRow;
     this.priorityAlert = priorityAlert;
     this.speedCriticalPair = speedCriticalPair;
+    this.benchThreat = benchThreat;
     this.verdict = verdict;
     this.calc = calc;
     this.PRIORITY_WEIGHTS = PRIORITY_WEIGHTS;
@@ -1200,9 +1201,10 @@ check("priorityAlert() sube la amenaza entrante cuando su rango de KO es mixto",
   assertEqual(a.peso, E.PRIORITY_WEIGHTS.threat);
 });
 
-check("PRIORITY_WEIGHTS respeta el orden de decisions.md #20: velocidad > KO > amenaza", () => {
+check("PRIORITY_WEIGHTS respeta el orden de decisions.md #20: velocidad > KO > amenaza > banca", () => {
   assert(E.PRIORITY_WEIGHTS.speed > E.PRIORITY_WEIGHTS.ko);
   assert(E.PRIORITY_WEIGHTS.ko > E.PRIORITY_WEIGHTS.threat);
+  assert(E.PRIORITY_WEIGHTS.threat > E.PRIORITY_WEIGHTS.back);
 });
 
 check("priorityAlert() es determinista: mismos datos, mismo resultado, sin aleatoriedad", () => {
@@ -1211,6 +1213,48 @@ check("priorityAlert() es determinista: mismos datos, mismo resultado, sin aleat
   const a2 = E.priorityAlert([], [], 0, S1, null, null);
   assertEqual(a1.tipo, a2.tipo);
   assertEqual(a1.texto, a2.texto);
+});
+
+// ── "si cambia a X, tu Y queda expuesto" (Fase 2, sprint 2.6, decisions.md #21 parte 2) ──
+// Garchomp con Terremoto (visto) vs Gengar: Tierra pega x2 a Veneno, Gengar
+// tiene poca Defensa — un OHKO garantizado (16/16), matchup elegido a
+// propósito para no depender de un resultado mixto incierto en el test.
+check("benchThreat() encuentra la peor amenaza entre los rivales que NO están en campo", () => {
+  const B = E.getB();
+  const bench = E.mkFoe(445, 0.9); // Garchomp
+  bench.moves = ["Terremoto"];
+  B.team = [bench];
+  const MY = E.getMY();
+  MY.length = 0; MY.push(E.slot(94)); // Gengar
+  const t = E.benchThreat([0], [], 0); // foes=[]: nada activo, Garchomp cuenta como banca
+  assert(t !== null, "Garchomp en banca con Terremoto visto debería contar como amenaza");
+  assertEqual(t.f.dex, 445);
+  assertEqual(t.r.move, "Terremoto");
+  assertEqual(t.src, "visto");
+});
+
+check("benchThreat() ignora a los rivales que ya están activos", () => {
+  const B = E.getB();
+  const bench = E.mkFoe(445, 0.9);
+  bench.moves = ["Terremoto"];
+  B.team = [bench];
+  const MY = E.getMY();
+  MY.length = 0; MY.push(E.slot(94));
+  assertEqual(E.benchThreat([0], [0], 0), null, "el único candidato ya está en foes (activo) — no es un cambio posible");
+});
+
+check("priorityAlert() describe la exposición a un cambio cuando nada más cruza una frontera", () => {
+  const B = E.getB();
+  const bench = E.mkFoe(445, 0.9);
+  bench.moves = ["Terremoto"];
+  B.team = [bench];
+  const MY = E.getMY();
+  MY.length = 0; MY.push(E.slot(94));
+  const a = E.priorityAlert([0], [], 0, [], null, null);
+  assert(a !== null);
+  assertEqual(a.tipo, "back");
+  assertEqual(a.peso, E.PRIORITY_WEIGHTS.back);
+  assert(a.texto.includes("Garchomp") && a.texto.includes("Gengar"), "el texto tiene que nombrar quién amenaza a quién, no un puntaje opaco");
 });
 
 // ── amenazas: de dónde salen los movimientos del rival (bug real de Angel) ──

@@ -2241,6 +2241,28 @@ function topThreats(){
   }).filter(Boolean).sort((a,b)=>(b.r.R[15]/b.r.maxHP)-(a.r.R[15]/a.r.maxHP)).slice(0,4);
 }
 
+/** Sprint 2.6 (`inference.md` §10, `decisions.md` #21 parte 2): "si cambia a
+    X, tu Y queda expuesto". Entre los rivales que NO están en campo ahora
+    mismo (banca — no confirmados afuera, no el activo actual) cuál pegaría
+    más fuerte contra el propio enfocado si el rival lo manda. No predice que
+    vaya a pasar — describe la peor consecuencia posible de un cambio, con la
+    misma marca de fuente (visto/meta/posible) que ya usa "Mayores amenazas"
+    en Previa, para que sea inspeccionable igual que el resto. */
+function benchThreat(mine,foes,fi){
+  const mi=mine[fi]; if(mi===undefined)return null;
+  const m=MY[mi]; if(!m)return null;
+  const activeSet=new Set(foes);
+  let worst=null;
+  B.team.forEach((f,fIdx)=>{
+    if(!f||!f.dex||!S(f.dex)||activeSet.has(fIdx)||f.out)return;
+    const pool=foeMovePool(f);
+    const r=best(f.dex,myDex(m),{doubles:B.doubles,aItem:f.item,aAb:f.abil,
+      dStat:statsOf(m),dAb:m.abil},pool.moves);
+    if(r&&r.e>0&&(!worst||r.R[15]/r.maxHP>worst.r.R[15]/worst.r.maxHP))
+      worst={f,r,src:pool.src};
+  });
+  return worst;
+}
 /* ── Motor de prioridad (Fase 2, sprint 2.4, `inference.md` §10) ──
    Qué información es más probable que cambie la decisión de ESTE turno.
    relevancia = pesoBase(tipo) × multiplicadorDeUmbral. Deliberadamente dos
@@ -2249,8 +2271,9 @@ function topThreats(){
    Jerarquiza SEÑALES para decidir qué sube a Glance, nunca opciones de
    ataque: `decisions.md` #19 sigue vigente, cero ranking de movimientos
    propios. El orden de peso base salió de la sesión de asesoría VGC
-   (`decisions.md` #20): velocidad crítica > rango de KO > amenaza entrante. */
-const PRIORITY_WEIGHTS={speed:100,ko:90,threat:80};
+   (`decisions.md` #20): velocidad crítica > rango de KO > amenaza entrante >
+   amenaza de banca (sprint 2.6). */
+const PRIORITY_WEIGHTS={speed:100,ko:90,threat:80,back:70};
 /** ¿La velocidad exacta del propio enfocado cae DENTRO del rango incierto
     de algún rival activo? Si sí, todavía no se sabe quién pega primero —
     cruza la frontera de decisión más básica de todas.
@@ -2294,6 +2317,21 @@ function priorityAlert(mine,foes,fi,S1,worst,wv){
   if(worst&&wv&&typeof wv.ko==="number"&&wv.ko>0&&wv.ko<16)
     candidatos.push({tipo:"threat",peso:PRIORITY_WEIGHTS.threat,
       texto:`${esc(nm(worst.f.dex))} con ${esc(mvName(worst.r.move))}: no todas las tiradas te matan (${esc(wv.txt)}).`});
+  // Sprint 2.6 (`decisions.md` #21 parte 2): "si cambia a X, tu Y queda
+  // expuesto" — describe la consecuencia de un cambio posible, no lo elige
+  // ni predice que vaya a pasar. Cualquier chance real de KO (mixto o
+  // garantizado) es información nueva que el resto de las señales de arriba
+  // no cubre, porque esas solo miran el matchup activo ahora mismo.
+  const mi=mine[fi],m=mi!==undefined?MY[mi]:null;
+  const bench=m?benchThreat(mine,foes,fi):null;
+  if(bench){
+    const vdBench=verdict(bench.r,bench.r.maxHP);
+    if(typeof vdBench.ko==="number"&&vdBench.ko>0){
+      const marca={visto:"ya se lo vimos usar",meta:"común en el meta",posible:"solo por learnset"}[bench.src]||"";
+      candidatos.push({tipo:"back",peso:PRIORITY_WEIGHTS.back,
+        texto:`Si el rival cambia a ${esc(nm(bench.f.dex))}, ${esc(nm(myDex(m)))} queda expuesto a ${esc(mvName(bench.r.move))} (${esc(vdBench.txt)}${marca?`, ${marca}`:""}).`});
+    }
+  }
   if(!candidatos.length)return null;
   candidatos.sort((a,b)=>b.peso-a.peso);
   return candidatos[0];
