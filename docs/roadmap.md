@@ -212,10 +212,10 @@ Diseño completo en `architecture.md` §10. No es una fase de una sola sesión; 
 
 **Criterio de salida de Fase 2:** la predicción de equipo deja de depender de un archivo estimado a mano, y cada estimación mostrada es explicable con su cadena de evidencia concreta.
 
-**Sesión de asesoría VGC, 2026-08-01/02 (`decisions.md` #20) — análisis y plan, sin código todavía (preferencia explícita de Angel: analizar → documentar → planear → recién después programar).** Investigación externa sobre qué distingue a un jugador de VGC profesional + una sesión larga de preguntas a Angel como jugador real, para no diseñar Fase 2 a ciegas. Conclusiones ya documentadas, listas para retomar cuando se pase a código:
-- `architecture.md` §10.6 — dos campos nuevos requeridos del `MetaSnapshot` (arriba).
-- `architecture.md` §11.1 — descripción de habilidad expandible en Peek. Fuente y método ya verificados end-to-end (PokeAPI, 201/201 habilidades encontradas, incluidas las propias de Champions) — falta solo escribir el código, no falta investigar nada más.
-- `architecture.md` §11.2 — seguimiento de PP de **todos** los movimientos (alcance decidido por Angel el 2026-08-03). Confirmado como brecha real (`product.md` lo prometía desde el principio y nunca se construyó). Necesita agregar PP máximo a la tabla `MV` primero (dato nuevo, ~150+ movimientos) antes de tocar la UI — plan completo en la sección, no se arrancó por el tamaño de esa migración de datos.
+**Sesión de asesoría VGC, 2026-08-01/02 (`decisions.md` #20) — análisis y plan, sin código todavía en su momento (preferencia explícita de Angel: analizar → documentar → planear → recién después programar).** Investigación externa sobre qué distingue a un jugador de VGC profesional + una sesión larga de preguntas a Angel como jugador real, para no diseñar Fase 2 a ciegas. Las tres conclusiones ya se implementaron en los sprints siguientes — dejo el resumen acá solo como referencia de origen, no como pendiente:
+- `architecture.md` §10.6 — `roleInCore`/`speedControlMajority` (sprint 2.3) y `sets`/`compatibleSets()` (sprint 2.5, R3) del `MetaSnapshot`: **hechos.** `spreadEstimate` sigue sin construirse — bloqueado por una decisión de producto pendiente (§10.1.1), no por falta de código.
+- `architecture.md` §11.1 — descripción de habilidad expandible en Peek: **hecho** (sprint 2.5).
+- `architecture.md` §11.2 — PP de todos los movimientos: **hecho** (sprint 2.5) — resultó no necesitar la migración de ~150 entradas que se había previsto, el dato ya estaba en la fuente que `build_dex.py` ya consumía.
 
 ## Fase 3 — Formalizar la separación Motor / Cliente
 
