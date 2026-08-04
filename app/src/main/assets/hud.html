@@ -2241,6 +2241,64 @@ function topThreats(){
   }).filter(Boolean).sort((a,b)=>(b.r.R[15]/b.r.maxHP)-(a.r.R[15]/a.r.maxHP)).slice(0,4);
 }
 
+/* ── Motor de prioridad (Fase 2, sprint 2.4, `inference.md` §10) ──
+   Qué información es más probable que cambie la decisión de ESTE turno.
+   relevancia = pesoBase(tipo) × multiplicadorDeUmbral. Deliberadamente dos
+   factores simples e inspeccionables, sin pesos finos ajustados a mano —
+   ese error ya se cometió con `predict()` (ver `future.md`).
+   Jerarquiza SEÑALES para decidir qué sube a Glance, nunca opciones de
+   ataque: `decisions.md` #19 sigue vigente, cero ranking de movimientos
+   propios. El orden de peso base salió de la sesión de asesoría VGC
+   (`decisions.md` #20): velocidad crítica > rango de KO > amenaza entrante. */
+const PRIORITY_WEIGHTS={speed:100,ko:90,threat:80};
+/** ¿La velocidad exacta del propio enfocado cae DENTRO del rango incierto
+    de algún rival activo? Si sí, todavía no se sabe quién pega primero —
+    cruza la frontera de decisión más básica de todas.
+    Simplificación deliberada y documentada: compara el stat base sin
+    etapas/estado/Tailwind — esos modifican ambos lados por igual, así que
+    si hay incertidumbre a nivel de reparto, en general sigue habiéndola con
+    los modificadores puestos. No es una prueba exacta, es la señal barata
+    que alcanza para decidir si vale la pena mostrarla en Glance. */
+function speedCriticalPair(mine,foes,fi){
+  const mi=mine[fi]; if(mi===undefined)return null;
+  const m=MY[mi]; if(!m)return null;
+  const myV=myStat(m,5);
+  for(const fIdx of foes){
+    const f=B.team[fIdx]; if(!f)continue;
+    const r=spdRange(f);
+    if(myV>=r.min&&myV<=r.max)return f;
+  }
+  return null;
+}
+/** `S1` (de `suggest()`), `worst`/`wv` (la amenaza calculada) ya vienen
+    computados por quien llama — esta función no recalcula daño, solo
+    decide cuál de las señales ya disponibles vale más la pena mostrar
+    primero. Devuelve `null` si ninguna cruza una frontera real. */
+function priorityAlert(mine,foes,fi,S1,worst,wv){
+  const candidatos=[];
+  const spdFoe=speedCriticalPair(mine,foes,fi);
+  if(spdFoe)candidatos.push({tipo:"speed",peso:PRIORITY_WEIGHTS.speed,
+    texto:`Velocidad sin definir contra ${esc(nm(spdFoe.dex))}: según su reparto, puede ir antes o después.`});
+  // x.dmg es el resultado crudo de calc() (trae R/maxHP/e, no .ko todavía) —
+  // .ko lo calcula verdict(), como ya hace el resto del HUD para mostrar el
+  // resultado. Mismo dato, no una segunda fuente de verdad.
+  for(const x of (S1||[])){
+    if(!x.dmg)continue;
+    const vd=verdict(x.dmg,x.cur);
+    if(typeof vd.ko==="number"&&vd.ko>0&&vd.ko<16){
+      candidatos.push({tipo:"ko",peso:PRIORITY_WEIGHTS.ko,
+        texto:`${esc(mvName(x.k))}: no todas las tiradas matan (${esc(vd.txt)}).`});
+      break;
+    }
+  }
+  if(worst&&wv&&typeof wv.ko==="number"&&wv.ko>0&&wv.ko<16)
+    candidatos.push({tipo:"threat",peso:PRIORITY_WEIGHTS.threat,
+      texto:`${esc(nm(worst.f.dex))} con ${esc(mvName(worst.r.move))}: no todas las tiradas te matan (${esc(wv.txt)}).`});
+  if(!candidatos.length)return null;
+  candidatos.sort((a,b)=>b.peso-a.peso);
+  return candidatos[0];
+}
+
 function vPre(){
   const so=fullSpeedOrder(), th=topThreats();
   if(!so.length&&!th.length)
@@ -2319,11 +2377,15 @@ function vCompact(){
     if(r&&(!worst||r.R[15]>worst.r.R[15]))worst={r,f}});
   const myHp=Math.floor(myStat(m,0)*(B.hp["m"+fi]??100)/100);
   const wv=worst?verdict(worst.r,myHp):null;
+  // Sprint 2.4: qué señal es más probable que cambie la decisión de este
+  // turno, primero en Glance — no elige la jugada, ordena qué mirar.
+  const alerta=priorityAlert(mine,foes,fi,S1,worst,wv);
 
   return `<div class="card d" style="padding:6px">
     <div class="pills">${mine.map((mi,i)=>
       `<button class="p" data-fc="${i}" data-on="${i===fi?1:0}">${esc(nm(myDex(MY[mi])))}</button>`).join("")}
       ${mine.map((mi,i)=>`<span class="p" style="background:none;padding:5px 4px">${B.hp["m"+i]??100}%</span>`).join("")}</div></div>
+  ${alerta?`<div class="card f" style="padding:6px 8px"><div class="msg" style="color:var(--cream)">${alerta.texto}</div></div>`:""}
   <div class="card"><span class="hd">Tus movimientos<em>por resultado, no por orden</em></span>
     ${S1.length?S1.map(x=>{const vd=x.dmg?verdict(x.dmg,x.cur):null;return`<div class="pl"><i class="b">${x.slot+1}</i>
       <b>${esc(mvName(x.k))}${x.tgt?` <span style="color:var(--foe-row)">→ ${esc(x.tgt)}</span>`:""}<s>${esc(x.why)}</s></b>

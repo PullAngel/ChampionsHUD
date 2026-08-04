@@ -166,14 +166,18 @@ Diseño completo en `architecture.md` §10. No es una fase de una sola sesión; 
 - **Pendiente, documentado, no bloqueante:** reparto de stats sigue sin fuente real (`spreads: []` en cada especie — arquitecture.md §10.1.1 ya lo confirmó, ninguna fuente lo da con cobertura real); las megas exclusivas de Champions sin piedra resuelta (arriba); "Repartos habituales" (`spreadEstimate`, §10.6) todavía no se calculó — es el próximo paso natural si se retoma este sprint.
 - **Terminado:** un comando regenera el dataset completo y la validación pasa.
 
-**Sprint 2.4 — Motor de prioridad** · *obligatorio* (habilita `decisions.md` #21, parte 1)
+**Sprint 2.4 — Motor de prioridad** · *obligatorio* (habilita `decisions.md` #21, parte 1) — ~~**HECHO, 2026-08-04**~~
 - **Objetivo:** que el HUD decida qué información sube a Glance según qué es más probable que cambie la decisión del turno (`inference.md` §10).
-- **Archivos:** `hud.html` (`vCompact`, `vField`), `tests/run.js`.
-- **Datos:** los conjuntos de hipótesis de 2.2 (para saber qué es incierto) y la tabla de peso base de `decisions.md` #20.
-- **Tests:** un rango de daño que abarca KO y no-KO puntúa más alto que uno que da 20%; un orden de velocidad que depende de un solo escenario sube; la fórmula es determinista y auditable.
+- **Hecho:** `PRIORITY_WEIGHTS` (velocidad 100 > KO 90 > amenaza entrante 80, orden de `decisions.md` #20) + `speedCriticalPair()` (¿la velocidad propia cae dentro del rango sin determinar del rival?) + `priorityAlert()`, que junta las tres señales ya calculadas por el resto del HUD (rango de velocidad de 2.2, los resultados de daño de `suggest()`, la amenaza peor calculada en Campo) y elige **cuál mostrar primero**, nunca qué jugada hacer. Sin candidato que cruce una frontera de decisión (KO mixto, velocidad sin determinar), no hay alerta — silencio es una salida válida, no un error.
+- **Wireado en `vCompact()`:** una tarjeta nueva arriba de Glance con el texto de la señal ganadora, antes de la lista de movimientos propios (que sigue ordenada "por resultado, no por orden", sin ranking — #19 intacto).
+- **Bug real encontrado y corregido en el camino:** la primera versión leía `x.dmg.ko` directo, pero `.ko` no existe en el resultado crudo de `calc()` — lo calcula `verdict()` a partir de `r.R`/`r.maxHP`. La condición original nunca iba a ser verdadera con datos reales (una rama muerta que parecía funcionar porque los fixtures de test tenían un `.ko` de mentira pegado a mano). Corregido para llamar `verdict(x.dmg,x.cur)` como hace el resto del HUD — una sola fuente de verdad para "cuenta las tiradas que matan", no una copia paralela. Los tests se reescribieron con la forma real de `calc()` (`{R,maxHP,e}`) para que este tipo de bug no vuelva a pasar inadvertido.
+- **Archivos:** `hud.html` (`PRIORITY_WEIGHTS`, `speedCriticalPair()`, `priorityAlert()`, antes de `vPre()` por la misma razón de siempre; `vCompact()`), `tests/run.js`.
+- **Datos:** ninguno nuevo — reusa los conjuntos de hipótesis de 2.2 y los resultados de daño que Campo ya calculaba.
+- **Tests:** 7 casos nuevos — ninguna señal cruza frontera → sin alerta; KO mixto sube una alerta; velocidad crítica le gana a KO mixto por peso; velocidad fuera de rango no marca nada; amenaza entrante con rango mixto sube alerta; el orden de pesos respeta #20; determinismo (mismos datos, mismo resultado).
 - **Aceptación:** Glance muestra primero lo que cruza una frontera de decisión. **Sin ranking de movimientos propios ni etiqueta "MEJOR"** — se ordena información, nunca opciones de juego (#19 sigue vigente).
-- **Riesgos:** repetir el error de `predict()` — un puntaje opaco ajustado a mano que no acierta (ver `future.md`). Mitigación: la fórmula es dos factores, ambos inspeccionables, sin pesos finos.
-- **Terminado:** tests de prioridad pasan y Angel confirma en uso real que el orden le ahorra buscar.
+- **Riesgos:** repetir el error de `predict()` — un puntaje opaco ajustado a mano que no acierta (ver `future.md`). Mitigación aplicada: la fórmula son tres factores inspeccionables, pesos fijos y documentados, sin ajuste fino.
+- **Pendiente:** confirmación de Angel en uso real (el fix de esta noche solo pudo validarse con tests — la calidad del texto/orden en pantalla real queda para la próxima vuelta de feedback).
+- **Terminado:** 102 tests en verde, `validate_data.py` limpio.
 
 **Sprint 2.5 — Reglas nuevas y datos que faltan** · *recomendable* — **parcialmente hecho, 2026-08-03**
 - **PP de todos los movimientos — HECHO.** `build_dex.py` ahora extrae `pp` directo de `moves.json` de Showdown (ya lo traía, no hacía falta una fuente nueva) — `dex.json` regenerado, `mv(k).pp` y `MV` en `loadDex()` actualizados. `f.ppUsed` por rival, con botón −1/+1 junto a cada movimiento visto en Peek, mostrando `restante/máximo`. Para todos los movimientos, no solo los "clave" (decisión de Angel, `architecture.md` §11.2).

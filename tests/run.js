@@ -89,6 +89,11 @@ function loadEngine() {
     this.ABIL_DESC = ABIL_DESC;
     this.ABIL_I18N_keys = function () { return Object.keys(ABIL_I18N); };
     this.whyRow = whyRow;
+    this.priorityAlert = priorityAlert;
+    this.speedCriticalPair = speedCriticalPair;
+    this.verdict = verdict;
+    this.calc = calc;
+    this.PRIORITY_WEIGHTS = PRIORITY_WEIGHTS;
     this.logEvent = logEvent;
     this.logOf = logOf;
     this.eventsOfFoe = eventsOfFoe;
@@ -1138,6 +1143,74 @@ check("whyRow() es tocable con SOLO descripción, sin evidencia de ningún event
 check("whyRow() no es tocable si no hay ni evidencia ni descripción", () => {
   const html = E.whyRow("k3", "Objeto", "?", "", null, null);
   assert(!/data-why/.test(html));
+});
+
+// ── motor de prioridad (Fase 2, sprint 2.4) ──
+console.log("\nmotor de prioridad:");
+
+// dmg con la forma real que devuelve calc(): {R,maxHP,e}, no un ".ko" de
+// mentira — verdict() es quien calcula .ko a partir de R, igual que en
+// producción (ver hud.html priorityAlert()).
+const dmgSiempreMata = { R: Array(16).fill(200), maxHP: 100, e: 1 };
+const dmgMixto = { R: Array.from({ length: 16 }, (_, i) => 90 + i), maxHP: 100, e: 1 }; // 6 de 16 tiradas ≥100
+
+check("priorityAlert() no devuelve nada si ninguna señal cruza una frontera de decisión", () => {
+  // Un movimiento que SIEMPRE mata (ko=16) no es incierto — no hay nada que alertar.
+  const S1 = [{ k: "Protección", dmg: dmgSiempreMata, cur: 100 }];
+  assertEqual(E.priorityAlert([], [], 0, S1, null, null), null);
+});
+
+check("priorityAlert() sube un rango de daño mixto (algunas tiradas matan, otras no)", () => {
+  const S1 = [{ k: "Protección", dmg: dmgMixto, cur: 100 }];
+  const a = E.priorityAlert([], [], 0, S1, null, null);
+  assert(a !== null, "un KO mixto tiene que generar una alerta");
+  assertEqual(a.tipo, "ko");
+  assertEqual(a.peso, E.PRIORITY_WEIGHTS.ko);
+});
+
+check("priorityAlert() prioriza velocidad crítica por sobre KO mixto (peso mayor)", () => {
+  const B = E.getB();
+  B.team = [E.mkFoe(9, 0.9)]; // Blastoise: spdRange() amplio si no hay nada observado
+  B.act = {};
+  const MY = E.getMY();
+  MY.length = 0; MY.push(E.slot(9)); // misma especie: su velocidad cae dentro de su propio rango sin observar
+  const S1 = [{ k: "Protección", dmg: dmgMixto, cur: 100 }];
+  const a = E.priorityAlert([0], [0], 0, S1, null, null);
+  assert(a !== null);
+  assertEqual(a.tipo, "speed", "sin nada observado el rango de velocidad es amplio: debería seguir siendo crítico");
+  assertEqual(a.peso, E.PRIORITY_WEIGHTS.speed);
+  assert(a.peso > E.PRIORITY_WEIGHTS.ko, "velocidad pesa más que KO en el orden de decisions.md #20");
+});
+
+check("speedCriticalPair() no marca nada si la velocidad propia queda fuera del rango del rival", () => {
+  const B = E.getB();
+  const foe = E.mkFoe(9, 0.9);
+  foe.spdMin = 0; foe.spdMax = 1; // rango angosto y bajo, claramente resuelto
+  B.team = [foe];
+  const MY = E.getMY();
+  MY.length = 0; MY.push(E.slot(445)); // Garchomp: mucho más rápido que ese rango
+  assertEqual(E.speedCriticalPair([0], [0], 0), null);
+});
+
+check("priorityAlert() sube la amenaza entrante cuando su rango de KO es mixto", () => {
+  const worst = { f: E.mkFoe(9, 0.9), r: { move: "Terremoto" } };
+  const wv = { ko: 5, txt: "31%", cls: "ok", pct: "20-40%" };
+  const a = E.priorityAlert([], [], 0, [], worst, wv);
+  assertEqual(a.tipo, "threat");
+  assertEqual(a.peso, E.PRIORITY_WEIGHTS.threat);
+});
+
+check("PRIORITY_WEIGHTS respeta el orden de decisions.md #20: velocidad > KO > amenaza", () => {
+  assert(E.PRIORITY_WEIGHTS.speed > E.PRIORITY_WEIGHTS.ko);
+  assert(E.PRIORITY_WEIGHTS.ko > E.PRIORITY_WEIGHTS.threat);
+});
+
+check("priorityAlert() es determinista: mismos datos, mismo resultado, sin aleatoriedad", () => {
+  const S1 = [{ k: "Protección", dmg: dmgMixto, cur: 100 }];
+  const a1 = E.priorityAlert([], [], 0, S1, null, null);
+  const a2 = E.priorityAlert([], [], 0, S1, null, null);
+  assertEqual(a1.tipo, a2.tipo);
+  assertEqual(a1.texto, a2.texto);
 });
 
 // ── amenazas: de dónde salen los movimientos del rival (bug real de Angel) ──
