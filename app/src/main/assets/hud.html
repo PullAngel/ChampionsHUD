@@ -1235,6 +1235,7 @@ function describeEvent(e){
                               : `${mv(e.move)} le hizo ${e.pct}% — ningún reparto normal da ese número`;
     case "ko":              return "Debilitado";
     case "revived":         return "Marcado como no debilitado";
+    case "abilityNoTrigger":return `Bajó el Ataque con ${ab(e.trigger)} — descarta las habilidades que lo bloquean`;
     case "speciesCorrected":return `Especie corregida a mano (era ${esc(nm(e.was))})`;
     default:                return esc(e.kind);
   }
@@ -1271,6 +1272,33 @@ function abilityHypothesis(i){
     else if(e.kind==="abilityCleared")confirmed=null;
   }
   return confirmed?{level:"confirmed",...confirmed}:{level:"unknown"};
+}
+/** R4 (`inference.md` §5, roadmap Sprint 2.5): "descarta una habilidad que
+    debería haberse activado y no lo hizo" — el caso que quedó pendiente por
+    necesitar una fuente verificada, no adivinada. Lista sacada del código
+    fuente real de Pokémon Showdown (`data/abilities.ts`, revisado el
+    2026-08-04): solo entran acá las habilidades que BLOQUEAN a Intimidación
+    por completo y en silencio (`onTryBoost` borra el `boost.atk` sin dejar
+    ningún otro rastro). Deliberadamente NO incluye:
+      - `guarddog` (Perro Guardián): también bloquea la bajada, pero además
+        sube +1 Ataque con su propio mensaje de activación — se delata sola,
+        no hace falta esta regla para confirmarla por descarte.
+      - `mirrorarmor` (Armadura Espejo): no bloquea, REBOTA la bajada hacia
+        quien usó Intimidación — el efecto visible es distinto (mi propio
+        Pokémon baja de Ataque), un caso que esta regla no cubre todavía.
+      - `rattled`/`defiant`/`competitive`: la bajada de Ataque SÍ se ve
+        igual, solo agregan una reacción aparte — no aplica a "no trigger".
+    Lista cerrada a propósito: agregar un trigger nuevo acá exige la misma
+    verificación línea por línea contra el código fuente, no una suposición
+    de mecánica "parecida". */
+const ABILITY_NO_TRIGGER={
+  intimidate:["clearbody","whitesmoke","fullmetalbody","hypercutter",
+    "innerfocus","oblivious","owntempo","scrappy"],
+};
+function abilitiesRuledOut(i){
+  const evs=visibleEvents(i).filter(e=>e.kind==="abilityNoTrigger"&&ABILITY_NO_TRIGGER[e.trigger]);
+  return {value:[...new Set(evs.flatMap(e=>ABILITY_NO_TRIGGER[e.trigger]))],
+          byEvent:evs.map(e=>e.id)};
 }
 function speedHypothesis(i){
   const orders=visibleEvents(i).filter(e=>e.kind==="order");
@@ -1383,7 +1411,12 @@ function undoEvent(id){
     (teamPreview, speciesCorrected, los *Cleared) no ofrece "deshacer": no
     hay un campo mutable puntual que restituir, y un botón que no visiblemente
     hace nada es peor que no tenerlo. */
-const UNDOABLE=new Set(["itemRevealed","abilityRevealed","moveSeen","order","damage","ko","revived","brought","broughtCleared"]);
+/** `abilityNoTrigger` entra acá aunque no tenga un `case` propio en el switch
+    de arriba: no muta ningún campo `f.*` (es una lectura derivada, igual que
+    `abilitiesRuledOut()`), así que marcar el evento como `undone` alcanza —
+    `visibleEvents()` ya lo excluye solo, el efecto visible (la lista de
+    descartadas se achica) pasa sin necesitar un revertidor puntual. */
+const UNDOABLE=new Set(["itemRevealed","abilityRevealed","moveSeen","order","damage","ko","revived","brought","broughtCleared","abilityNoTrigger"]);
 
 const mkFoe=(dex,c,sh)=>({dex,confidence:c,shiny:!!sh,item:null,itemSure:false,abil:null,
   moves:[],spdMin:0,spdMax:9999,spdSure:false,out:false,seen:0,brought:false,ppUsed:{}});
@@ -2607,7 +2640,7 @@ function vFoe(){
       <span class="fg">${x.shiny?"✦":x.confidence<.12?"⚠":x.itemSure?"●":""}</span>
       <b>${esc(nm(x.dex))}</b><s>${S(x.dex)?S(x.dex).s[5]:"—"}</s></button>`).join("")}</div>`;
   if(!f||!sp)return h+`<div class="card f"><div class="msg">Escaneá la vista previa con ↻.</div></div>`;
-  const r=spdRange(f);
+  const r=spdRange(f),ruledOut=abilitiesRuledOut(B.pick);
   h+=`<div class="cols"><div class="card f"><span class="hd">${esc(sp.n)}<em>${m?m.usage+"%":"sin datos"}</em></span>
     <div class="cap" style="margin-top:2px">${f.confidence<.5?"¿Mal leído? Corregí acá":"Especie"}</div>
     ${sel(DEXN,f.dex,x=>S(x).n,v=>{
@@ -2627,12 +2660,15 @@ function vFoe(){
       f.itemSure?"cf":"",itemHypothesis(B.pick).byEvent)}
     ${whyRow("abil","Habilidad",f.abil?esc(abilName(f.abil)):"?",f.abil?"cf":"",
       abilityHypothesis(B.pick).byEvent,f.abil&&ABIL_DESC[f.abil])}
+    ${!f.abil&&ruledOut.value.length?whyRow("abilRuledOut","Descartadas",
+      ruledOut.value.map(k=>esc(abilName(k))).join(", "),"",ruledOut.byEvent):""}
     ${f.bulk?whyRow("bulk","Resistencia deducida",
       `PS ${f.bulk.hp[0]}–${f.bulk.hp[1]} · Def ${f.bulk.df[0]}–${f.bulk.df[1]}`,"cf",f.bulk.byEvent):""}</div>
   <div class="card d"><span class="hd">Observar</span><div class="pills">
       <button class="p" data-obs="fast">Se movió antes</button>
       <button class="p" data-obs="slow">Se movió después</button>
-      <button class="p" data-obs="out">${f.out?"Revivir":"Debilitado"}</button></div>
+      <button class="p" data-obs="out">${f.out?"Revivir":"Debilitado"}</button>
+      ${MY.some(x=>x.abil==="intimidate")?`<button class="p" data-obs="intimidateHit">Bajó el Ataque con Intimidación</button>`:""}</div>
     <div class="cap" style="margin-top:7px">Confirmar por daño</div>
     <div class="f3">${sel(MY.map((m,j)=>j),B.obs.a,j=>nm(myDex(MY[j])),v=>{B.obs.a=+v;save()},"Con cuál")}
     ${sel(dmgPool(myDex(MY[B.obs.a]||MY[0])),B.obs.m,mvName,v=>{B.obs.m=v;save()},"Con qué movimiento",decoMove)}
@@ -2640,8 +2676,10 @@ function vFoe(){
     <button class="btn" id="oGo" style="margin-top:5px">Deducir resistencia</button>
     <div class="msg" id="oOut" style="margin-top:5px">El % real que le bajaste descarta repartos.</div></div></div>`;
   h+=`<div class="card"><span class="hd">Habilidad<em>tocá la que confirmes</em></span><div class="pills">${
-    abilsOf(f.dex).map(ab=>`<button class="p" data-fab="${esc(ab)}" data-on="${f.abil===ab?1:0}">${esc(abilName(ab))}${
-      (m?.abilities||[]).find(x=>x[0]===ab)?`<em>${(m.abilities.find(x=>x[0]===ab))[1]}%</em>`:""}</button>`).join("")}</div>
+    abilsOf(f.dex).map(ab=>{const out=ruledOut.value.includes(ab);
+      return `<button class="p" data-fab="${esc(ab)}" data-on="${f.abil===ab?1:0}"${
+        out?' style="opacity:.45;text-decoration:line-through"':""}>${esc(abilName(ab))}${
+      (m?.abilities||[]).find(x=>x[0]===ab)?`<em>${(m.abilities.find(x=>x[0]===ab))[1]}%</em>`:""}</button>`}).join("")}</div>
     ${f.abil==="intimidate"?`<div class="msg w" style="margin-top:5px">Al entrar baja −1 el Ataque de tus dos activos. Marcalo en CAMPO → Estado y etapas.</div>`:""}</div>`;
   if(m){
     h+=`<div class="cols"><div class="card"><span class="hd">Objetos</span><div class="pills">${
@@ -2903,6 +2941,13 @@ function wire(){
   on("[data-obs]",e=>{const f=B.team[B.pick],k=e.dataset.obs;
     if(k==="out"){f.out=!f.out;syncFoe();
       logEvent(f.out?"ko":"revived",{foe:B.pick,dex:f.dex});return}
+    if(k==="intimidateHit"){
+      // R4 (inference.md §5): entró un propio con Intimidación y el Ataque
+      // de ESTE rival SÍ bajó (el comportamiento normal, sin bloqueo) -- eso
+      // descarta las habilidades que lo hubieran bloqueado en silencio (si
+      // tuviera Cuerpo Puro, por ejemplo, la bajada no se habría visto). No
+      // muta ningún campo del rival, ver abilitiesRuledOut().
+      logEvent("abilityNoTrigger",{foe:B.pick,dex:f.dex,trigger:"intimidate"});return}
     const m=MY[B.mine[0]];if(!m)return;
     const a=B.act.m0||actNew();
     const eff=effSpd(myStat(m,5),"me",a.sta);

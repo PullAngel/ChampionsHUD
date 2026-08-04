@@ -93,6 +93,8 @@ function loadEngine() {
     this.speedCriticalPair = speedCriticalPair;
     this.benchThreat = benchThreat;
     this.compatibleSets = compatibleSets;
+    this.abilitiesRuledOut = abilitiesRuledOut;
+    this.ABILITY_NO_TRIGGER = ABILITY_NO_TRIGGER;
     this.setMeta = function (d, v) { META.species = META.species || {}; META.species[String(d)] = v; };
     this.verdict = verdict;
     this.calc = calc;
@@ -1089,7 +1091,7 @@ check("bulkHypothesis(): con un daño realmente alcanzable, deduce al menos un r
   assertEqual(h.n, res.n);
 });
 
-check("abilityHypothesis(): confirmado solo por revelación, nada más (R4 todavía no existe)", () => {
+check("abilityHypothesis(): confirmado solo por revelación (el descarte de R4 es una lectura aparte, abilitiesRuledOut())", () => {
   const B = E.getB(); B.log = []; B.turn = 1; B.pick = 0;
   B.team = [E.mkFoe(9, 0.9)];
   assertEqual(E.abilityHypothesis(0).level, "unknown");
@@ -1098,6 +1100,54 @@ check("abilityHypothesis(): confirmado solo por revelación, nada más (R4 todav
   assertEqual(h.level, "confirmed");
   assertEqual(h.value, "torrent");
   assertEqual(h.byEvent, ev.id);
+});
+
+// ── R4: descartar habilidad por no-activación (Fase 2, sprint 2.5, inference.md §5) ──
+// Lista verificada contra el código fuente real de Pokémon Showdown
+// (data/abilities.ts, 2026-08-04) -- no una suposición de mecánica.
+// OJO con la dirección: el evento "abilityNoTrigger" se registra cuando el
+// Ataque del rival SÍ bajó con Intimidación (el comportamiento normal, sin
+// bloqueo) -- eso es lo que descarta a las 8 habilidades que lo bloquean, tal
+// como lo especifica el ejemplo de inference.md §5 ("no debería verse la
+// bajada bajo la hipótesis de inmunidad, pero SE VE -- esa habilidad queda
+// descartada"). No es "no bajó", es "sí bajó, así que el bloqueo no ocurrió".
+console.log("\nR4 (abilityNoTrigger):");
+
+check("ABILITY_NO_TRIGGER.intimidate es exactamente la lista verificada contra Showdown, ni una más ni una menos", () => {
+  const esperado = ["clearbody", "whitesmoke", "fullmetalbody", "hypercutter",
+    "innerfocus", "oblivious", "owntempo", "scrappy"];
+  assertEqual([...E.ABILITY_NO_TRIGGER.intimidate].sort().join(","), [...esperado].sort().join(","));
+});
+
+check("abilitiesRuledOut() no descarta nada sin un evento abilityNoTrigger", () => {
+  const B = E.getB(); B.log = []; B.turn = 1; B.pick = 0;
+  B.team = [E.mkFoe(9, 0.9)];
+  assertEqual(E.abilitiesRuledOut(0).value.length, 0);
+});
+
+check("abilitiesRuledOut() descarta las 8 habilidades bloqueadoras cuando el Ataque SÍ bajó con Intimidación", () => {
+  const B = E.getB(); B.log = []; B.turn = 1; B.pick = 0;
+  B.team = [E.mkFoe(9, 0.9)];
+  const ev = E.logEvent("abilityNoTrigger", { foe: 0, dex: 9, trigger: "intimidate" });
+  const r = E.abilitiesRuledOut(0);
+  assertEqual(r.value.length, 8);
+  assert(r.value.includes("clearbody") && r.value.includes("innerfocus"));
+  assertEqual(r.byEvent.join(","), String(ev.id));
+});
+
+check("abilitiesRuledOut() se puede deshacer -- el log no se edita, se marca 'undone' y vuelve a estar vacío", () => {
+  const B = E.getB(); B.log = []; B.turn = 1; B.pick = 0;
+  B.team = [E.mkFoe(9, 0.9)];
+  const ev = E.logEvent("abilityNoTrigger", { foe: 0, dex: 9, trigger: "intimidate" });
+  assertEqual(E.abilitiesRuledOut(0).value.length, 8);
+  E.undoEvent(ev.id);
+  assertEqual(E.abilitiesRuledOut(0).value.length, 0, "deshecho, no debería seguir descartando nada");
+  assertEqual(E.logOf().some(e => e.kind === "abilityNoTrigger"), true, "el evento original sigue en el log, solo marcado -- nunca se borra");
+});
+
+check("describeEvent() explica abilityNoTrigger en texto legible", () => {
+  const ev = { kind: "abilityNoTrigger", trigger: "intimidate", turn: 1 };
+  assert(E.describeEvent(ev).toLowerCase().includes("intimidac"), "tiene que nombrar la habilidad disparadora");
 });
 
 // ── PP y descripción de habilidad (Fase 2, sprint 2.5) ──

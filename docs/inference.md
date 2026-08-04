@@ -173,11 +173,13 @@ Que las reglas sean datos uniformes da tres cosas concretas: se testean una por 
 | R1 | `bulkFromDamage` | `damage` | Descarta repartos defensivos incompatibles | **Ya existe** (`solveBulk`), falta adjuntar evidencia |
 | R2 | `speedFloor` | `order` | Acota `speed`; confirma Pañuelo si el piso supera el máximo sin objeto | **Ya existe** (`observeOrder`), ídem |
 | R3 | `moveSeen` | `move` | Confirma el movimiento; descarta sets incompatibles | Nueva, trivial |
-| R4 | `abilityNoTrigger` | `abilityNoTrigger` | Descarta una habilidad que debería haberse activado y no lo hizo | Nueva — el caso Intimidate |
+| R4 | `abilityNoTrigger` | `abilityNoTrigger` | Descarta una habilidad que debería haberse activado y no lo hizo | **Hecha, 2026-08-04** — el caso Intimidate, lista verificada contra `data/abilities.ts` de Pokémon Showdown |
 | R5 | `itemActivated` | `itemRevealed` | Confirma objeto | Nueva, trivial |
 | R6 | `otsKnown` | `otsImport` | Confirma todo lo que la lista abierta declare | Fase 4 |
 
 **R4 merece una nota**, porque es el patrón que el resto de las reglas futuras va a imitar: *evento → condición esperada bajo una hipótesis → resultado observado → si no coinciden, la hipótesis se cae*. Ejemplo concreto: entra un Pokémon propio con Intimidate; bajo la hipótesis "el rival tiene Cuerpo Puro / Fuerza Mental" no debería verse la bajada de Ataque, pero se ve — esa habilidad queda descartada, con el evento como evidencia. Este esquema *expresa* la lógica en vez de codificarla suelta, que es lo que se pidió.
+
+**Implementado (2026-08-04), acotado a propósito.** La lista de habilidades que bloquean a Intimidación (`ABILITY_NO_TRIGGER.intimidate` en `hud.html`) sale de leer línea por línea `data/abilities.ts`, el código fuente real de Pokémon Showdown — no de memoria ni de una descripción corta de PokeAPI (que en algún caso, como Fuerza Mental/Inner Focus, ni siquiera menciona la interacción con Intimidación en su texto de una línea, aunque el juego real sí la implementa). Ocho habilidades bloquean la bajada en completo silencio: Cuerpo Puro, Humo Blanco, Cuerpo Metálico, Corte Fuerte, Fuerza Mental, Despiste, Ritmo Propio, Intrépido. **Deliberadamente fuera de esta primera versión:** Perro Guardián (bloquea pero se delata solo, con su propio mensaje de activación — no necesita esta regla), Armadura Espejo (rebota la bajada hacia el propio Pokémon en vez de bloquearla — efecto distinto, no cubierto todavía), y Asustadizo/Indócil/Tenacidad (la bajada de Ataque SÍ se ve, solo agregan una reacción aparte — no son casos de "no disparó"). Extender la lista a un trigger nuevo (otro efecto de entrada, otro tipo de bajada de stat) exige la misma verificación contra el código fuente — no se generaliza el patrón sin repetir el trabajo de verificación para cada caso nuevo.
 
 ## 6. Velocidad como entidad de primera clase
 
