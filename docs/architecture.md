@@ -212,9 +212,11 @@ Además de uso%/win rate/3-cores (§10.3), el generador tiene que emitir, por es
 
   **Se muestra siempre como ○ Estimado, nunca como ◆ Deducido**, con su razonamiento inspeccionable ("estimado desde el reparto más usado + rol en los equipos donde aparece"). Y como todo prior (decisión #23): **ordena hipótesis, nunca las descarta.** En cuanto haya un daño observado, `solveBulk()` descarta repartos por evidencia real y esa deducción le gana a la estimación — el orden de precedencia lo fija `inference.md` §1.
 
-Estos tres campos se muestran en Rival/Previa como **tags informativos con su nivel de confianza** (Confirmado/Deducido/Estimado, `product.md` §"Sistema de confianza") — nunca como recomendación, consistente con decisión #1/#19: informan que una especie *suele* tener ese rol, no sugieren jugarla de una forma.
+- **`sets`** (sprint 2.5, `roadmap.md` R3) — combos de 4 movimientos que aparecieron **completos, de verdad, en el mismo Pokémon** dentro de un decklist real, no una combinación artificial armada a partir de los `moves` top por separado (que solo dice frecuencia individual, no qué va junto). Cada entrada: `{moves:[4 nombres],count,pct}`, más `setsSample` al nivel de la especie — el denominador real (equipos con los 4 movimientos resueltos), casi siempre más chico que `usage×tc` porque un decklist con un solo movimiento sin resolver se descarta entero en vez de guardar un set trunco de 3 (`build_meta.py`, principio de "fallo ruidoso"). Es lo que permite `compatibleSets()` en `hud.html`: de los sets conocidos, cuáles siguen siendo compatibles con lo que ya se le vio usar al rival — un set que no incluye un movimiento ya confirmado queda descartado. Prior de meta, nunca certeza: no dice qué trae seguro, angosta el espacio de hipótesis con evidencia (`inference.md` §3/§5).
 
-**No implementado todavía** — depende del script generador completo de §10.4, que todavía no existe. Documentado acá para que cuando se construya el generador, estos campos salgan desde el diseño inicial y no como un parche after-the-fact.
+Estos campos se muestran en Rival/Previa como **tags informativos con su nivel de confianza** (Confirmado/Deducido/Estimado, `product.md` §"Sistema de confianza") — nunca como recomendación, consistente con decisión #1/#19: informan que una especie *suele* tener ese rol, no sugieren jugarla de una forma.
+
+**Estado:** `roleInCore`/`speedControlMajority`/`sets` — **HECHOS** (sprints 2.3 y 2.5, generados de verdad contra Limitless, no un ejemplo). `spreadEstimate` — **sin implementar todavía**, es el único que sigue pendiente de esta lista; el diseño de arriba queda documentado para cuando se retome.
 
 ## 11. Dos features chicas, independientes del pipeline de meta — ~~planeadas~~ **HECHAS, 2026-08-03**
 

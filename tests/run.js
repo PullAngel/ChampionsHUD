@@ -92,6 +92,8 @@ function loadEngine() {
     this.priorityAlert = priorityAlert;
     this.speedCriticalPair = speedCriticalPair;
     this.benchThreat = benchThreat;
+    this.compatibleSets = compatibleSets;
+    this.setMeta = function (d, v) { META.species = META.species || {}; META.species[String(d)] = v; };
     this.verdict = verdict;
     this.calc = calc;
     this.PRIORITY_WEIGHTS = PRIORITY_WEIGHTS;
@@ -1255,6 +1257,30 @@ check("priorityAlert() describe la exposición a un cambio cuando nada más cruz
   assertEqual(a.tipo, "back");
   assertEqual(a.peso, E.PRIORITY_WEIGHTS.back);
   assert(a.texto.includes("Garchomp") && a.texto.includes("Gengar"), "el texto tiene que nombrar quién amenaza a quién, no un puntaje opaco");
+});
+
+// ── "descartar sets incompatibles" (Fase 2, sprint 2.5 R3, build_meta.py) ──
+check("compatibleSets() angosta con lo que ya se vio, no descarta a ciegas", () => {
+  const B = E.getB();
+  const foe = E.mkFoe(910, 0.9);
+  B.team = [foe];
+  E.setMeta(910, { sets: [
+    { moves: ["Golpe Bajo", "Cabeza de Hierro", "Danza Espada", "Protección"], count: 70, pct: 32 },
+    { moves: ["Golpe Bajo", "Protección", "Danza Espada", "Terremoto"], count: 20, pct: 10 },
+  ] });
+  // Nada visto todavía: los dos combos siguen siendo posibles.
+  assertEqual(E.compatibleSets(foe).length, 2);
+  // Se le vio Cabeza de Hierro: el segundo set no lo trae, queda descartado.
+  foe.moves = ["Cabeza de Hierro"];
+  const cs = E.compatibleSets(foe);
+  assertEqual(cs.length, 1);
+  assert(cs[0].moves.includes("Cabeza de Hierro"));
+});
+
+check("compatibleSets() no inventa nada si la especie no tiene sets conocidos en meta.json", () => {
+  const foe = E.mkFoe(6, 0.9);
+  foe.moves = ["Terremoto"];
+  assertEqual(E.compatibleSets(foe).length, 0);
 });
 
 // ── amenazas: de dónde salen los movimientos del rival (bug real de Angel) ──

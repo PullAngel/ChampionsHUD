@@ -164,5 +164,66 @@ class TestAgregacion(unittest.TestCase):
         self.assertNotIn("983", species)
 
 
+class TestSets(unittest.TestCase):
+    """R3 (roadmap Sprint 2.5): combos de 4 movimientos vistos completos de
+    verdad -- lo que permite después descartar un set incompleto cuando el
+    rival ya mostró un movimiento que ese set no trae (inference.md §5)."""
+
+    def setUp(self):
+        self.species_idx = {bm.slug("Kingambit"): 983}
+        self.move_idx = {bm.slug("Sucker Punch"): "Sucker Punch",
+                          bm.slug("Iron Head"): "Iron Head",
+                          bm.slug("Swords Dance"): "Swords Dance",
+                          bm.slug("Protect"): "Protect"}
+        self.teams = [
+            [{"name": "Kingambit", "item": None, "ability": None,
+              "attacks": ["Sucker Punch", "Iron Head", "Swords Dance", "Protect"]}],
+            [{"name": "Kingambit", "item": None, "ability": None,
+              "attacks": ["Sucker Punch", "Iron Head", "Swords Dance", "Protect"]}],
+            # mismo set, orden distinto en el decklist -- tiene que agregarse junto
+            [{"name": "Kingambit", "item": None, "ability": None,
+              "attacks": ["Protect", "Swords Dance", "Iron Head", "Sucker Punch"]}],
+            # un movimiento no resuelve (típico: no está en el dex.json de prueba)
+            # -- el combo entero tiene que descartarse, no guardarse trunco de 3
+            [{"name": "Kingambit", "item": None, "ability": None,
+              "attacks": ["Sucker Punch", "Iron Head", "Water Spout", "Protect"]}],
+        ]
+
+    def _agg(self):
+        return bm.aggregate(self.teams, self.species_idx, {}, {}, self.move_idx, set())
+
+    def test_mismo_set_en_distinto_orden_se_agrega_junto(self):
+        agg = self._agg()
+        key = tuple(sorted(["Sucker Punch", "Iron Head", "Swords Dance", "Protect"]))
+        self.assertEqual(agg["set_count"][983][key], 3)
+
+    def test_set_con_movimiento_sin_resolver_no_se_guarda_trunco(self):
+        agg = self._agg()
+        total_sets = sum(agg["set_count"][983].values())
+        self.assertEqual(total_sets, 3,
+                          "el 4to equipo tiene un movimiento sin resolver: no debería sumar un set de 3")
+
+    def test_species_entry_expone_sets_y_su_muestra_real(self):
+        agg = self._agg()
+        species = bm.build_species_entries(agg, total_teams=4)
+        entry = species["983"]
+        self.assertIn("sets", entry)
+        self.assertEqual(entry["setsSample"], 3,
+                          "la muestra de sets es más chica que tc a propósito -- un equipo tenía un movimiento sin resolver")
+        self.assertEqual(entry["sets"][0]["count"], 3)
+        self.assertEqual(entry["sets"][0]["pct"], 100)
+        self.assertEqual(sorted(entry["sets"][0]["moves"]),
+                          sorted(["Sucker Punch", "Iron Head", "Swords Dance", "Protect"]))
+
+    def test_set_por_debajo_del_piso_minimo_no_aparece(self):
+        agg = bm.aggregate(
+            [[{"name": "Kingambit", "item": None, "ability": None,
+               "attacks": ["Sucker Punch", "Iron Head", "Swords Dance", "Protect"]}],
+             [{"name": "Kingambit", "item": None, "ability": None, "attacks": []}]],
+            self.species_idx, {}, {}, self.move_idx, set())
+        species = bm.build_species_entries(agg, total_teams=2)
+        self.assertNotIn("sets", species["983"], "un set visto una sola vez es ruido de un jugador, no un patrón")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

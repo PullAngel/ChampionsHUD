@@ -68,6 +68,8 @@ TOP_MOVES = 8
 TOP_ABILITIES = 4
 CORE_MIN_COUNT = 3          # architecture.md §10.3: piso absoluto anti-ruido
 SPEED_CONTROL_THRESHOLD = 0.6  # architecture.md §10.6: "mayoritario"
+TOP_SETS = 5                # sprint 2.5, R3: combos de movimientos completos
+SET_MIN_COUNT = 2           # mismo piso anti-ruido que CORE_MIN_COUNT
 
 
 def slug(s: str) -> str:
@@ -259,6 +261,7 @@ def aggregate(teams, species_idx, item_es_by_en, mega_by_norm, move_idx, abil_sl
     item_count = defaultdict(Counter)
     ability_count = defaultdict(Counter)
     move_count = defaultdict(Counter)
+    set_count = defaultdict(Counter)  # R3 (roadmap Sprint 2.5): combos completos de 4
     pair_count = Counter()
     unresolved_species = Counter()
     unresolved_items = Counter()
@@ -289,12 +292,23 @@ def aggregate(teams, species_idx, item_es_by_en, mega_by_norm, move_idx, abil_sl
                 else:
                     unresolved_abilities[mon["ability"]] += 1
 
-            for mv in mon.get("attacks") or []:
+            attacks = mon.get("attacks") or []
+            resolved_moves = []
+            for mv in attacks:
                 rmv = resolve_move(mv, move_idx)
                 if rmv:
                     move_count[num][rmv] += 1
+                    resolved_moves.append(rmv)
                 else:
                     unresolved_moves[mv] += 1
+
+            # Un combo solo cuenta si TODOS los movimientos listados se
+            # resolvieron -- un set de 3 producido porque el 4to movimiento
+            # no matcheó sería un dato inventado (parecería el set real de
+            # otro Pokémon), exactamente el tipo de degradación silenciosa
+            # que el proyecto evita (vision.md, "fallo ruidoso").
+            if attacks and len(resolved_moves) == len(attacks):
+                set_count[num][tuple(sorted(resolved_moves))] += 1
 
         for a, b in combinations(sorted(set(dex_nums)), 2):
             pair_count[(a, b)] += 1
@@ -302,7 +316,7 @@ def aggregate(teams, species_idx, item_es_by_en, mega_by_norm, move_idx, abil_sl
     return {
         "team_count": team_count, "item_count": item_count,
         "ability_count": ability_count, "move_count": move_count,
-        "pair_count": pair_count,
+        "set_count": set_count, "pair_count": pair_count,
         "unresolved": {
             "species": unresolved_species, "items": unresolved_items,
             "abilities": unresolved_abilities, "moves": unresolved_moves,
@@ -345,6 +359,24 @@ def build_species_entries(agg, total_teams):
             entry["roleInCore"] = role
         if speedctl:
             entry["speedControlMajority"] = speedctl
+
+        # R3 (roadmap Sprint 2.5): combos de 4 movimientos vistos completos de
+        # verdad, no una combinación de los "moves" top por separado -- esto
+        # es lo que permite después descartar un set incompleto (inference.md
+        # §5) cuando el rival ya mostró un movimiento que ese set no trae.
+        # "setsSample" es el denominador real (equipos con TODOS los
+        # movimientos resueltos), casi siempre más chico que tc -- se deja
+        # explícito en vez de calcular el % contra tc y esconder la
+        # diferencia (mismo criterio de "fallo ruidoso" que el resto).
+        sample = sum(agg["set_count"][num].values())
+        if sample:
+            top_sets = agg["set_count"][num].most_common(TOP_SETS)
+            sets = [{"moves": list(mv_tuple), "count": c,
+                     "pct": round(c / sample * 100)}
+                    for mv_tuple, c in top_sets if c >= SET_MIN_COUNT]
+            if sets:
+                entry["sets"] = sets
+                entry["setsSample"] = sample
         out[str(num)] = entry
     return out
 

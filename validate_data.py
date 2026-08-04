@@ -102,6 +102,10 @@ def check_meta_vs_canonical(meta, tables, dex):
         for name, pct in entry.get("abilities", []):
             if name not in valid_abilities:
                 err(f"meta.json[{dexnum}]: habilidad \"{name}\" no es un slug de ABIL_I18N")
+        for s in entry.get("sets", []):
+            for name in s.get("moves", []):
+                if name not in valid_moves:
+                    err(f"meta.json[{dexnum}]: set con movimiento \"{name}\" que no resuelve contra MV, ES_ALT ni dex.json")
 
 
 def check_dex_format(dex):

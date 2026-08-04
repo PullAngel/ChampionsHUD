@@ -1501,6 +1501,21 @@ const foeMovePool=f=>{
   return {moves:[],src:"sin datos"};
 };
 const foeMoves=f=>foeMovePool(f).moves;
+/** R3, segunda mitad (roadmap Sprint 2.5, `inference.md` §5): "descartar
+    sets incompatibles". `meta.json[].sets` (sprint 2.5, `build_meta.py`) trae
+    los combos de 4 movimientos completos que de verdad aparecieron juntos en
+    torneos reales — de esos, cuáles siguen siendo compatibles con lo que YA
+    se le vio usar a este rival. No dice qué trae seguro, solo angosta el
+    espacio de hipótesis con evidencia (mismo patrón que `itemHypothesis()`
+    del sprint 2.2): un set que no incluye un movimiento ya confirmado no
+    puede ser el suyo. Sin nada visto todavía, o sin sets conocidos para la
+    especie, no hay nada que descartar — se devuelve la lista tal cual. */
+const compatibleSets=f=>{
+  const seen=(f.moves||[]).filter(x=>MV[x]);
+  const sets=metaOf(f.dex)?.sets||[];
+  if(!seen.length||!sets.length)return sets;
+  return sets.filter(s=>seen.every(mv=>s.moves.includes(mv)));
+};
 
 /* ═════ IMPORTACIÓN DE EQUIPO POR TEXTO ═════
    decisión #15 (decisions.md): pegar un teamlist es una funcionalidad de
@@ -2622,6 +2637,13 @@ function vFoe(){
       m.moves.map(([i,p])=>`<button class="p" data-mvk="${esc(i)}" data-on="${f.moves.includes(i)?1:0}">${esc(i)}<em>${p}%</em></button>`).join("")}</div></div></div>
     <div class="card"><span class="hd">Repartos habituales</span>${
       m.spreads.map(s=>`<div class="row"><b>${esc(s.label)}<s>${esc(s.nat)}</s></b><u>${s.sp.join("/")}<s>${s.pct}%</s></u></div>`).join("")}</div>`;
+    if(m.sets){
+      const cs=compatibleSets(f);
+      h+=`<div class="card"><span class="hd">Sets conocidos<em>${
+        f.moves.filter(x=>MV[x]).length?`${cs.length} de ${m.sets.length} siguen siendo compatibles`:"combos completos vistos en torneos reales"}</em></span>
+        ${cs.map(s=>`<div class="row"><b>${s.moves.map(k=>esc(mvName(k))).join(" · ")}</b><u>${s.pct}%</u></div>`).join("")}
+        ${!cs.length?`<div class="msg">Ningún set conocido incluye todo lo que ya viste — puede traer un set fuera de los ${m.setsSample||0} más comunes.</div>`:""}</div>`;
+    }
   }
   h+=vMovesPP(f);
   h+=vEvidence(B.pick);
