@@ -116,6 +116,12 @@ Dimensiones: `item`, `ability`, `moves`, `speed`, `bulk`. (Sobre por qué no hay
 
 Que el vocabulario de producto salga como consecuencia del modelo de datos, y no como una etiqueta paralela que hay que acordarse de actualizar, es exactamente el tipo de propiedad que evita la familia de bugs de `audit.md` §8.
 
+### 3.1.1 Implementado (sprint 2.2, 2026-08-03): `item`/`ability` sin `alive` enumerado todavía
+
+Al construir R1/R2 se aplicó el mismo argumento de §3.2 (combinatoria) a la dimensión `item`: hoy **una sola regla** (`speedFloor`, R2) concluye algo sobre el ítem del rival, así que enumerar "todos los ítems del juego menos los descartados" no tiene con qué llenarse todavía — sería una lista de un elemento disfrazada de conjunto general. Se implementaron tres niveles (`confirmed`/`deduced`/`unknown`) en vez del `HypothesisSet` completo de arriba. `ability` quedó igual, con un único nivel posible además de `unknown` (`confirmed`) porque R4 (la regla que deduciría habilidades por eliminación) todavía no existe — llega en el sprint 2.5.
+
+**Cuándo generalizar a `alive`/`ruledOut` de verdad:** cuando R3-R5 aporten señales que reduzcan un universo real de candidatos (por ejemplo, un `MetaSnapshot` con la lista de ítems típicos de una especie, sprint 2.3+). Construirlo antes sería la misma trampa que ya se evitó con el reparto de stats — una estructura general sin un caso real que la necesite.
+
 ### 3.2 Por qué NO se enumeran repartos completos
 
 La tentación es representar el reparto de stats como un conjunto de hipótesis sobre las 6 estadísticas. **No se hace**, por dos razones:

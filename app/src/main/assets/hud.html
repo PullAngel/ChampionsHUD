@@ -1053,6 +1053,145 @@ function describeEvent(e){
     default:                return esc(e.kind);
   }
 }
+/* ── Hipótesis derivadas del log (Fase 2, sprint 2.2) ──
+   `inference.md` §3: cada dimensión se deriva del event log en el momento
+   de mostrarla, no se mantiene como estado paralelo que se pueda
+   desincronizar. Deliberadamente NO reemplazan las mutaciones directas que
+   ya hacían observeOrder()/solveBulk() sobre f.item/f.spdMin/f.bulk — esas
+   siguen intactas, sin cambiar su lógica (así lo pide el sprint), y son las
+   que de verdad alimentan el resto de la app (calc(), spdRange()...). Estas
+   funciones son una lectura adicional, de solo lectura, que existe para
+   poder contestar "¿por qué?" citando el evento exacto — el mismo dato,
+   interpretado una vez más, no una segunda fuente de verdad.
+   No hay una dimensión `speed`/`bulk` enumerada (`inference.md` §3.2): se
+   citan como rango + el/los eventos que lo acotaron, igual que ya hacía el
+   código antes de este sprint. */
+function itemHypothesis(i){
+  let confirmed=null;
+  for(const e of visibleEvents(i)){
+    if(e.kind==="itemRevealed")confirmed={value:e.item,byEvent:e.id};
+    else if(e.kind==="itemCleared")confirmed=null;
+  }
+  if(confirmed)return{level:"confirmed",...confirmed};
+  const orders=visibleEvents(i).filter(e=>e.kind==="order"&&e.item);
+  if(orders.length){const l=orders[orders.length-1];
+    return{level:"deduced",value:l.item,byEvent:l.id,rule:"speedFloor"}}
+  return{level:"unknown"};
+}
+function abilityHypothesis(i){
+  let confirmed=null;
+  for(const e of visibleEvents(i)){
+    if(e.kind==="abilityRevealed")confirmed={value:e.ability,byEvent:e.id};
+    else if(e.kind==="abilityCleared")confirmed=null;
+  }
+  return confirmed?{level:"confirmed",...confirmed}:{level:"unknown"};
+}
+function speedHypothesis(i){
+  const orders=visibleEvents(i).filter(e=>e.kind==="order");
+  if(!orders.length)return{level:"unknown",byEvent:[]};
+  const l=orders[orders.length-1];
+  return{level:"deduced",min:l.spdMin,max:l.spdMax,byEvent:orders.map(e=>e.id)};
+}
+function bulkHypothesis(i){
+  const dmgs=visibleEvents(i).filter(e=>e.kind==="damage");
+  if(!dmgs.length)return{level:"unknown"};
+  const l=dmgs[dmgs.length-1];
+  return l.ok?{level:"deduced",hp:l.hp,df:l.df,n:l.n,byEvent:l.id}
+             :{level:"contradiction",move:l.move,pct:l.pct,byEvent:l.id};
+}
+/** Qué filas de "por qué" están desplegadas — vive fuera de B a propósito:
+    es un detalle de cómo se está mirando la pantalla ahora, no un hecho del
+    combate, así que no tiene sentido guardarlo (mismo criterio que PICK/REG
+    más abajo, en la sección VISTAS). */
+let WHY_OPEN={};
+/** Fila de dato con confianza + "por qué" desplegable en un tap
+    (`vision.md`, "explicable en un tap"). Sin evento que citar, es una fila
+    normal — no todo dato viene de una inferencia con evidencia puntual. */
+function whyRow(key,label,valueHtml,cls,byEvent){
+  const has=byEvent&&(Array.isArray(byEvent)?byEvent.length:true);
+  const open=has&&WHY_OPEN[key];
+  return `<div class="row"${has?` data-why="${key}" style="cursor:pointer"`:""}>
+    <b>${label}${has?`<s>${open?"ocultar por qué":"tocá para ver por qué"}</s>`:""}</b>
+    <u class="${cls}">${valueHtml}</u></div>
+    ${open?`<div class="msg" style="margin:-3px 0 5px">${esc(whyText(byEvent))}</div>`:""}`;
+}
+/** Texto de "por qué", a partir del/los evento(s) citados por una hipótesis.
+    Reusa describeEvent() — una sola fuente para el texto de un evento, la
+    use el registro crudo o esta explicación puntual. */
+function whyText(byEvent){
+  const ids=Array.isArray(byEvent)?byEvent:[byEvent];
+  const evs=ids.map(id=>logOf().find(e=>e.id===id)).filter(Boolean);
+  if(!evs.length)return"";
+  return evs.map(e=>`T${e.turn}: ${describeEvent(e)}`).join(" · ");
+}
+
+/* ── Deshacer un evento (Fase 2, sprint 2.2) ──
+   El log nunca se edita ni se borra (`inference.md` §2): deshacer agrega un
+   evento "undone" que referencia al original, en vez de eliminarlo — el
+   registro crudo sigue completo para quien lo quiera auditar. Las hipótesis
+   de arriba ya ignoran los eventos deshechos (visibleEvents()).
+   Además revierte el campo mutable que ese evento había cambiado, para que
+   el resto de la app (que sigue leyendo f.item/f.spdMin/etc. directo, sin
+   pasar por el log) quede consistente con lo que ahora dice el registro. */
+const isUndone=id=>logOf().some(e=>e.kind==="undone"&&e.ref===id);
+const visibleEvents=i=>eventsOfFoe(i).filter(e=>e.kind!=="undone"&&!isUndone(e.id));
+/** Recalcula spdMin/spdMax/item/itemSure desde cero, reproduciendo los
+    eventos "order" que sigan vigentes en orden — es la única dimensión
+    acumulativa (cada observación acota más el rango anterior), así que
+    deshacer una necesita rehacer las que quedan, no solo borrar la última.
+    Limitación conocida y documentada (`inference.md` §2.1): el multiplicador
+    de Tailwind se toma del B.tw ACTUAL, no del que regía cuando pasó cada
+    evento — el estado de campo no vive en el log. En la práctica el efecto
+    es chico: Tailwind rara vez sigue activo turnos después. */
+function recomputeFoeSpeed(i){
+  const f=B.team[i];if(!f)return;
+  f.spdMin=0;f.spdMax=9999;f.spdSure=false;
+  const confirmedItem=itemHypothesisFromEvents(visibleEvents(i).filter(e=>e.kind!=="order"));
+  if(!confirmedItem&&f.item==="Pañuelo Elección"){f.item=null;f.itemSure=false}
+  for(const e of visibleEvents(i))if(e.kind==="order")observeOrder(f,e.vs&&e.vs.eff,e.faster);
+}
+/** Extraída de itemHypothesis() para poder consultar "¿hay un ítem
+    CONFIRMADO (no deducido)?" sin los eventos order — la necesita
+    recomputeFoeSpeed() para no borrar un objeto que el usuario reveló a
+    mano solo porque también coincide con lo que la velocidad deducía. */
+function itemHypothesisFromEvents(evs){
+  let confirmed=null;
+  for(const e of evs){
+    if(e.kind==="itemRevealed")confirmed=e.item;
+    else if(e.kind==="itemCleared")confirmed=null;
+  }
+  return confirmed;
+}
+function undoEvent(id){
+  const ev=logOf().find(e=>e.id===id);
+  if(!ev||ev.kind==="undone"||isUndone(id))return;
+  const i=ev.foe;
+  logEvent("undone",{ref:id});
+  const f=i!==undefined?B.team[i]:null;
+  if(f)switch(ev.kind){
+    case "itemRevealed":
+      if(f.item===ev.item&&!itemHypothesisFromEvents(visibleEvents(i))){f.item=null;f.itemSure=false}
+      recomputeFoeSpeed(i);break;  // por si la velocidad ya lo había deducido
+    case "abilityRevealed":
+      if(f.abil===ev.ability)f.abil=null;break;
+    case "moveSeen":{
+      const p=f.moves.indexOf(ev.move);if(p>=0)f.moves.splice(p,1);break}
+    case "order": recomputeFoeSpeed(i);break;
+    case "damage":
+      if(f.bulk&&f.bulk.byEvent===id)f.bulk=null;break;
+    case "ko": f.out=false;syncFoe();break;
+    case "revived": f.out=true;syncFoe();break;
+    case "brought": f.brought=false;syncActiveFoe();break;
+    case "broughtCleared": f.brought=true;syncActiveFoe();break;
+  }
+  save();
+}
+/** Tipos de evento con un revertidor real en undoEvent() — ver ahí. El resto
+    (teamPreview, speciesCorrected, los *Cleared) no ofrece "deshacer": no
+    hay un campo mutable puntual que restituir, y un botón que no visiblemente
+    hace nada es peor que no tenerlo. */
+const UNDOABLE=new Set(["itemRevealed","abilityRevealed","moveSeen","order","damage","ko","revived","brought","broughtCleared"]);
+
 const mkFoe=(dex,c,sh)=>({dex,confidence:c,shiny:!!sh,item:null,itemSure:false,abil:null,
   moves:[],spdMin:0,spdMax:9999,spdSure:false,out:false,seen:0,brought:false});
 /** Los 4 (o menos) rivales confirmados en esta partida — hasta que no se
@@ -2162,11 +2301,13 @@ function vFoe(){
       save()
     },"Corregir especie")}
     ${f.shiny?`<div class="row"><b>Variocolor</b><u class="cf">✦</u></div>`:""}
-    <div class="row"><b>Velocidad</b><u class="${f.spdSure?"cf":""}">${r.min}–${r.max}</u></div>
-    <div class="row"><b>Objeto</b><u class="${f.itemSure?"cf":""}">${f.item?esc(itName(f.item)):"?"}</u></div>
-    <div class="row"><b>Habilidad</b><u class="${f.abil?"cf":""}">${f.abil?esc(abilName(f.abil)):"?"}</u></div>
+    ${whyRow("speed","Velocidad",`${r.min}–${r.max}`,f.spdSure?"cf":"",speedHypothesis(B.pick).byEvent)}
+    ${whyRow("item","Objeto",f.item?esc(itName(f.item))+(itemHypothesis(B.pick).level==="deduced"?" (deducido)":""):"?",
+      f.itemSure?"cf":"",itemHypothesis(B.pick).byEvent)}
+    ${whyRow("abil","Habilidad",f.abil?esc(abilName(f.abil)):"?",f.abil?"cf":"",abilityHypothesis(B.pick).byEvent)}
     <div class="row"><b>Vistos</b><u>${f.moves.length?esc(f.moves.map(mvName).join(", ")):"—"}</u></div>
-    ${f.bulk?`<div class="row"><b>Resistencia deducida</b><u class="cf">PS ${f.bulk.hp[0]}–${f.bulk.hp[1]} · Def ${f.bulk.df[0]}–${f.bulk.df[1]}</u></div>`:""}</div>
+    ${f.bulk?whyRow("bulk","Resistencia deducida",
+      `PS ${f.bulk.hp[0]}–${f.bulk.hp[1]} · Def ${f.bulk.df[0]}–${f.bulk.df[1]}`,"cf",f.bulk.byEvent):""}</div>
   <div class="card d"><span class="hd">Observar</span><div class="pills">
       <button class="p" data-obs="fast">Se movió antes</button>
       <button class="p" data-obs="slow">Se movió después</button>
@@ -2198,14 +2339,15 @@ function vFoe(){
    Son HECHOS, no deducciones: acá no se interpreta nada. La cadena
    "evento → hipótesis descartada" llega en el sprint 2.2 (`inference.md`). */
 function vEvidence(i){
-  const evs=eventsOfFoe(i);
+  const evs=visibleEvents(i);
   if(!evs.length)return `<div class="card d"><span class="hd">Qué observamos</span>
     <div class="msg">Todavía nada de este rival. Lo que marques acá arriba —
     movimientos, objeto, orden de velocidad, daño — queda registrado y se puede repasar.</div></div>`;
   return `<div class="card d"><span class="hd">Qué observamos<em>${evs.length} en el registro</em></span>
-    ${evs.map(e=>`<div class="row"><b>T${e.turn}<s>${describeEvent(e)}</s></b></div>`).join("")}
-    <div class="msg" style="margin-top:5px">Hechos observados, sin interpretar. Nada de esto se
-    edita: corregir algo agrega una entrada nueva.</div></div>`;
+    ${evs.map(e=>`<div class="row"><b>T${e.turn}<s>${describeEvent(e)}</s></b>${
+      UNDOABLE.has(e.kind)?`<button class="ico" data-undo="${e.id}" title="Deshacer">↺</button>`:""}</div>`).join("")}
+    <div class="msg" style="margin-top:5px">Hechos observados, sin interpretar. Deshacer no borra el
+    registro: agrega una corrección, igual que cualquier otro cambio de opinión.</div></div>`;
 }
 
 function vMine(){
@@ -2382,6 +2524,8 @@ function wire(){
   on("[data-lang]",e=>{LANG=e.dataset.lang;try{localStorage.setItem("hudLang",LANG)}catch(x){}});
   on("[data-ocrt]",e=>{OCR_TARGET=e.dataset.ocrt;
     try{localStorage.setItem("hudOcrTarget",OCR_TARGET)}catch(x){}});
+  on("[data-why]",e=>{const k=e.dataset.why;WHY_OPEN[k]=!WHY_OPEN[k]});
+  on("[data-undo]",e=>undoEvent(+e.dataset.undo));
   on("[data-item]",e=>{const f=B.team[B.pick],v=e.dataset.item;
     f.item=f.item===v?null:v;f.itemSure=!!f.item;
     logEvent(f.item?"itemRevealed":"itemCleared",{foe:B.pick,dex:f.dex,item:v})});
@@ -2449,11 +2593,11 @@ function wire(){
     // El daño observado es un hecho; lo que solveBulk() deduce de él es una
     // inferencia. Se registra el hecho SIEMPRE — también cuando no cierra
     // con ningún reparto, que es justamente el caso más informativo.
-    logEvent("damage",{foe:B.pick,dex:f.dex,move:B.obs.m,pct:B.obs.p,
+    const ev=logEvent("damage",{foe:B.pick,dex:f.dex,move:B.obs.m,pct:B.obs.p,
       by:{dex:myDex(m)},ok:!!res.ok,
       ...(res.ok?{n:res.n,hp:res.hp,df:res.df}:{})});
     if(!res.ok)$("#oOut").textContent="Ningún reparto normal da ese número: sospechá de baya de resistencia, pantalla o crítico.";
-    else{ f.bulk=res;   // queda anclado: el HUD lo recuerda el resto del combate
+    else{ f.bulk={...res,byEvent:ev.id};   // queda anclado: el HUD lo recuerda el resto del combate
       $("#oOut").textContent=`${res.n} repartos posibles. PS ${res.hp[0]}–${res.hp[1]} SP, defensa ${res.df[0]}–${res.df[1]} SP. Anclado.`}
     save()};
 

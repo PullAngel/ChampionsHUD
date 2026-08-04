@@ -89,6 +89,18 @@ function loadEngine() {
     this.logOf = logOf;
     this.eventsOfFoe = eventsOfFoe;
     this.describeEvent = describeEvent;
+    this.itemHypothesis = itemHypothesis;
+    this.abilityHypothesis = abilityHypothesis;
+    this.speedHypothesis = speedHypothesis;
+    this.bulkHypothesis = bulkHypothesis;
+    this.whyText = whyText;
+    this.undoEvent = undoEvent;
+    this.visibleEvents = visibleEvents;
+    this.isUndone = isUndone;
+    this.observeOrder = observeOrder;
+    this.solveBulk = solveBulk;
+    this.spdRange = spdRange;
+    this.shown = shown;
     this.nextEventId = nextEventId;
     this.NEW = NEW;
     this.setB = function (v) { B = v; };
@@ -933,6 +945,147 @@ check("un combate guardado en v4 (sin log) se migra sin perderse", () => {
   const migrado = Object.assign(E.NEW(), viejo);
   assert(Array.isArray(migrado.log), "el log vacío de NEW() sobrevive al Object.assign");
   assertEqual(migrado.turn, 7, "y el estado del combate viejo se conserva");
+});
+
+// ── hipótesis derivadas del event log (Fase 2, sprint 2.2) ──
+console.log("\nhipótesis derivadas del log:");
+
+// Simula exactamente lo que hace el handler real de "Se movió antes/después"
+// en wire(): correr observeOrder() (sin tocar su lógica) y loguear el
+// resultado. Se repite en varios tests, así que se factoriza acá.
+function simOrder(B, foe, foeIdx, eff, faster) {
+  E.observeOrder(foe, eff, faster);
+  return E.logEvent("order", {
+    foe: foeIdx, dex: foe.dex, faster,
+    vs: { dex: 445, eff: E.shown(eff) },
+    spdMin: foe.spdMin, spdMax: foe.spdMax,
+    item: foe.itemSure ? foe.item : null,
+  });
+}
+
+check("itemHypothesis(): deducido por velocidad, con el evento que lo causó", () => {
+  const B = E.getB(); B.log = []; B.turn = 1; B.pick = 0;
+  const foe = E.mkFoe(9, 0.9);
+  B.team = [foe];
+  const ev = simOrder(B, foe, 0, 999, true); // velocidad imposible sin objeto: fuerza la deducción
+  const h = E.itemHypothesis(0);
+  assertEqual(h.level, "deduced");
+  assertEqual(h.value, "Pañuelo Elección");
+  assertEqual(h.byEvent, ev.id, "cada deducción cita el evento exacto que la causó");
+  assert(/T1: Se movió antes/.test(E.whyText(h.byEvent)), "el por qué reusa describeEvent(), no un texto aparte");
+});
+
+check("itemHypothesis(): un ítem CONFIRMADO por revelación gana siempre al deducido", () => {
+  const B = E.getB(); B.log = []; B.turn = 1; B.pick = 0;
+  const foe = E.mkFoe(9, 0.9);
+  B.team = [foe];
+  simOrder(B, foe, 0, 999, true); // deduce Pañuelo Elección primero
+  foe.item = "Colbur Berry"; foe.itemSure = true; // lo que ya haría el tap real en RIVAL
+  const revealEv = E.logEvent("itemRevealed", { foe: 0, dex: foe.dex, item: "Colbur Berry" });
+  const h = E.itemHypothesis(0);
+  assertEqual(h.level, "confirmed");
+  assertEqual(h.value, "Colbur Berry");
+  assertEqual(h.byEvent, revealEv.id);
+});
+
+check("undoEvent(): deshacer una revelación restituye la deducción que tenía debajo", () => {
+  const B = E.getB(); B.log = []; B.turn = 1; B.pick = 0;
+  const foe = E.mkFoe(9, 0.9);
+  B.team = [foe];
+  const orderEv = simOrder(B, foe, 0, 999, true);
+  foe.item = "Colbur Berry"; foe.itemSure = true;
+  const revealEv = E.logEvent("itemRevealed", { foe: 0, dex: foe.dex, item: "Colbur Berry" });
+  assertEqual(E.itemHypothesis(0).level, "confirmed");
+
+  E.undoEvent(revealEv.id);
+
+  assertEqual(E.itemHypothesis(0).level, "deduced", "sin la revelación, vuelve a valer la deducción");
+  assertEqual(E.itemHypothesis(0).value, "Pañuelo Elección");
+  assertEqual(E.itemHypothesis(0).byEvent, orderEv.id);
+  assertEqual(foe.item, "Pañuelo Elección", "el campo vivo que usa el resto de la app queda consistente");
+  assert(E.isUndone(revealEv.id), "el evento original sigue en el log, solo marcado como deshecho");
+  assertEqual(E.logOf().filter((e) => e.kind === "itemRevealed").length, 1,
+    "deshacer NO borra el evento — lo dice inference.md §2, nunca se edita ni se borra");
+});
+
+check("undoEvent(): no borra un ítem que sigue confirmado aunque se deshaga la deducción que lo originó", () => {
+  const B = E.getB(); B.log = []; B.turn = 1; B.pick = 0;
+  const foe = E.mkFoe(9, 0.9);
+  B.team = [foe];
+  const orderEv = simOrder(B, foe, 0, 999, true);
+  const revealEv = E.logEvent("itemRevealed", { foe: 0, dex: foe.dex, item: "Pañuelo Elección" }); // coincide, confirmado de verdad
+
+  E.undoEvent(orderEv.id); // se deshace SOLO la deducción de velocidad
+
+  assertEqual(foe.item, "Pañuelo Elección", "sigue confirmado, independiente de la deducción deshecha");
+  assertEqual(E.itemHypothesis(0).level, "confirmed");
+  assertEqual(E.itemHypothesis(0).byEvent, revealEv.id);
+});
+
+check("speedHypothesis(): cita TODOS los eventos que acotaron el rango, no solo el último", () => {
+  const B = E.getB(); B.log = []; B.turn = 1; B.pick = 0;
+  const foe = E.mkFoe(9, 0.9);
+  B.team = [foe];
+  const ev1 = simOrder(B, foe, 0, 999, true);
+  B.turn = 2;
+  const ev2 = simOrder(B, foe, 0, 50, false);
+  const h = E.speedHypothesis(0);
+  assertEqual(h.level, "deduced");
+  assertEqual(h.byEvent.slice().sort().join(","), [ev1.id, ev2.id].sort().join(","));
+});
+
+check("undoEvent(): deshacer un 'order' recalcula el rango completo (dimensión acumulativa)", () => {
+  const B = E.getB(); B.log = []; B.turn = 1; B.pick = 0;
+  const foe = E.mkFoe(9, 0.9);
+  B.team = [foe];
+  const ev1 = simOrder(B, foe, 0, 999, true);
+  B.turn = 2;
+  const ev2 = simOrder(B, foe, 0, 50, false);
+
+  E.undoEvent(ev2.id);
+
+  const h = E.speedHypothesis(0);
+  assertEqual(h.byEvent.join(","), String(ev1.id), "solo queda citado el evento que sigue vigente");
+});
+
+check("bulkHypothesis(): el hecho se registra siempre; la hipótesis solo si hay al menos un reparto compatible", () => {
+  const B = E.getB(); B.log = []; B.turn = 2; B.pick = 0;
+  B.team = [E.mkFoe(9, 0.9)];
+  // 200% es mayor que cualquier daño posible: garantiza ok:false sin depender
+  // de la fórmula exacta de calc().
+  const res = E.solveBulk(445, 9, "Terremoto", 200, {});
+  assertEqual(res.ok, false, "200% no puede ser compatible con ningún reparto");
+  const ev = E.logEvent("damage", { foe: 0, dex: 9, move: "Terremoto", pct: 200, by: { dex: 445 }, ok: false });
+  const h = E.bulkHypothesis(0);
+  assertEqual(h.level, "contradiction", "fallo ruidoso: no se inventa un reparto que no cierra");
+  assertEqual(h.byEvent, ev.id);
+});
+
+check("bulkHypothesis(): con un daño realmente alcanzable, deduce al menos un reparto", () => {
+  const B = E.getB(); B.log = []; B.turn = 2; B.pick = 0;
+  B.team = [E.mkFoe(9, 0.9)];
+  // Se usa el propio calc() para conseguir un % que SÍ es alcanzable (en vez
+  // de adivinar un número), así el test no depende de la fórmula de daño.
+  const probe = E.calc({ atk: 445, def: 9, move: "Terremoto", dHP: 0, dSP: 0, dNat: 1 });
+  const pctMid = Math.round((probe.R[8] / probe.maxHP) * 100);
+  const res = E.solveBulk(445, 9, "Terremoto", pctMid, {});
+  assert(res.ok, "un daño realmente alcanzable tiene que resolver al menos un reparto");
+  const ev = E.logEvent("damage", { foe: 0, dex: 9, move: "Terremoto", pct: pctMid, by: { dex: 445 }, ok: true, n: res.n, hp: res.hp, df: res.df });
+  const h = E.bulkHypothesis(0);
+  assertEqual(h.level, "deduced");
+  assertEqual(h.byEvent, ev.id);
+  assertEqual(h.n, res.n);
+});
+
+check("abilityHypothesis(): confirmado solo por revelación, nada más (R4 todavía no existe)", () => {
+  const B = E.getB(); B.log = []; B.turn = 1; B.pick = 0;
+  B.team = [E.mkFoe(9, 0.9)];
+  assertEqual(E.abilityHypothesis(0).level, "unknown");
+  const ev = E.logEvent("abilityRevealed", { foe: 0, dex: 9, ability: "torrent" });
+  const h = E.abilityHypothesis(0);
+  assertEqual(h.level, "confirmed");
+  assertEqual(h.value, "torrent");
+  assertEqual(h.byEvent, ev.id);
 });
 
 // ── amenazas: de dónde salen los movimientos del rival (bug real de Angel) ──
