@@ -107,6 +107,27 @@ def check_meta_vs_canonical(meta, tables, dex):
                 if name not in valid_moves:
                     err(f"meta.json[{dexnum}]: set con movimiento \"{name}\" que no resuelve contra MV, ES_ALT ni dex.json")
 
+        # Sprint 2.7 (cruce con Champions Battle Data, build_meta_v2.py) --
+        # mismas reglas que items/moves/abilities de arriba, aplicadas a los
+        # campos cbd*. topNatures/topEvSpreads no dependen de tablas de
+        # hud.html (los nombres de naturaleza y las etiquetas de stat no
+        # están en ninguna tabla canónica del proyecto) -- se valida solo
+        # su forma (6 valores de EV entre 0 y 32, la escala real de
+        # Champions), no su contenido.
+        for name, pct in entry.get("cbdItems", []):
+            if name not in valid_items:
+                err(f"meta.json[{dexnum}]: cbdItems \"{name}\" no existe en la tabla IT ni en MEGA")
+        for name, pct in entry.get("cbdMoves", []):
+            if name not in valid_moves:
+                err(f"meta.json[{dexnum}]: cbdMoves \"{name}\" no resuelve contra MV, ES_ALT ni dex.json")
+        for name, pct in entry.get("cbdAbilities", []):
+            if name not in valid_abilities:
+                err(f"meta.json[{dexnum}]: cbdAbilities \"{name}\" no es un slug de ABIL_I18N")
+        for spread in entry.get("topEvSpreads", []):
+            sp = spread.get("sp", [])
+            if len(sp) != 6 or any(not isinstance(v, int) or v < 0 or v > 32 for v in sp):
+                err(f"meta.json[{dexnum}]: topEvSpreads con reparto fuera de la escala 0-32 de Champions: {sp}")
+
 
 def check_dex_format(dex):
     if dex is None:

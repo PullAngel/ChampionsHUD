@@ -2686,8 +2686,20 @@ function vFoe(){
       m.items.map(([i,p])=>`<button class="p" data-item="${esc(i)}" data-on="${f.item===i?1:0}">${esc(i)}<em>${p}%</em></button>`).join("")}</div></div>
     <div class="card"><span class="hd">Movimientos</span><div class="pills">${
       m.moves.map(([i,p])=>`<button class="p" data-mvk="${esc(i)}" data-on="${f.moves.includes(i)?1:0}">${esc(i)}<em>${p}%</em></button>`).join("")}</div></div></div>
-    <div class="card"><span class="hd">Repartos habituales</span>${
-      m.spreads.map(s=>`<div class="row"><b>${esc(s.label)}<s>${esc(s.nat)}</s></b><u>${s.sp.join("/")}<s>${s.pct}%</s></u></div>`).join("")}</div>`;
+    if((m.topNatures||[]).length||(m.topEvSpreads||[]).length){
+      // Sprint 2.7 (roadmap.md, cruce con Champions Battle Data): naturaleza
+      // y reparto de EVs son dos rankings INDEPENDIENTES en la fuente real
+      // -- nunca vienen como pares. Mostrarlos juntos en una fila (como
+      // hacía el diseño viejo con m.spreads, nunca poblado de verdad)
+      // inventaría una combinación que el dato no sostiene. Van separados,
+      // con la marca "○" de prior de meta (product.md, sistema de
+      // confianza) — nunca ◆ Deducido, architecture.md §10.1.1.
+      h+=`<div class="card"><span class="hd">Repartos habituales<em>○ estimado, no confirmado</em></span>
+        ${(m.topNatures||[]).slice(0,3).map(n=>`<div class="row"><b>${esc(n.name)}${
+          n.statUp?`<s>↑${esc(n.statUp)} ↓${esc(n.statDown)}</s>`:""}</b><u>${n.pct}%</u></div>`).join("")}
+        ${(m.topEvSpreads||[]).slice(0,3).map(s=>`<div class="row"><b>${s.sp.join("/")}<s>PS/Atq/Def/AtqEsp/DefEsp/Vel</s></b><u>${s.pct}%</u></div>`).join("")}
+        <div class="msg" style="margin-top:5px">Naturaleza y reparto de EVs se miden por separado — no implica que vayan juntos.</div></div>`;
+    }
     if(m.sets){
       const cs=compatibleSets(f);
       h+=`<div class="card"><span class="hd">Sets conocidos<em>${
