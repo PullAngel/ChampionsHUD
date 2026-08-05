@@ -102,6 +102,9 @@ function loadEngine() {
     this.getMETA = function () { return META; };
     this.getSPD = function () { return SPD; };
     this.fixDex = fixDex;
+    this.roleOfMove = roleOfMove;
+    this.rolesFoe = rolesFoe;
+    this.predict = predict;
     this.setMeta = function (d, v) { META.species = META.species || {}; META.species[String(d)] = v; };
     this.verdict = verdict;
     this.calc = calc;
@@ -1642,6 +1645,55 @@ check("ningún texto de foeBringOrder()/whyBring() sugiere una jugada (decisions
       const t = E.whyBring(x).toLowerCase();
       for (const p of prohibidos) {
         assert(!t.includes(p), `"${p}" aparece en un texto que debería describir, no mandar: ${t}`);
+      }
+    }
+  });
+});
+
+// ── roles de movimiento en los dos idiomas (bug real, sprint 2.9) ──
+// ROLE_MV está escrito con claves en español, pero meta.json guarda los
+// movimientos en inglés: la búsqueda directa fallaba SIEMPRE contra datos de
+// meta y los ejes de Tailwind/Espacio Raro/pantallas nunca se detectaban en
+// el rival. Mismo patrón que audit.md §5.2 y el principio no negociable de
+// CLAUDE.md (nunca comparar por nombre traducido en lógica de dominio).
+console.log("\nroles de movimiento (español ↔ inglés):");
+
+check("roleOfMove() resuelve el mismo rol venga la clave en español o en inglés", () => {
+  assertEqual(E.roleOfMove("Viento Afín"), "tailwind");
+  assertEqual(E.roleOfMove("Tailwind"), "tailwind", "el nombre en inglés es el que trae meta.json — tiene que resolver igual");
+  assertEqual(E.roleOfMove("Espacio Raro"), "trickroom");
+  assertEqual(E.roleOfMove("Trick Room"), "trickroom");
+  assertEqual(E.roleOfMove("Pantalla de Luz"), "pantallas");
+  assertEqual(E.roleOfMove("Light Screen"), "pantallas");
+  assertEqual(E.roleOfMove("Movimiento Inventado"), null, "lo que no tiene rol devuelve null, no un rol cualquiera");
+});
+
+check("rolesFoe() detecta Tailwind desde meta.json, que lo guarda en inglés", () => {
+  conMetaReal(() => {
+    // Whimsicott (547) tiene Tailwind al tope de sus movimientos de meta.
+    // Antes del fix este set salía sin 'tailwind' y la nota "Va por Tailwind"
+    // no se emitía nunca para el rival.
+    const roles = [...E.rolesFoe({ dex: 547, abil: null })];
+    assert(roles.includes("tailwind"), `Whimsicott debería tener el rol tailwind, salió: ${roles.join(",")}`);
+  });
+});
+
+check("ninguna nota de predict() da una orden — describe la posición (decisions.md #21)", () => {
+  conMetaReal(() => {
+    const B = E.getB();
+    B.team = [547, 983, 445, 6, 727, 591].map((d) => E.mkFoe(d, 0.9));
+    const MY = E.getMY();
+    MY.length = 0;
+    [445, 983, 727, 547].forEach((d) => MY.push(E.slot(d)));
+    const p = E.predict();
+    assert(p && p.notes.length, "el fixture tiene que producir notas para que el test valga algo");
+    // Imperativos y etiquetas de jerarquía que #21 prohíbe sin excepción.
+    const prohibidos = ["traelo", "no lo traigas", "priorizá", "guardá", "forzalo",
+      "conviene", "tu mejor", "la mejor", "deberías", "sacá", "elegí", "respuesta limpia"];
+    for (const n of p.notes) {
+      const t = n.toLowerCase();
+      for (const pr of prohibidos) {
+        assert(!t.includes(pr), `"${pr}" convierte una descripción en una orden: ${n}`);
       }
     }
   });

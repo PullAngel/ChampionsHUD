@@ -780,6 +780,24 @@ const abilsOf=d=>ABIL[d]||ABIL[Object.values(MEGA).find(g=>g[0]===d)?.[1]]||["�
 const ROLE_MV={"Viento Afín":"tailwind","Espacio Raro":"trickroom","Danza Lluvia":"rain",
 "Reflejo":"pantallas","Pantalla de Luz":"pantallas","Onda Trueno":"estado","Espora":"estado",
 "Paralizador":"estado","Bostezo":"estado","Campo Psíquico":"prioridad"};
+/** El mismo rol, buscado por el nombre en cualquiera de los dos idiomas.
+    `ROLE_MV` está escrito con las claves en español (las de la tabla `MV`
+    embebida), pero `meta.json` guarda los movimientos con su nombre en
+    INGLÉS (decisión del sprint 2.3: no se duplica la tabla de nombres). La
+    búsqueda directa fallaba SIEMPRE contra datos de meta, así que los ejes
+    de Tailwind/Espacio Raro/pantallas nunca se detectaban en el equipo
+    rival — Whimsicott con Tailwind al tope de su meta daba rol vacío.
+    Encontrado en el sprint 2.9; es el mismo patrón que `audit.md` §5.2 y
+    lo que `CLAUDE.md` marca como no negociable: nunca comparar por nombre
+    traducido en lógica de dominio.
+    El espejo se DERIVA de `MV[k][7]` en vez de mantener dos listas a mano —
+    si mañana se agrega un rol nuevo a `ROLE_MV`, su nombre en inglés sale
+    solo. */
+const ROLE_MV_EN=(()=>{const o={};
+  for(const k in ROLE_MV){const en=MV[k]&&MV[k][7]; if(en)o[en]=ROLE_MV[k]}
+  o["Psychic Terrain"]=ROLE_MV["Campo Psíquico"];  // único que no está en la MV embebida
+  return o})();
+const roleOfMove=k=>ROLE_MV[k]||ROLE_MV_EN[k]||null;
 const ROLE_AB={drought:"sol",drizzle:"lluvia",sandstream:"arena",prankster:"bromista",
 intimidate:"intimida",psychicsurge:"prioridad",grassysurge:"campo",
 hospitality:"apoyo",supremeoverlord:"escala"};
@@ -994,7 +1012,7 @@ function learnable(dex){
    velocidad, clima, megas), después el intercambio de daño. */
 function rolesFoe(f){
   const m=metaOf(f.dex),R=new Set();
-  (m?.moves||[]).forEach(([k])=>{if(ROLE_MV[k])R.add(ROLE_MV[k])});
+  (m?.moves||[]).forEach(([k])=>{const r=roleOfMove(k); if(r)R.add(r)});
   if(f.abil){ if(ROLE_AB[f.abil])R.add(ROLE_AB[f.abil]) }
   else (m?.abilities||[]).forEach(([k])=>{if(ROLE_AB[k])R.add(ROLE_AB[k])});
   if((m?.items||[]).some(([i])=>isMega(i)))R.add("mega");
@@ -1002,7 +1020,7 @@ function rolesFoe(f){
 }
 function rolesMine(m){
   const R=new Set();
-  (m.moves||[]).forEach(k=>{if(ROLE_MV[k])R.add(ROLE_MV[k])});
+  (m.moves||[]).forEach(k=>{const r=roleOfMove(k); if(r)R.add(r)});
   if(isMega(m.item))R.add("mega");
   return R;
 }
@@ -1073,17 +1091,20 @@ function foeBringOrder(){
     puntaje. Cuando no hay ningún dato real que citar lo dice con todas las
     letras en vez de devolver vacío: un texto en blanco deja al que llama
     mostrando nada, que es justo la degradación silenciosa que `vision.md`
-    prohíbe. "No sabemos" es una respuesta válida; "" no. */
+    prohíbe. "No sabemos" es una respuesta válida; "" no.
+    Devuelve texto PLANO — quien lo interpole en HTML lo pasa por `esc()`,
+    misma convención que el resto del archivo (escapar en el punto de uso,
+    no adentro del que genera el dato). */
 function whyBring(x){
   const n=META.sourceCounts?.teams;
   if(x.linked.length){
-    const t=x.linked.slice(0,2).map(l=>`${esc(nm(l.dex))} (${l.pct}%${
+    const t=x.linked.slice(0,2).map(l=>`${nm(l.dex)} (${l.pct}%${
       n?`, ${l.count} de ${n} equipos`:""})`).join(" y ");
     return `Aparece junto a ${t}`;
   }
   if(x.cbdLinks.length)
     return `Sin core medido con el resto, pero Champions Battle Data lo lista entre los compañeros frecuentes de ${
-      x.cbdLinks.slice(0,2).map(d=>esc(nm(d))).join(" y ")} (esa fuente no publica porcentaje)`;
+      x.cbdLinks.slice(0,2).map(d=>nm(d)).join(" y ")} (esa fuente no publica porcentaje)`;
   if(x.usage!=null)
     return `Sin vínculo medido con el resto de su equipo; uso general ${x.usage}%`;
   return "Sin datos de meta para esta especie";
@@ -1103,27 +1124,31 @@ function predict(){
   const fTW=fR.filter(r=>r.has("tailwind")).length;
   const mTR=mR.filter(r=>r.has("trickroom")).length;
   const mTW=mR.filter(r=>r.has("tailwind")).length;
+  // Estas notas describen la posición; ninguna dice qué hacer (`decisions.md`
+  // #21). Varias estaban escritas como imperativos ("no lo traigas",
+  // "traelo", "es tu mejor eje") desde antes de que #21 existiera — se
+  // reescribieron en el sprint 2.9 conservando la misma información.
   if(fTR>=2)notes.push("Trae "+fTR+" opciones de Espacio Raro: es su plan A. Tu Tailwind pierde casi todo el valor.");
-  else if(fTR===1)notes.push("Tiene una opción de Espacio Raro. Guardá cómo cortarlo o forzalo a gastarlo temprano.");
+  else if(fTR===1)notes.push("Tiene una opción de Espacio Raro: mientras esté en el equipo, el orden de velocidad puede darse vuelta un turno.");
   if(fTW>=1&&fTR===0)notes.push("Va por Tailwind. La carrera de velocidad se define en los dos primeros turnos.");
-  if(mTW>0&&fTR>=2)notes.push("Tu Tailwind es lastre acá: no lo traigas si tenés alternativa.");
-  if(mTR>0&&fTW>0)notes.push("Tu Espacio Raro castiga su Tailwind. Es tu mejor eje.");
+  if(mTW>0&&fTR>=2)notes.push("Con Espacio Raro del otro lado, tu Tailwind acelera en contra: los dos efectos se pisan.");
+  if(mTR>0&&fTW>0)notes.push("Tu Espacio Raro invierte justo el orden que su Tailwind busca: los dos ejes se anulan entre sí.");
 
   const weather=fR.map((r,i)=>["sol","lluvia","arena"].find(w=>r.has(w))?foes[i]:null).filter(Boolean);
   if(weather.length)notes.push("Clima propio con "+weather.map(f=>nm(f.dex)).join(" y ")+": lo va a querer instalar sí o sí.");
 
   const megas=foes.filter((f,i)=>fR[i].has("mega"));
-  if(megas.length>1)notes.push(megas.length+" megas ("+megas.map(f=>nm(f.dex)).join(", ")+") pero solo puede usar una: cuenta uno de esos como cupo, no dos.");
+  if(megas.length>1)notes.push(megas.length+" megas ("+megas.map(f=>nm(f.dex)).join(", ")+") pero solo puede megaevolucionar una: entre todas ocupan un solo cupo de mega, no "+megas.length+".");
 
   // Bromista vs Siniestro: el estado de prioridad no pasa
   const myPrank=mine.filter((m,i)=>mR[i].has("bromista"));
   const foeDark=foes.filter(f=>S(f.dex).t.includes("DAR"));
   if(myPrank.length&&foeDark.length)
-    notes.push("Tiene "+foeDark.map(f=>nm(f.dex)).join(" y ")+" tipo siniestro: tu Bromista no le entra. Traelo solo si aporta otra cosa.");
+    notes.push("Tiene "+foeDark.map(f=>nm(f.dex)).join(" y ")+" tipo siniestro: los movimientos de estado de tu Bromista no le entran.");
   const foePrank=foes.filter((f,i)=>fR[i].has("bromista"));
   const myDark=mine.filter(m=>S(m.dex).t.includes("DAR"));
   if(foePrank.length&&myDark.length)
-    notes.push("Su "+foePrank.map(f=>nm(f.dex)).join(" y ")+" usa Bromista: tus siniestros son la respuesta limpia.");
+    notes.push("Su "+foePrank.map(f=>nm(f.dex)).join(" y ")+" usa Bromista: tus tipo siniestro son inmunes a ese estado con prioridad.");
 
   // ── puntaje de cada rival ──
   const sc=foes.map((f,i)=>{
@@ -2508,22 +2533,31 @@ function vPre(){
   // Predicción de team preview (quién va a sacar cada uno): por ahora el
   // algoritmo no acierta lo suficiente como para ser útil (feedback real de
   // Angel) — queda al fondo, sin estorbar, hasta un rediseño (future.md).
+  // "Va a sacar" (sprint 2.9): ya no es el puntaje opaco del `predict()`
+  // viejo — cada fila cita cuántas veces esa especie apareció junto a otra
+  // de las que estamos viendo, sobre equipos de torneo reales. Sigue siendo
+  // información sobre el RIVAL, no una elección propia.
+  const bring=foeBringOrder();
+  if(bring.length){
+    const n=META.sourceCounts?.teams;
+    h+=`<div class="card f" style="margin-top:10px"><span class="hd">Va a sacar<em>por evidencia, no por puntaje</em></span>
+      ${bring.map((x,i)=>`<div class="row"><b>${i+1}. ${esc(nm(x.f.dex))}<s>${esc(whyBring(x))}</s></b>
+        <u>${x.linked.length?x.linked[0].pct+"%":(x.usage!=null?x.usage+"%":"—")}</u></div>`).join("")}
+      <div class="msg" style="margin-top:5px">Orden por cuánto aparece cada uno junto a los otros que ya viste${
+        n?`, sobre ${n} equipos reales`:""}. No dice quién lidera: ninguna fuente publica ese dato.</div></div>`;
+  }
+
   const p=predict();
   if(p){
     const line=(x,tag,cls)=>`<div class="pl"><i class="${cls}">${tag}</i>
       <b>${esc(nm(x.f?x.f.dex:myDex(x.m)))}<s>${x.role>=20?"control de ritmo":x.off>=95?"amenaza directa":x.surv>=55||x.def>=55?"aguanta":"apoyo"}</s></b>
       <u>${Math.round(x.score)}</u></div>`;
-    h+=`<div class="cols" style="margin-top:10px">
-      <div class="card f"><span class="hd">Va a sacar<em>predicción, poco fiable todavía</em></span>
-        ${p.theirLeads.map(x=>line(x,"LEAD","")).join("")}
-        ${p.theirBack.map(x=>line(x,"BACK","b")).join("")}
-        <div class="msg" style="margin-top:5px">Orden por probabilidad, no certeza.</div></div>
-      <div class="card"><span class="hd">Sacá vos</span>
+    h+=`<div class="card"><span class="hd">Sacá vos</span>
         ${p.leads.map(x=>line(x,"LEAD","")).join("")}
-        ${p.back.map(x=>line(x,"BACK","b")).join("")}</div></div>
+        ${p.back.map(x=>line(x,"BACK","b")).join("")}</div>
     <div class="card d"><span class="hd">Por qué</span>
       ${p.notes.length?p.notes.map(n=>`<div class="note">${esc(n)}</div>`).join("")
-        :`<div class="msg">Sin ejes marcados: es un cambio de golpes directo, priorizá daño y resistencia.</div>`}</div>`;
+        :`<div class="msg">Sin ejes de velocidad ni clima marcados: la partida se define en el intercambio directo de daño.</div>`}</div>`;
   }
   return h;
 }
