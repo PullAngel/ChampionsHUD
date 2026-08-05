@@ -1544,6 +1544,27 @@ check("fullSpeedOrder() incluye megaV solo para el propio con piedra sin mega-ev
   assert(swampert.megaV > swampert.v, "la velocidad mega tiene que ser mayor a la base para Swampert");
 });
 
+// Bug real reportado por Angel (2026-08-05): su Gholdengo con Pañuelo
+// Elección CONFIRMADO aparecía más lento que rivales sin objeto, porque
+// fullSpeedOrder() usaba myStat(m,5) crudo — el resto del archivo aplica el
+// ×1.5 al llamar (mismo criterio que calc() con aItem), pero acá faltaba.
+check("fullSpeedOrder() aplica el ×1.5 del Pañuelo Elección al propio, no solo al rival", () => {
+  const B = E.getB();
+  B.team = [6].map((d) => E.mkFoe(d, 0.9));
+  const my = E.getMY();
+  my.length = 0;
+  my.push(E.slot(1000)); // Gholdengo
+  my[0].item = "Pañuelo Elección";
+  const order = E.fullSpeedOrder();
+  const gholdengo = order.find((x) => x.me);
+  assert(gholdengo, "tiene que estar Gholdengo en el orden");
+  // Sin objeto la velocidad calculada da 136; con Pañuelo tiene que ser
+  // 136*1.5=204. El umbral (150) separa limpio "aplicó el ×1.5" de "no lo
+  // aplicó" — antes del fix esto daba 136 y el test fallaba.
+  assert(gholdengo.v > 150, `con Pañuelo Elección confirmado tendría que dar 204 (136×1.5), salió ${gholdengo.v}`);
+  assertEqual(gholdengo.v, 204);
+});
+
 // ── predicción de team preview con datos reales (Fase 2, sprint 2.8) ──
 // Se corre contra el meta.json REAL instalado en assets, no contra cores
 // inventados: si el generador cambia de forma, estos tests se enteran.

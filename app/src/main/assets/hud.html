@@ -2517,8 +2517,15 @@ const megaSpeed=m=>{
   return stOf(S(md).s[5],m.sp[5],natMul(5,m.up,m.dn));
 };
 function fullSpeedOrder(){
+  // Bug real reportado por Angel (2026-08-05): esta función usaba myStat(m,5)
+  // en crudo. myStat() es DELIBERADAMENTE la stat sin objeto (mismo criterio
+  // que calc(), que aplica ítems por separado vía aItem) — el resto del
+  // archivo lo sabe y multiplica al llamar (vCompact, vSpeed, suggest()...),
+  // pero acá faltaba. Un Gholdengo con Pañuelo Elección confirmado (136 base)
+  // se mostraba sin sus ×1.5 (204), y por eso aparecía más lento que rivales
+  // con solo el rango teórico.
   const mine=MY.filter(m=>m.dex&&S(m.dex)).map(m=>
-    ({me:1,n:nm(myDex(m)),v:myStat(m,5),lo:null,hi:null,megaV:megaSpeed(m)}));
+    ({me:1,n:nm(myDex(m)),v:Math.floor(myStat(m,5)*(m.item==="Pañuelo Elección"?1.5:1)),lo:null,hi:null,megaV:megaSpeed(m)}));
   const foes=B.team.filter(f=>f.dex&&S(f.dex)).map(f=>{const r=spdRange(f);
     return {me:0,n:nm(f.dex),v:r.max,lo:r.min,hi:r.max,megaV:null}});
   return [...mine,...foes].sort((a,b)=>b.v-a.v);
