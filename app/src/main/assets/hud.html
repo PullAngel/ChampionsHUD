@@ -260,7 +260,7 @@ const SPD={
 823:["Corviknight",98,87,105,53,85,67,"FLY","STE"],861:["Grimmsnarl",95,120,65,95,75,60,"DAR","FAI"],
 876:["Indeedee-H",70,55,65,95,105,85,"PSY","NOR"],887:["Dragapult",88,120,75,100,75,142,"DRA","GHO"],
 892:["Urshifu",100,130,100,63,60,97,"FIG","DAR"],901:["Ursaluna",130,140,105,45,80,50,"GRO","NOR"],
-902:["Basculegion",120,112,65,80,75,78,"WAT","GHO"],910:["Kingambit",100,135,120,60,85,50,"DAR","STE"],
+902:["Basculegion",120,112,65,80,75,78,"WAT","GHO"],983:["Kingambit",100,135,120,60,85,50,"DAR","STE"],
 934:["Garganacl",100,100,130,45,90,35,"ROC"],981:["Farigiraf",120,90,70,110,70,60,"NOR","PSY"],
 987:["Flutter Mane",55,55,55,135,135,135,"GHO","FAI"],991:["Iron Hands",154,140,108,50,68,50,"FIG","ELE"],
 998:["Baxcalibur",115,145,92,75,86,87,"DRA","ICE"],1000:["Gholdengo",87,60,95,133,91,84,"STE","GHO"],
@@ -1018,6 +1018,77 @@ const roleScore=R=>{
   return s;
 };
 
+/* ── Predicción de team preview con datos reales (Fase 2, sprint 2.8) ──
+   Reemplaza el puntaje ajustado a mano de `predict()` (`off*.40 + def*.26 +
+   role*.22 + use*1.2`, cuatro pesos sin evidencia citable por número — el
+   error que `future.md` ya había marcado y Angel confirmó en uso real).
+   Acá NINGÚN número sale de una ponderación inventada: cada uno se puede
+   señalar contra un campo concreto de `meta.json`, y `whyBring()` lo dice
+   con la cita puesta.
+   Describe al RIVAL, no elige nada propio — misma categoría que
+   `topThreats()`, sin conflicto con `decisions.md` #19/#21. */
+/** Los cores (pares que de verdad aparecieron juntos en equipos de torneo)
+    que vinculan a dos de las especies que estamos viendo. No es "parecidos"
+    ni "sinergia" estimada: es un conteo real sobre `sourceCounts.teams`. */
+function coresAmong(dexList){
+  const set=new Set(dexList);
+  return (META.cores||[]).filter(c=>set.has(c.pair[0])&&set.has(c.pair[1])&&c.pair[0]!==c.pair[1]);
+}
+/** Los 6 del rival, ordenados por qué tan atado está cada uno a la estructura
+    de ESTE equipo en particular.
+    `support` = suma de los % de core que lo unen con otro de los 6. Es una
+    medida de centralidad estructural, no una probabilidad — por eso se
+    muestra siempre con sus componentes al lado (`linked`), nunca como un
+    número suelto que habría que creer.
+    Desempates, en orden: cuántos de los otros 5 aparecen entre sus
+    compañeros frecuentes según Champions Battle Data (`cbdTeammates`, sin %
+    porque la fuente no lo publica — mismo cuidado del sprint 2.7: no se
+    inventa un porcentaje que no existe), y después el uso general.
+    **No se parte en "leads" y "back"**: ninguna fuente relevada publica
+    quién lideró, y dividir 4 en 2+2 sin ese dato sería exactamente la
+    invención que el proyecto no se permite (el `predict()` viejo lo hacía).
+    El daño tampoco entra acá — "quién te pega más fuerte" ya lo contesta
+    `topThreats()` con su propio cálculo; meterlo en este orden sería
+    duplicarlo y volver a mezclar unidades distintas en un solo puntaje. */
+function foeBringOrder(){
+  const foes=B.team.filter(f=>f.dex&&S(f.dex));
+  if(!foes.length)return [];
+  const cores=coresAmong(foes.map(f=>f.dex));
+  return foes.map(f=>{
+    const linked=cores.filter(c=>c.pair.includes(f.dex))
+      .map(c=>({dex:c.pair.find(d=>d!==f.dex),pct:c.pct,count:c.count}))
+      .sort((a,b)=>b.pct-a.pct);
+    const m=metaOf(f.dex);
+    const others=new Set(foes.filter(x=>x!==f).map(x=>x.dex));
+    const cbdLinks=(m?.cbdTeammates||[]).filter(d=>others.has(d));
+    return {f,linked,cbdLinks,
+      support:Math.round(linked.reduce((s,x)=>s+x.pct,0)*10)/10,
+      usage:m?.usage??null, role:m?.roleInCore||null,
+      speedCtl:m?.speedControlMajority||null};
+  }).sort((a,b)=> b.support-a.support
+    || b.cbdLinks.length-a.cbdLinks.length
+    || (b.usage??0)-(a.usage??0));
+}
+/** "¿Por qué me mostrás esto?" contestado con la cita concreta, no con un
+    puntaje. Cuando no hay ningún dato real que citar lo dice con todas las
+    letras en vez de devolver vacío: un texto en blanco deja al que llama
+    mostrando nada, que es justo la degradación silenciosa que `vision.md`
+    prohíbe. "No sabemos" es una respuesta válida; "" no. */
+function whyBring(x){
+  const n=META.sourceCounts?.teams;
+  if(x.linked.length){
+    const t=x.linked.slice(0,2).map(l=>`${esc(nm(l.dex))} (${l.pct}%${
+      n?`, ${l.count} de ${n} equipos`:""})`).join(" y ");
+    return `Aparece junto a ${t}`;
+  }
+  if(x.cbdLinks.length)
+    return `Sin core medido con el resto, pero Champions Battle Data lo lista entre los compañeros frecuentes de ${
+      x.cbdLinks.slice(0,2).map(d=>esc(nm(d))).join(" y ")} (esa fuente no publica porcentaje)`;
+  if(x.usage!=null)
+    return `Sin vínculo medido con el resto de su equipo; uso general ${x.usage}%`;
+  return "Sin datos de meta para esta especie";
+}
+
 function predict(){
   const foes=B.team.filter(f=>f.dex&&S(f.dex));
   const mine=MY.filter(m=>m.dex&&S(m.dex));
@@ -1452,7 +1523,7 @@ function syncActiveMine(){
   }
 }
 
-let B=NEW(), MY=[slot(445),slot(910),slot(727),slot(547),slot(591),slot(1000)];
+let B=NEW(), MY=[slot(445),slot(983),slot(727),slot(547),slot(591),slot(1000)];
 let META={species:{},source:"?",regulation:"?"};
 const has=typeof Android!=="undefined";
 const $=s=>document.querySelector(s);
@@ -1466,10 +1537,23 @@ const save=()=>{if(!has)return;clearTimeout(sT);
    que activeTeam().team — mutarla (los selectores de la Fase 0 ya lo hacen)
    ya deja el cambio reflejado en TEAMS sin copiar nada de vuelta. */
 let TEAMS=[],ACTIVE_ID=null;
-const defaultTeam=()=>[slot(445),slot(910),slot(727),slot(547),slot(591),slot(1000)];
+const defaultTeam=()=>[slot(445),slot(983),slot(727),slot(547),slot(591),slot(1000)];
 const newTeamId=()=>Math.max(0,...TEAMS.map(t=>t.id))+1;
 const activeTeam=()=>TEAMS.find(t=>t.id===ACTIVE_ID);
 const activeTeamName=id=>TEAMS.find(t=>t.id===id)?.name||"?";
+/** Números de Pokédex que estuvieron mal en la tabla `SPD` y ya se
+    corrigieron — un guardado viejo puede tener el número equivocado adentro
+    y quedaría apuntando a una especie que ya no existe (`S(dex)` → null, que
+    revienta `myStat()`). Se remapea al cargar, una sola vez, en vez de
+    dejar el slot roto en silencio.
+    910 → 983: Kingambit estaba bajo el número de Maschiff. Como `loadDex()`
+    además crea la entrada correcta desde `dex.json`, el 910 quedaba como una
+    especie fantasma DUPLICADA en el selector "Corregir especie" — dos
+    "Kingambit" indistinguibles, y el que salía del 910 no tenía datos de
+    meta (`metaOf(910)` → null: sin objetos, sin movimientos, sin sets, sin
+    repartos) justo en la especie más usada del formato. */
+const DEX_FIX={910:983};
+const fixDex=d=>DEX_FIX[d]??d;
 function loadTeams(){
   let raw=null;
   if(has)try{raw=JSON.parse(Android.loadTeam())}catch(e){}
@@ -1481,6 +1565,7 @@ function loadTeams(){
     TEAMS=[{id:1,name:"Equipo 1",team:defaultTeam()}]; ACTIVE_ID=1;
   }
   if(!activeTeam())ACTIVE_ID=TEAMS[0].id;
+  TEAMS.forEach(t=>(t.team||[]).forEach(m=>{if(m&&m.dex)m.dex=fixDex(m.dex)}));
   MY=activeTeam().team;
 }
 const saveMy=()=>{if(!has)return;clearTimeout(tT);
@@ -1500,6 +1585,7 @@ function boot(){
         if(!Array.isArray(B.log))B.log=[]}}catch(e){}
   }
   if(!B.team.length)B.team=[6,500,547,94,150,9].map(d=>mkFoe(d,.9));
+  B.team.forEach(f=>{if(f&&f.dex)f.dex=fixDex(f.dex)});   // ver DEX_FIX
   syncFoe();render();
 }
 function syncFoe(){

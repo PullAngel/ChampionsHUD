@@ -95,6 +95,13 @@ function loadEngine() {
     this.compatibleSets = compatibleSets;
     this.abilitiesRuledOut = abilitiesRuledOut;
     this.ABILITY_NO_TRIGGER = ABILITY_NO_TRIGGER;
+    this.coresAmong = coresAmong;
+    this.foeBringOrder = foeBringOrder;
+    this.whyBring = whyBring;
+    this.setMetaRaw = function (v) { META = v; };
+    this.getMETA = function () { return META; };
+    this.getSPD = function () { return SPD; };
+    this.fixDex = fixDex;
     this.setMeta = function (d, v) { META.species = META.species || {}; META.species[String(d)] = v; };
     this.verdict = verdict;
     this.calc = calc;
@@ -1360,9 +1367,9 @@ check("priorityAlert() evalúa la amenaza de banca contra el HP actual, no el m�
 // ── "descartar sets incompatibles" (Fase 2, sprint 2.5 R3, build_meta.py) ──
 check("compatibleSets() angosta con lo que ya se vio, no descarta a ciegas", () => {
   const B = E.getB();
-  const foe = E.mkFoe(910, 0.9);
+  const foe = E.mkFoe(983, 0.9);
   B.team = [foe];
-  E.setMeta(910, { sets: [
+  E.setMeta(983, { sets: [
     { moves: ["Golpe Bajo", "Cabeza de Hierro", "Danza Espada", "Protección"], count: 70, pct: 32 },
     { moves: ["Golpe Bajo", "Protección", "Danza Espada", "Terremoto"], count: 20, pct: 10 },
   ] });
@@ -1525,6 +1532,161 @@ check("fullSpeedOrder() incluye megaV solo para el propio con piedra sin mega-ev
   const swampert = order.find((x) => x.me && x.n === "Swampert");
   assert(swampert, "tiene que estar Swampert en el orden");
   assert(swampert.megaV > swampert.v, "la velocidad mega tiene que ser mayor a la base para Swampert");
+});
+
+// ── predicción de team preview con datos reales (Fase 2, sprint 2.8) ──
+// Se corre contra el meta.json REAL instalado en assets, no contra cores
+// inventados: si el generador cambia de forma, estos tests se enteran.
+console.log("\npredicción de team preview (cores reales):");
+
+const META_REAL = JSON.parse(fs.readFileSync(path.join(ROOT, "app/src/main/assets/meta.json"), "utf-8"));
+
+function conMetaReal(fn) {
+  const antes = E.getMETA();
+  E.setMetaRaw(META_REAL);
+  try { return fn(); } finally { E.setMetaRaw(antes); }
+}
+
+check("coresAmong() solo devuelve cores donde AMBAS especies están entre las vistas", () => {
+  conMetaReal(() => {
+    // Charizard(6)+Whimsicott(547) es un core real del meta.json instalado.
+    const cores = E.coresAmong([6, 547, 94]);
+    assert(cores.length > 0, "debería encontrar al menos el core Charizard+Whimsicott");
+    for (const c of cores) {
+      assert([6, 547, 94].includes(c.pair[0]) && [6, 547, 94].includes(c.pair[1]),
+        `el core ${JSON.stringify(c.pair)} tiene una especie que no estaba entre las vistas`);
+    }
+    // Con una sola especie no puede haber ningún par.
+    assertEqual(E.coresAmong([6]).length, 0);
+  });
+});
+
+check("foeBringOrder() pone arriba al que tiene core real con otro del mismo equipo", () => {
+  conMetaReal(() => {
+    const B = E.getB();
+    // Emboar (500) tiene uso 0.3% y ningún core con estos; Charizard (6) y
+    // Whimsicott (547) sí aparecen juntos en equipos reales.
+    B.team = [500, 6, 547].map((d) => E.mkFoe(d, 0.9));
+    const order = E.foeBringOrder();
+    assertEqual(order.length, 3);
+    assert(order[0].support > 0, "el primero tiene que tener evidencia de core real, no un puntaje inventado");
+    assertEqual(order[order.length - 1].f.dex, 500, "el que no tiene core ni uso relevante va último");
+  });
+});
+
+check("foeBringOrder() sin ningún core cae a uso general, sin inventar un vínculo", () => {
+  conMetaReal(() => {
+    const B = E.getB();
+    // Gengar (94, uso 4) y Blastoise (9, uso 4.5): sin core entre ellos.
+    B.team = [94, 9].map((d) => E.mkFoe(d, 0.9));
+    const order = E.foeBringOrder();
+    assertEqual(order[0].support, 0, "sin core, el soporte estructural es 0 — no se rellena con otra cosa");
+    assert(order[0].usage >= order[1].usage, "sin core, el desempate final es el uso real");
+  });
+});
+
+check("whyBring() cita el número real y el tamaño de muestra, no un puntaje", () => {
+  conMetaReal(() => {
+    const B = E.getB();
+    B.team = [6, 547].map((d) => E.mkFoe(d, 0.9));
+    const top = E.foeBringOrder()[0];
+    const why = E.whyBring(top);
+    assert(why.includes("%"), "tiene que citar el porcentaje real del core");
+    assert(why.includes(String(META_REAL.sourceCounts.teams)),
+      "tiene que citar sobre cuántos equipos se midió, para que el número sea auditable");
+  });
+});
+
+check("whyBring() dice explícitamente que no sabe, en vez de devolver vacío", () => {
+  const antes = E.getMETA();
+  E.setMetaRaw({ species: {}, cores: [] });
+  try {
+    const t = E.whyBring({ linked: [], cbdLinks: [], usage: null });
+    assert(t.length > 0, "un texto vacío deja al que llama mostrando nada — la degradación silenciosa que vision.md prohíbe");
+    assert(/sin datos/i.test(t), `tiene que decir que no hay datos, no insinuar otra cosa: ${t}`);
+    // Y sin inventar un número que no existe.
+    assert(!/\d+%/.test(t), `no puede aparecer un porcentaje cuando no hay ningún dato: ${t}`);
+  } finally { E.setMetaRaw(antes); }
+});
+
+check("foeBringOrder() NO parte el equipo en leads/back: ninguna fuente publica quién lideró", () => {
+  conMetaReal(() => {
+    const B = E.getB();
+    B.team = [6, 547, 94, 9].map((d) => E.mkFoe(d, 0.9));
+    for (const x of E.foeBringOrder()) {
+      assert(!("lead" in x) && !("back" in x),
+        "dividir 4 en 2+2 sin dato real de quién lidera sería exactamente la invención que el proyecto no se permite");
+    }
+  });
+});
+
+check("foeBringOrder() es determinista: mismos datos, mismo orden", () => {
+  conMetaReal(() => {
+    const B = E.getB();
+    B.team = [6, 547, 94, 9, 500].map((d) => E.mkFoe(d, 0.9));
+    const a = E.foeBringOrder().map((x) => x.f.dex).join(",");
+    const b = E.foeBringOrder().map((x) => x.f.dex).join(",");
+    assertEqual(a, b);
+  });
+});
+
+check("ningún texto de foeBringOrder()/whyBring() sugiere una jugada (decisions.md #19/#21)", () => {
+  conMetaReal(() => {
+    const B = E.getB();
+    B.team = [6, 547, 94, 9].map((d) => E.mkFoe(d, 0.9));
+    // Imperativos que el copiloto tiene prohibido emitir. "traelo"/"sacá"
+    // cubren la forma rioplatense; "conviene"/"mejor opción" son los
+    // ejemplos textuales de decisions.md #21.
+    const prohibidos = ["conviene", "mejor opción", "deberías", "traelo", "sacá", "recomend", "elegí"];
+    for (const x of E.foeBringOrder()) {
+      const t = E.whyBring(x).toLowerCase();
+      for (const p of prohibidos) {
+        assert(!t.includes(p), `"${p}" aparece en un texto que debería describir, no mandar: ${t}`);
+      }
+    }
+  });
+});
+
+// ── coherencia de números de Pokédex entre SPD y los datos reales ──
+// Bug real encontrado corriendo el motor del sprint 2.8 contra un equipo del
+// meta actual: Kingambit estaba en SPD bajo el 910 (que es Maschiff) mientras
+// dex.json/meta.json/sprite_index.json lo tienen en 983. Como loadDex()
+// además crea la entrada correcta, quedaban DOS "Kingambit" indistinguibles
+// en el selector "Corregir especie", y el del 910 no tenía nada de meta
+// (metaOf(910) → null) justo en la especie más usada del formato. Este test
+// cierra la clase entera de error, no solo ese caso.
+console.log("\ncoherencia de números de Pokédex (SPD vs meta.json):");
+
+check("toda especie de SPD que exista en dex.json coincide en el número de Pokédex", () => {
+  // La autoridad es dex.json (Showdown), NO S()/SPD — si se construyera el
+  // índice esperado desde SPD, un número mal puesto se compararía contra sí
+  // mismo y el test no podría fallar nunca. Se aprendió acá: la primera
+  // versión de este test hacía exactamente eso y pasaba en verde con el bug
+  // de Kingambit todavía presente.
+  const dexJson = JSON.parse(fs.readFileSync(path.join(ROOT, "app/src/main/assets/dex.json"), "utf-8"));
+  const nombresReales = new Map(); // nombre → num canónico
+  for (const k of Object.keys(dexJson.species)) {
+    const sp = dexJson.species[k];
+    if (!nombresReales.has(sp.n)) nombresReales.set(sp.n, sp.num);
+  }
+  const spd = E.getSPD();
+  const problemas = [];
+  for (const k of Object.keys(spd)) {
+    const dex = Number(k);
+    if (dex >= 900000) continue; // formas alternativas, numeración propia
+    const nombre = spd[k][0];
+    const esperado = nombresReales.get(nombre);
+    if (esperado !== undefined && esperado !== dex) {
+      problemas.push(`${nombre}: SPD lo tiene en ${dex}, dex.json en ${esperado}`);
+    }
+  }
+  assertEqual(problemas.join(" | "), "", "número de Pokédex desincronizado entre SPD y dex.json");
+});
+
+check("DEX_FIX migra un guardado viejo en vez de dejar el slot apuntando a una especie inexistente", () => {
+  assertEqual(E.fixDex(910), 983, "el número viejo tiene que remapear al correcto");
+  assertEqual(E.fixDex(445), 445, "un número que nunca estuvo mal no se toca");
+  assert(E.S(E.fixDex(910)) !== null, "después de migrar, la especie tiene que existir de verdad en SPD");
 });
 
 // ── validador de datos (roadmap Fase 0, ítem 5) ──
