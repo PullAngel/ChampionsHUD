@@ -224,6 +224,39 @@ Diseño completo en `architecture.md` §10. No es una fase de una sola sesión; 
 - **Verificación de la UI nueva:** `vFoe()` vive después del corte que usa el sandbox de `tests/run.js` (mismo límite que el resto de las funciones de render, no es nuevo) — se verificó extrayendo el template exacto contra los datos reales de Kingambit ya instalados: HTML bien formado, naturaleza y reparto en filas separadas, mensaje aclaratorio de que no van juntos, y que una especie sin datos no renderiza la tarjeta. **Hallazgo de proceso, para dejarlo anotado:** el navegador de este entorno renderiza `hud.html` como snapshot estático cuando se abre por `file://` fuera del proyecto reconocido — no ejecuta JS de verdad. Los chequeos anteriores de "sin errores de consola" de esta misma noche (sprint 2.5 R4) no verificaban nada real por esa razón — no eran falsos, eran vacíos. La verificación real sigue siendo `tests/run.js` (para lo que está antes del corte) y, para lo que está después, extraer el template a mano contra datos reales como se hizo acá.
 - **Archivos:** `build_meta_v2.py`, `tests/test_build_meta_v2.py` (14 casos, sin red), `validate_data.py`, `hud.html` (`vFoe()`), `app/src/main/assets/meta.json` y `meta.json` raíz (regenerados, instalados).
 
+---
+
+## Plan para cerrar la Fase 2 (2 sprints, planeados 2026-08-04 — analizado y documentado, sin código todavía)
+
+Lo único que falta para el **criterio de salida de Fase 2** de arriba es la mitad que nunca se resolvió: *"la predicción de equipo deja de depender de un archivo estimado a mano"* se refiere a `predict()` (Team Preview → "Va a sacar"/"Sacá vos"/"Por qué"), que sigue siendo el algoritmo viejo de puntaje ajustado a mano que Angel ya probó y dijo que no acierta lo suficiente (`future.md`). Ahora sí hay datos reales para rediseñarlo — 60 `cores` (pares de especies con `count`/`pct` real, de 1838 equipos de Limitless), `cbdTeammates` (compañeros frecuentes de Champions Battle Data), `roleInCore`/`speedControlMajority` (20 especies con el tag ya calculado) — nada de esto existía cuando `predict()` se escribió originalmente.
+
+**El puntaje actual, para no repetirlo:** `hud.html` línea ~1070, `score:Math.min(off,150)*.40 + def*.26 + roleScore(fR[i])*.22 + use*1.2` — cuatro pesos ajustados a mano, sin evidencia citable por número. Es exactamente el error que `decisions.md`/`inference.md` §9 ya identificaron y que este rediseño tiene que evitar repetir.
+
+### Sprint 2.8 — Motor de predicción con datos reales (sin UI todavía)
+
+- **Objetivo:** reemplazar el puntaje opaco por una fórmula que cite evidencia real, o por un ranking que no necesite "puntaje" en absoluto si los datos alcanzan para ordenar directo.
+- **Se mantiene tal cual (ya son reglas explícitas, no un score):** los "ejes de partida" — notas de Trick Room/Tailwind/clima/mega-cupo/Bromista vs Siniestro (`hud.html` líneas ~1030–1055). Esas son condiciones `if` legibles con su propia explicación, no el problema.
+- **Se rediseña:** el bloque de `sc=foes.map(...)` que arma el puntaje, y el equivalente para `theirLeads`/`theirBack`/la recomendación propia.
+- **Diseño propuesto, a validar con los datos reales antes de escribir código:**
+  1. Con el equipo de 6 del rival ya visto en team preview, buscar en `cores` qué pares de esos 6 aparecen juntos con qué frecuencia real (`count`/`pct`) — esto es directamente "cuáles de estos 6 suelen ir juntos", con cita concreta, no un número inventado.
+  2. Cruzar con `cbdTeammates` de cada especie como señal secundaria (menor peso o solo como desempate, dado que no trae `pct` — mismo cuidado de "no fusionar sin tamaño de muestra" que ya se aplicó en el sprint 2.7).
+  3. `usage` de Limitless como prior base cuando no hay core que aplique (ya real, no estimado).
+  4. `roleInCore`/`speedControlMajority` se muestran como tags informativos junto al nombre, no se sirven de una unidad de peso "1.2×0.22" que nadie puede auditar.
+  5. Analizar primero si 60 cores (pares) alcanzan para ordenar bien un equipo de 6, o si hace falta un índice de tríos (`architecture.md` §10.3, nunca construido) — **no construirlo si los pares ya alcanzan**, evitar sobre-construir sin un caso real que lo pida.
+- **Salida esperada de la función:** en vez de (o adjuntando a) un score, cada Pokémon del ranking lleva su propia evidencia citable (ej. "apareció junto a X en 336 de 1838 equipos, 18.3%"), mismo patrón `whyRow()`/`topThreats()` que ya usa el resto del HUD.
+- **Archivos:** `hud.html` (`predict()` y funciones auxiliares — vive antes de `vPre()`, así que es 100% testeable en el sandbox de `tests/run.js` sin tocar DOM), `tests/run.js`.
+- **Tests:** con especies y cores reales del `meta.json` ya instalado (no inventados) — el core más fuerte gana el ranking sobre uno sin evidencia; sin ningún core que aplique, cae a `usage`; determinismo; ningún string generado sugiere una jugada (chequeo contra `decisions.md` #19/#21, mismo criterio que ya se aplicó en sprint 2.4/2.6).
+- **Riesgos:** repetir el error del puntaje opaco disfrazado de "más simple" — mitigación: cada número mostrado tiene que poder citarse contra un campo real de `meta.json`, sin excepción, antes de dar el sprint por terminado.
+
+### Sprint 2.9 — Wiring, QA de cierre y declarar la Fase 2 terminada
+
+- **Objetivo:** conectar el motor del sprint 2.8 a la UI existente ("Va a sacar"/"Sacá vos"/"Por qué" ya existen en `vPre()`, no hay que inventar pantalla nueva), verificar de punta a punta, y cerrar la fase en la documentación.
+- **Wiring:** reemplazar la llamada al `predict()` viejo, actualizar el texto de "Por qué" para citar la evidencia real del sprint 2.8 en vez de (o adjunto a) las notas de ejes de partida que se mantienen.
+- **QA de cierre de fase completa (2.1 a 2.9), no solo de este sprint:** simular un combate real de punta a punta en el sandbox — team preview → Previa → Campo → varios turnos — con datos reales del `meta.json` instalado, buscando específicamente los patrones de bug que ya mordieron esta sesión (template literals sin cerrar en funciones de render, condiciones de disparo invertidas, filtros de "quién puede entrar" faltantes). Correr la suite completa (JS + Python + el chequeo de sintaxis del script completo agregado esta noche) y `validate_data.py`.
+- **Cierre de documentación:** `roadmap.md` marca `predict()` como hecho y el criterio de salida de Fase 2 como cumplido, con fecha; nota explícita de qué queda fuera de este cierre a propósito (la síntesis "el escenario más peligroso es X" del sprint 2.6 sigue pendiente de que Angel la revise en uso real antes de escribirla — no bloquea el cierre de fase, es una decisión de redacción, no de datos).
+- **Archivos:** `hud.html` (wiring de `vPre()`), `docs/roadmap.md`, `docs/future.md` (sacar el rediseño de `predict()` de "experimental, sin fecha" si ya quedó resuelto).
+- **Terminado:** Fase 2 cerrada, con los dos criterios de salida cumplidos y citables.
+
 **Sesión de asesoría VGC, 2026-08-01/02 (`decisions.md` #20) — análisis y plan, sin código todavía en su momento (preferencia explícita de Angel: analizar → documentar → planear → recién después programar).** Investigación externa sobre qué distingue a un jugador de VGC profesional + una sesión larga de preguntas a Angel como jugador real, para no diseñar Fase 2 a ciegas. Las tres conclusiones ya se implementaron en los sprints siguientes — dejo el resumen acá solo como referencia de origen, no como pendiente:
 - `architecture.md` §10.6 — `roleInCore`/`speedControlMajority` (sprint 2.3) y `sets`/`compatibleSets()` (sprint 2.5, R3) del `MetaSnapshot`: **hechos.** `spreadEstimate` sigue sin construirse — bloqueado por una decisión de producto pendiente (§10.1.1), no por falta de código.
 - `architecture.md` §11.1 — descripción de habilidad expandible en Peek: **hecho** (sprint 2.5).
