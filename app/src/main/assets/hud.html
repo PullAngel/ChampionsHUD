@@ -958,9 +958,22 @@ function spdRange(f){
   return {min:Math.max(f.spdMin||0,Math.floor(raw.min*mul)),
           max:Math.min(f.spdMax||9999,Math.floor(raw.max*mul)), rawMax:raw.max};
 }
-/** Velocidad efectiva: Tailwind duplica, la parálisis parte al medio. */
-const effSpd=(v,side,sta)=>{
+/** Habilidades que duplican Velocidad bajo su clima — mecánica real del
+    juego, no una tabla inventada. `sol`/`lluvia` son los únicos climas que
+    hoy tiene un botón en CAMPO (`vChips()`); arena/granizo quedan en la
+    tabla igual, listas para el día que se agreguen esos chips, sin que haga
+    falta tocar esta función de nuevo. */
+const WEATHER_SPD_ABIL={swiftswim:"lluvia",chlorophyll:"sol",sandrush:"arena",slushrush:"granizo"};
+/** Velocidad efectiva: la habilidad bajo su clima duplica, Tailwind duplica
+    de nuevo, la parálisis parte al medio.
+    `abil` es opcional a propósito (pedido de Angel, 2026-08-05): del lado
+    propio siempre se sabe (es tu equipo), pero del rival solo se pasa cuando
+    ya está CONFIRMADA (`f.abil`, visto) — mostrar el doble sin esa
+    confirmación sería inventar una certeza que no hay, mismo criterio que el
+    resto del sistema de confianza (decisión #24). */
+const effSpd=(v,side,sta,abil)=>{
   let x=v;
+  if(abil&&WEATHER_SPD_ABIL[abil]===B.weather)x=Math.floor(x*2);
   if(B.tw[side]>0)x=Math.floor(x*2);
   if(sta==="paralizado")x=Math.floor(x*.5);
   if(B.tr>0)x=-x;                      // en Espacio Raro el orden se invierte
@@ -1002,6 +1015,29 @@ function solveBulk(atk,def,move,obsPct,ctx){
    Va antes que PREDICCIÓN porque PREDICCIÓN usa learnable(), definida acá
    (audit.md §5.4 — el orden de lectura ahora coincide con el de dependencia). */
 let DEX=null, LEARN=null;
+/** Habilidad REAL de cada forma mega (bug real, 2026-08-05, mismo patrón que
+    el de Kingambit/910 de la vuelta anterior: un número curado a mano sin
+    sincronizar con la fuente real). `SPD`/`MEGA` usan números fijos para las
+    megas clásicas (901261 para Mega Swampert, por ejemplo — ver audit.md
+    §5.11) para no chocar con los que genera `loadDex()`, pero esos números
+    nunca tuvieron su propia entrada en `ABIL`: `abilsOf()` caía al fallback
+    "especie base" (Swampert: Damp/Torrent) y la habilidad real de la mega
+    (Nado Rápido) no aparecía como opción elegible en ningún lado — Angel no
+    podía marcarla ni aunque quisiera.
+    Se resuelve por NOMBRE contra dex.json (mismo criterio que build_meta.py
+    ya usa: nunca por coincidencia numérica) — Showdown nombra la forma
+    "<base>mega"/"megax"/"megay", patrón verificado contra las 80 megas
+    reales que trae dex.json hoy. Función aparte (no inline en loadDex()) para
+    poder testearla sin necesitar el puente de Android. */
+function applyMegaAbilities(d){
+  for(const item in MEGA){
+    const [megaKey,baseDex]=MEGA[item];
+    const baseName=SPD[baseDex]&&SPD[baseDex][0]; if(!baseName)continue;
+    const suf=/ X$/.test(item)?"megax":/ Y$/.test(item)?"megay":"mega";
+    const sp=d.species[slugify(baseName)+suf];
+    if(sp&&sp.a&&sp.a.length)ABIL[megaKey]=sp.a.map(slugify);
+  }
+}
 function loadDex(){
   if(!has)return false;
   let raw=""; try{raw=Android.loadDex()}catch(e){return false}
@@ -1020,6 +1056,7 @@ function loadDex(){
     ABIL[key]=sp.a.length?sp.a.map(slugify):["—"];
     SLUG[key]=k;
   }
+  applyMegaAbilities(d);
   // movimientos
   for(const k in d.moves){
     const m=d.moves[k];
@@ -1309,8 +1346,8 @@ function suggest(mi,ai,mine,foes){
         dStat:st,dAb:m.abil,dBo:am.bo},foeMoves(f));
       const myHp=Math.floor(st[0]*(B.hp["m"+ai]??100)/100);
       if(inc&&inc.R[0]>=myHp){
-        const mySpd=effSpd(Math.floor(myStat(m,5)*(m.item==="Pañuelo Elección"?1.5:1)),"me",am.sta);
-        const hisSpd=effSpd(spdRange(f).max,"them",(B.act["f"+di]||actNew()).sta);
+        const mySpd=effSpd(Math.floor(myStat(m,5)*(m.item==="Pañuelo Elección"?1.5:1)),"me",am.sta,m.abil);
+        const hisSpd=effSpd(spdRange(f).max,"them",(B.act["f"+di]||actNew()).sta,f.abil);
         if(mySpd>hisSpd&&kos===16){v+=45;why.push("y salís primero: lo matás antes de que te mate")}
         else why.push("ojo: te mata a vos");
       }
@@ -2516,6 +2553,21 @@ const megaSpeed=m=>{
   const md=canMega(m); if(!md)return null;
   return stOf(S(md).s[5],m.sp[5],natMul(5,m.up,m.dn));
 };
+/** Análogo a megaSpeed() para el RIVAL (pedido de Angel, 2026-08-05): "sé qué
+    especies pueden megaevolucionar, quiero saber qué velocidad tendrían".
+    A diferencia de megaSpeed() no depende de que el ítem esté confirmado —
+    casi nunca lo está antes de que el rival megaevolucione de verdad, y para
+    esta pregunta ("¿qué pasa SI mega evoluciona?") no hace falta: alcanza con
+    que la especie TENGA una forma mega conocida. Null si no tiene ninguna, o
+    si ya está mega evolucionado de verdad (ahí spdRange() ya usa el dex mega
+    vía la misma lógica que myDex() del lado propio). */
+function megaSpeedFoeRange(f){
+  if(!f||!f.dex)return null;
+  const entry=Object.values(MEGA).find(g=>g[1]===f.dex);
+  if(!entry)return null;
+  const sp=S(entry[0]); if(!sp)return null;
+  return {min:stOf(sp.s[5],0,0.9),max:stOf(sp.s[5],SP_MAX,1.1)};
+}
 function fullSpeedOrder(){
   // Bug real reportado por Angel (2026-08-05): esta función usaba myStat(m,5)
   // en crudo. myStat() es DELIBERADAMENTE la stat sin objeto (mismo criterio
@@ -2527,7 +2579,7 @@ function fullSpeedOrder(){
   const mine=MY.filter(m=>m.dex&&S(m.dex)).map(m=>
     ({me:1,n:nm(myDex(m)),v:Math.floor(myStat(m,5)*(m.item==="Pañuelo Elección"?1.5:1)),lo:null,hi:null,megaV:megaSpeed(m)}));
   const foes=B.team.filter(f=>f.dex&&S(f.dex)).map(f=>{const r=spdRange(f);
-    return {me:0,n:nm(f.dex),v:r.max,lo:r.min,hi:r.max,megaV:null}});
+    return {me:0,n:nm(f.dex),v:r.max,lo:r.min,hi:r.max,megaV:megaSpeedFoeRange(f)}});
   return [...mine,...foes].sort((a,b)=>b.v-a.v);
 }
 
@@ -2667,10 +2719,19 @@ function vPre(){
     return `<div class="card"><div class="msg">Escaneá al rival con ↻ y cargá tu equipo en MÍO.</div></div>`;
 
   let h=`<div class="card"><span class="hd">Quién pega primero<em>los 12, sin efectos de campo todavía</em></span>
-    ${so.map((x,i)=>`<div class="row" style="padding:4px 8px">
-      <b style="color:${x.me?"var(--pick)":"var(--foe-row)"}">${i+1}. ${esc(x.n)}${
-        x.megaV?`<s>si megaevoluciona: ${x.megaV}</s>`:""}</b>
-      <u>${x.me?x.v:x.lo+"–"+x.hi}</u></div>`).join("")}</div>
+    ${so.map((x,i)=>{
+      // La velocidad mega vivía como subtexto tenue bajo el NOMBRE — Angel
+      // reportó que "queda un poco escondida" (2026-08-05). Ahora va junto
+      // al número, que es lo primero que se mira, con su propio color para
+      // no confundirla con el valor real de ahora mismo.
+      const mega=x.megaV==null?"":typeof x.megaV==="number"
+        ?`<s style="color:var(--sure)">◆ mega ${x.megaV}</s>`
+        :`<s style="color:var(--sure)">◆ mega ${x.megaV.min}–${x.megaV.max}</s>`;
+      return `<div class="row" style="padding:4px 8px">
+      <b style="color:${x.me?"var(--pick)":"var(--foe-row)"}">${i+1}. ${esc(x.n)}</b>
+      <u>${x.me?x.v:x.lo+"–"+x.hi}${mega}</u></div>`;
+    }).join("")}</div>`;
+  h+=`
   <div class="card f"><span class="hd">Lo que más te puede doler<em>su mejor golpe contra tu peor respuesta</em></span>
     ${th.length?th.map(t=>{const vd=verdict(t.r,t.r.maxHP);
       // De dónde salió el movimiento. Sin esta marca los tres niveles se leían
@@ -2748,9 +2809,9 @@ function vCompact(){
   const spd=[];
   mine.forEach((mi,i)=>{const a=B.act["m"+i]||actNew();
     spd.push({me:1,n:nm(myDex(MY[mi])),
-      v:effSpd(Math.floor(myStat(MY[mi],5)*(MY[mi].item==="Pañuelo Elección"?1.5:1)*stg((a.bo||[0,0,0,0,0])[4],0,1)),"me",a.sta)})});
+      v:effSpd(Math.floor(myStat(MY[mi],5)*(MY[mi].item==="Pañuelo Elección"?1.5:1)*stg((a.bo||[0,0,0,0,0])[4],0,1)),"me",a.sta,MY[mi].abil)})});
   foes.forEach((x,i)=>{const f=B.team[x],a=B.act["f"+i]||actNew();
-    spd.push({me:0,n:nm(f.dex),v:effSpd(Math.floor(spdRange(f).max*stg((a.bo||[0,0,0,0,0])[4],0,1)),"them",a.sta)})});
+    spd.push({me:0,n:nm(f.dex),v:effSpd(Math.floor(spdRange(f).max*stg((a.bo||[0,0,0,0,0])[4],0,1)),"them",a.sta,f.abil)})});
   spd.sort((a,b)=>b.v-a.v);
 
   // la amenaza más grande sobre el Pokémon enfocado
@@ -2893,10 +2954,10 @@ function vSpeed(mine,foes){
   mine.forEach((mi,i)=>{const m=MY[mi],a=B.act["m"+i]||actNew();
     let v=myStat(m,5)*(m.item==="Pañuelo Elección"?1.5:1);
     v=Math.floor(v*stg(a.bo[4],0,1));
-    L.push({k:"me",n:nm(myDex(m)),v:effSpd(v,"me",a.sta),sure:1,tag:a.sta==="paralizado"?"para":""})});
+    L.push({k:"me",n:nm(myDex(m)),v:effSpd(v,"me",a.sta,m.abil),sure:1,tag:a.sta==="paralizado"?"para":""})});
   foes.forEach((fi,i)=>{const f=B.team[fi],a=B.act["f"+i]||actNew(),r=spdRange(f);
     const lo=Math.floor(r.min*stg(a.bo[4],0,1)),hi=Math.floor(r.max*stg(a.bo[4],0,1));
-    L.push({k:"them",n:nm(f.dex),v:effSpd(hi,"them",a.sta),lo:effSpd(lo,"them",a.sta),
+    L.push({k:"them",n:nm(f.dex),v:effSpd(hi,"them",a.sta,f.abil),lo:effSpd(lo,"them",a.sta,f.abil),
       sure:f.spdSure||f.itemSure,tag:f.item==="Pañuelo Elección"?"Pañuelo":a.sta==="paralizado"?"para":""})});
   L.sort((a,b)=>b.v-a.v);
   return L.map((x,i)=>`<div class="row"><b style="flex:0 0 14px;color:var(--faint)">${i+1}</b>
@@ -3075,7 +3136,7 @@ function vMine(){
       if(!canMega(m))m.mega=false; saveMy()},"Pokémon")}
     <div class="cap" style="margin-top:4px">Objeto</div>${sel(ITEMS_A(),m.item,itName,
       v=>{m.item=v; if(!canMega(m))m.mega=false; saveMy()},"Objeto",decoItem)}
-    <div class="cap" style="margin-top:4px">Habilidad</div>${sel(abilsOf(m.dex),m.abil,abilName,
+    <div class="cap" style="margin-top:4px">Habilidad${m.mega?` <em style="text-transform:none;font-weight:600;opacity:.7">de la mega</em>`:""}</div>${sel(abilsOf(myDex(m)),m.abil,abilName,
       v=>{m.abil=v;saveMy()},"Habilidad")}
     ${canMega(m)?`<div class="pills" style="margin-top:5px">
       <button class="p" data-mega="1" data-on="${m.mega?1:0}">${m.mega?"Megaevolucionado":"Sin megaevolucionar"}</button></div>
@@ -3196,7 +3257,13 @@ function wire(){
     if(t)t.scrollIntoView({block:"start",behavior:"smooth"})});
   on("[data-pick]",e=>B.pick=+e.dataset.pick);
   on("[data-mp]",e=>B.mpick=+e.dataset.mp);
-  on("[data-mega]",()=>{MY[B.mpick].mega=!MY[B.mpick].mega;saveMy()});
+  on("[data-mega]",()=>{const m=MY[B.mpick];m.mega=!m.mega;
+    // Al cambiar de forma, la habilidad elegida puede dejar de existir para
+    // esa forma (ej. Torrent no es una habilidad real de Mega Swampert) —
+    // se recalcula sola en vez de dejar guardada una habilidad que ya no
+    // corresponde.
+    if(!abilsOf(myDex(m)).includes(m.abil))m.abil=abilsOf(myDex(m))[0];
+    saveMy()});
   on("[data-fc]",e=>B.focus=+e.dataset.fc);
   on("[data-ap]",e=>B.apick=e.dataset.ap);
   on("[data-sta]",e=>{const k=B.apick;B.act[k]=B.act[k]||actNew();
@@ -3246,7 +3313,7 @@ function wire(){
       logEvent("abilityNoTrigger",{foe:B.pick,dex:f.dex,trigger:"intimidate"});return}
     const m=MY[B.mine[0]];if(!m)return;
     const a=B.act.m0||actNew();
-    const eff=effSpd(myStat(m,5),"me",a.sta);
+    const eff=effSpd(myStat(m,5),"me",a.sta,m.abil);
     observeOrder(f,eff,k==="fast");
     // El "contra qué velocidad" es parte del hecho: sin él, "se movió antes"
     // no se puede volver a evaluar si después se corrige el equipo propio.

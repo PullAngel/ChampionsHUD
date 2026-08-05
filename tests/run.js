@@ -101,6 +101,13 @@ function loadEngine() {
     this.setMetaRaw = function (v) { META = v; };
     this.getMETA = function () { return META; };
     this.getSPD = function () { return SPD; };
+    this.getMEGA = function () { return MEGA; };
+    this.effSpd = effSpd;
+    this.WEATHER_SPD_ABIL = WEATHER_SPD_ABIL;
+    this.megaSpeedFoeRange = megaSpeedFoeRange;
+    this.applyMegaAbilities = applyMegaAbilities;
+    this.abilsOf = abilsOf;
+    this.myDex = myDex;
     this.fixDex = fixDex;
     this.roleOfMove = roleOfMove;
     this.rolesFoe = rolesFoe;
@@ -1725,6 +1732,91 @@ check("ninguna nota de predict() da una orden — describe la posición (decisio
       }
     }
   });
+});
+
+// ── velocidad: mega del rival, clima+habilidad, habilidad real de mega ──
+// (bug real, 2026-08-05: pedido de Angel sobre su Mega Swampert + Nado Rápido)
+console.log("\nvelocidad: mega del rival y habilidades bajo clima:");
+
+check("megaSpeedFoeRange() da el rango de la forma mega sin necesitar el ítem confirmado", () => {
+  const B = E.getB();
+  const f = E.mkFoe(260, 0.9); // Swampert, sin ítem — nunca confirmado como el rival
+  B.team = [f];
+  const r = E.megaSpeedFoeRange(f);
+  assert(r !== null, "Swampert tiene una mega real en la tabla: tiene que dar un rango");
+  const base = E.spdRange(f);
+  assert(r.max > base.max, "Mega Swampert (70 base) es más rápido que el Swampert normal (60 base)");
+});
+
+check("megaSpeedFoeRange() da null para una especie sin forma mega conocida", () => {
+  const f = E.mkFoe(1000, 0.9); // Gholdengo: no tiene mega en la tabla
+  assertEqual(E.megaSpeedFoeRange(f), null);
+});
+
+check("effSpd() duplica bajo el clima correcto, y NO bajo cualquier clima", () => {
+  const B = E.getB();
+  B.tw = { me: 0, them: 0 }; B.tr = 0;
+  B.weather = "lluvia";
+  assertEqual(E.effSpd(100, "me", null, "swiftswim"), 200, "Nado Rápido bajo lluvia tiene que duplicar");
+  assertEqual(E.effSpd(100, "me", null, "chlorophyll"), 100, "Clorofila es de sol, no de lluvia — no duplica bajo lluvia");
+  B.weather = null;
+  assertEqual(E.effSpd(100, "me", null, "swiftswim"), 100, "sin clima activo, ni Nado Rápido duplica nada");
+});
+
+check("effSpd() sin habilidad pasada no duplica nada — mismo comportamiento que antes del cambio", () => {
+  const B = E.getB();
+  B.tw = { me: 0, them: 0 }; B.tr = 0; B.weather = "lluvia";
+  assertEqual(E.effSpd(100, "me", null), 100, "sin abil, la función tiene que comportarse exactamente igual que antes");
+});
+
+check("effSpd() del lado del rival exige habilidad ya confirmada — no se inventa el doble", () => {
+  // Esto lo verifica el call site (solo se pasa f.abil cuando está confirmada),
+  // pero la función en sí no distingue "confirmada" de "no": documentar el
+  // contrato con un test de la firma es la forma de que quien la llame de
+  // nuevo no se olvide de esa condición.
+  const B = E.getB();
+  B.tw = { me: 0, them: 0 }; B.tr = 0; B.weather = "lluvia";
+  assertEqual(E.effSpd(100, "them", null, undefined), 100, "sin habilidad (no confirmada) no hay boost");
+});
+
+check("WEATHER_SPD_ABIL cubre las 4 habilidades reales de duplicar velocidad por clima", () => {
+  assertEqual(E.WEATHER_SPD_ABIL.swiftswim, "lluvia");
+  assertEqual(E.WEATHER_SPD_ABIL.chlorophyll, "sol");
+  assertEqual(E.WEATHER_SPD_ABIL.sandrush, "arena");
+  assertEqual(E.WEATHER_SPD_ABIL.slushrush, "granizo");
+});
+
+check("applyMegaAbilities() resuelve Mega Swampert -> Nado Rápido por nombre contra dex.json", () => {
+  const MEGA = E.getMEGA();
+  assert(MEGA["Swampertite"], "el fixture asume que el proyecto sigue llamando 'Swampertite' a la piedra");
+  const [megaKey] = MEGA["Swampertite"];
+  const dexFake = { species: { swampertmega: { n: "Swampert-Mega", num: 260, a: ["Swift Swim"] } } };
+  E.applyMegaAbilities(dexFake);
+  const ABIL = E.getABIL();
+  assertEqual(ABIL[megaKey].join(","), "swiftswim",
+    "antes de este fix, abilsOf(megaKey) caía al fallback de la especie base (Damp/Torrent)");
+});
+
+check("applyMegaAbilities() no rompe nada si dex.json no trae esa forma mega todavía", () => {
+  const MEGA = E.getMEGA();
+  const [megaKey] = MEGA["Swampertite"];
+  const ABIL = E.getABIL();
+  const antes = ABIL[megaKey];
+  E.applyMegaAbilities({ species: {} }); // dex.json vacío / sin la forma mega
+  assertEqual(ABIL[megaKey], antes, "sin coincidencia no se pisa lo que ya había con undefined");
+});
+
+check("abilsOf(myDex(m)) ofrece la habilidad de la MEGA una vez megaevolucionado, no la de la base", () => {
+  // Reproduce el bug real: el selector de Habilidad en TUYO usaba abilsOf(m.dex)
+  // -- la especie base -- incluso con m.mega=true, así que Nado Rápido nunca
+  // aparecía en la lista para elegir, aunque los datos ya estuvieran bien.
+  const MEGA = E.getMEGA();
+  const [megaKey] = MEGA["Swampertite"];
+  E.applyMegaAbilities({ species: { swampertmega: { n: "Swampert-Mega", num: 260, a: ["Swift Swim"] } } });
+  const m = E.slot(260);
+  m.item = "Swampertite"; m.mega = true;
+  const opciones = E.abilsOf(E.myDex(m));
+  assert(opciones.includes("swiftswim"), `el selector tiene que ofrecer Nado Rápido una vez megaevolucionado, opciones: ${opciones.join(",")}`);
 });
 
 // ── valor e inversión pegados en la captura de Stats (bug real, 2026-08-05) ──
