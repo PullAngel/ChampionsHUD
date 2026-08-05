@@ -105,6 +105,7 @@ function loadEngine() {
     this.roleOfMove = roleOfMove;
     this.rolesFoe = rolesFoe;
     this.predict = predict;
+    this.previewMatrix = previewMatrix;
     this.setMeta = function (d, v) { META.species = META.species || {}; META.species[String(d)] = v; };
     this.verdict = verdict;
     this.calc = calc;
@@ -1697,6 +1698,46 @@ check("ninguna nota de predict() da una orden — describe la posición (decisio
       }
     }
   });
+});
+
+// ── matriz de matchup de Previa (Fase 2, sprint 2.9) ──
+// Reemplaza al ranking LEAD/BACK que decidía qué llevar (decisions.md #21
+// lo prohíbe sin excepción): describe matchups, no elige nada.
+console.log("\nmatriz de matchup (previewMatrix):");
+
+check("previewMatrix() no ordena ni filtra el equipo propio — van los 6 tal cual están cargados", () => {
+  conMetaReal(() => {
+    const B = E.getB();
+    B.team = [445, 983, 547, 6].map((d) => E.mkFoe(d, 0.9));
+    const MY = E.getMY();
+    MY.length = 0;
+    [9, 1000, 727, 591, 6, 445].forEach((d) => MY.push(E.slot(d)));
+    const mtx = E.previewMatrix();
+    assertEqual(mtx.mine.length, 6, "los 6 propios, sin recortar a un top-N");
+    assertEqual(mtx.mine.map((m) => m.dex).join(","), "9,1000,727,591,6,445",
+      "mismo orden en que están cargados — reordenar sería colar un 'mejor primero'");
+  });
+});
+
+check("previewMatrix() usa el top 4 de foeBringOrder() para las columnas, no los 6 completos", () => {
+  conMetaReal(() => {
+    const B = E.getB();
+    B.team = [445, 983, 547, 6, 727, 591].map((d) => E.mkFoe(d, 0.9));
+    const MY = E.getMY();
+    MY.length = 0; MY.push(E.slot(9));
+    const mtx = E.previewMatrix();
+    assertEqual(mtx.foes.length, 4);
+    const esperado = E.foeBringOrder().slice(0, 4).map((x) => x.f.dex);
+    assertEqual(mtx.foes.map((f) => f.dex).join(","), esperado.join(","));
+  });
+});
+
+check("previewMatrix() devuelve null sin equipo propio o sin rival visto — no inventa una matriz vacía", () => {
+  const B = E.getB();
+  B.team = [];
+  const MY = E.getMY();
+  MY.length = 0; MY.push(E.slot(9));
+  assertEqual(E.previewMatrix(), null, "sin rival visto no hay con qué armar columnas");
 });
 
 // ── coherencia de números de Pokédex entre SPD y los datos reales ──

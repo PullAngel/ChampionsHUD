@@ -1087,6 +1087,26 @@ function foeBringOrder(){
     || b.cbdLinks.length-a.cbdLinks.length
     || (b.usage??0)-(a.usage??0));
 }
+/** Matriz de matchup para Previa (sprint 2.9). Reemplaza al "Sacá vos"
+    viejo (ranking LEAD/BACK por puntaje), que elegía la jugada por el
+    jugador — `decisions.md` #21 lo prohíbe sin excepción, sin importar qué
+    tan buenos sean los datos detrás del puntaje. Angel eligió esta salida
+    (2026-08-04) entre tres opciones: sacar el panel, convertirlo en matriz
+    descriptiva, o abrir un ADR nuevo que ampliara #21.
+    Por cada uno de tus 6, qué le hacés y qué te hace cada uno de los 4
+    rivales más probables (`foeBringOrder()`, sprint 2.8) — mismo cálculo
+    que ya usa la "Matriz de daño" de Campo (`best()`+`verdict()` par a par),
+    sin boosts ni estado porque en team preview todavía no existen.
+    Filas y columnas van en el orden en que ya vienen (equipo propio tal
+    cual está cargado; rivales por `foeBringOrder()`) — nunca reordenadas
+    por qué tan bueno es el matchup, para que no se cuele un "el mejor
+    primero" disfrazado de tabla. */
+function previewMatrix(){
+  const mine=MY.filter(m=>m.dex&&S(m.dex));
+  const foes=foeBringOrder().slice(0,4).map(x=>x.f);
+  if(!mine.length||!foes.length)return null;
+  return {mine,foes};
+}
 /** "¿Por qué me mostrás esto?" contestado con la cita concreta, no con un
     puntaje. Cuando no hay ningún dato real que citar lo dice con todas las
     letras en vez de devolver vacío: un texto en blanco deja al que llama
@@ -2547,17 +2567,32 @@ function vPre(){
         n?`, sobre ${n} equipos reales`:""}. No dice quién lidera: ninguna fuente publica ese dato.</div></div>`;
   }
 
+  // "Sacá vos" (sprint 2.9): ya no rankea ni arma LEAD/BACK — ver
+  // previewMatrix() para la decisión y por qué. Los "ejes de partida" de
+  // predict() (Tailwind/Espacio Raro/mega/Bromista) siguen siendo texto
+  // puramente descriptivo, así que se reusan tal cual para "Por qué".
+  const mtx=previewMatrix();
+  if(mtx){
+    h+=`<div class="card"><span class="hd">Matchups probables<em>${mtx.mine.length}×${mtx.foes.length}, contra quién más probable saca</em></span>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:9.5px">
+      <tr><td></td>${mtx.foes.map(f=>`<td style="text-align:center;padding:3px;font-weight:800;color:var(--foe-row)">${esc(nm(f.dex))}</td>`).join("")}</tr>
+      ${mtx.mine.map(m=>{
+        const pool=myMoves(m),st=statsOf(m);
+        return `<tr><td style="font-weight:800;padding:3px;color:var(--pick)">${esc(nm(myDex(m)))}</td>${
+          mtx.foes.map(f=>{
+            const toThem=best(myDex(m),f.dex,{...ctxFor("me"),aStat:st,aItem:m.item==="—"?null:m.item,aAb:m.abil,dHP:0,dSP:0},pool);
+            const fromThem=best(f.dex,myDex(m),{...ctxFor("them"),aItem:f.item,aAb:f.abil,dStat:st,dAb:m.abil},foeMoves(f));
+            const vTo=verdict(toThem,toThem?toThem.maxHP:0),vFrom=verdict(fromThem,fromThem?fromThem.maxHP:0);
+            return `<td style="text-align:center;padding:3px"><div class="${vTo.cls}">→${vTo.txt}</div><div class="${vFrom.cls}">←${vFrom.txt}</div></td>`;
+          }).join("")}</tr>`;
+      }).join("")}
+      </table></div>
+      <div class="msg" style="margin-top:5px">→ lo que vos le hacés, ← lo que te hace. Sin orden ni elección: los datos son tuyos para decidir.</div></div>`;
+  }
   const p=predict();
-  if(p){
-    const line=(x,tag,cls)=>`<div class="pl"><i class="${cls}">${tag}</i>
-      <b>${esc(nm(x.f?x.f.dex:myDex(x.m)))}<s>${x.role>=20?"control de ritmo":x.off>=95?"amenaza directa":x.surv>=55||x.def>=55?"aguanta":"apoyo"}</s></b>
-      <u>${Math.round(x.score)}</u></div>`;
-    h+=`<div class="card"><span class="hd">Sacá vos</span>
-        ${p.leads.map(x=>line(x,"LEAD","")).join("")}
-        ${p.back.map(x=>line(x,"BACK","b")).join("")}</div>
-    <div class="card d"><span class="hd">Por qué</span>
-      ${p.notes.length?p.notes.map(n=>`<div class="note">${esc(n)}</div>`).join("")
-        :`<div class="msg">Sin ejes de velocidad ni clima marcados: la partida se define en el intercambio directo de daño.</div>`}</div>`;
+  if(p&&p.notes.length){
+    h+=`<div class="card d"><span class="hd">Por qué</span>
+      ${p.notes.map(n=>`<div class="note">${esc(n)}</div>`).join("")}</div>`;
   }
   return h;
 }
