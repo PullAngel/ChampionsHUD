@@ -54,6 +54,33 @@ Ya contemplado como un tipo de evento más en la Fase 4 del roadmap (no requiere
 
 La arquitectura ya lo soporta por diseño (decisión #7: slugs canónicos en inglés, idioma solo en presentación). Agregar un idioma nuevo es un trabajo de contenido (traducciones), no de arquitectura, siempre que la adopción de `t()` se mantenga al 100% desde la Fase 0.
 
+**Confirmado como objetivo por Angel (2026-08-05):** quiere una versión **100% en inglés** y después otros idiomas, para tener mayor alcance. Dos precisiones suyas que hay que respetar cuando se encare:
+- **Los nombres de ataques/objetos se muestran en el idioma del juego, y eso se elige aparte del idioma de la interfaz.** Ya existe (`LANG` + el selector de Ajustes) y funciona: Angel juega en inglés y ve los ataques en inglés. **No se unifica con el idioma de la UI** — son dos cosas distintas a propósito, porque lo que importa es que el nombre coincida con lo que el jugador ve en pantalla del juego.
+- **Mezclar idiomas no es un bug mientras tanto.** Que un ataque en inglés aparezca dentro de una frase en español es aceptable y esperado. No hay que "arreglarlo" traduciendo el ataque.
+
+## Limpieza de errores técnicos para la versión final
+
+**Deliberado y temporal, decidido con Angel el 2026-08-05 (decisión #24).** Hoy los mensajes de error muestran, debajo del texto humano, un bloque técnico con código estable (`OCR-02`, `DATA-01`), el detalle de qué falló y un botón para copiar el reporte completo. Eso está así **a pedido explícito de Angel** para poder diagnosticar rápido mientras el proyecto está en desarrollo activo.
+
+**Antes de considerar el proyecto terminado hay que hacer una pasada de limpieza:** decidir, error por error, cuánto detalle técnico queda visible para un usuario final que no es el desarrollador. Lo más probable es que el bloque técnico pase a estar detrás de un toque ("ver detalle") o a un modo de diagnóstico, en vez de mostrarse siempre. **El código de error corto sí conviene que quede** aunque el resto se esconda: es lo que hace que un reporte de un usuario cualquiera sea accionable.
+
+## Íconos propios, con revisión legal
+
+**Pedido de Angel (2026-08-05).** Los íconos actuales del riel son caracteres Unicode geométricos (`⚑ ⬢ ▲ ▼ ÷ ⚙`) — funcionan, son livianos y no tienen problema de licencia, pero no son una identidad. La intención es hacer un set propio más adelante, con dos condiciones que Angel fijó explícitamente:
+- **Diseño gráfico real**, no símbolos prestados.
+- **Revisión legal antes de publicar:** el proyecto toca una marca ajena (Pokémon/Champions), así que los íconos propios no pueden parecerse a los del juego, ni reutilizar formas, tipografías o elementos reconocibles de la marca. Un ícono "inspirado" de más puede convertir un proyecto personal en un problema de propiedad intelectual. Esto se revisa **antes** de dibujar, no después.
+
+## Rediseño de la pantalla de inicio (y su sesión de diseño previa)
+
+**Diferido a propósito por Angel (2026-08-05).** La ruta C de la propuesta de rediseño de comunicación (onboarding real, modo demo para probar sin el juego, HUD con densidad progresiva "Guiado/Completo") **no se implementó** — Angel pidió dejarla para más adelante y por ahora solo mejorar un poco el aspecto de la pantalla actual.
+
+Cuando se retome, **empieza con una sesión de diseño y toma de decisiones, no con código.** Lo que hay que resolver ahí, ya identificado:
+- Qué ve alguien que abre la app por primera vez y **todavía no tiene el juego abierto** — hoy no hay forma de saber qué hace el HUD sin instalarlo y jugar.
+- Si se construye un **modo demo** con un combate de ejemplo (es lo que más baja la barrera de entrada, y lo más caro).
+- Cómo se explican los **tres permisos** en el momento en que se piden, en vez de "Paso 2 de 3".
+- Si el HUD arranca en una **densidad reducida** y cómo se recuerda esa elección.
+- **Riesgo técnico a tener presente:** es la única ruta que agrega estado persistido nuevo, pantallas de Kotlin que no se pueden probar sin compilar, y condicionales en el render — la clase de cambio que ya rompió la pantalla entera una vez (ver `roadmap.md`, sprint 2.7). Necesita su propio plan por etapas.
+
 ## Ampliar el acceso a la API de Limitless
 
 Los endpoints de torneos usados hoy no requieren clave (ver `architecture.md` §10.1). Si en el futuro el volumen de datos necesario crece (por ejemplo, para usar el endpoint `/decks` o levantar límites de tasa), Limitless ofrece solicitar una API key gratuita para proyectos con caso de uso público/comunitario legítimo. No es necesario para el pipeline actual; queda documentado para cuando haga falta.

@@ -106,6 +106,9 @@ function loadEngine() {
     this.rolesFoe = rolesFoe;
     this.predict = predict;
     this.previewMatrix = previewMatrix;
+    this.confTag = confTag;
+    this.CONF = CONF;
+    this.dbg = dbg;
     this.setMeta = function (d, v) { META.species = META.species || {}; META.species[String(d)] = v; };
     this.verdict = verdict;
     this.calc = calc;
@@ -1698,6 +1701,43 @@ check("ninguna nota de predict() da una orden — describe la posición (decisio
       }
     }
   });
+});
+
+// ── cómo se comunica la confianza (decisión #24) ──
+console.log("\nmarcas de confianza y errores:");
+
+check("confTag() muestra SIEMPRE símbolo Y palabra, nunca uno solo", () => {
+  // Angel corrigió la propuesta original, que dejaba solo el símbolo: la marca
+  // sola se lee más rápido pero hay que aprenderla primero, y esto existe
+  // justo para quien todavía no la aprendió. Si alguien "simplifica" sacando
+  // el texto, este test lo frena.
+  for (const nivel of Object.keys(E.CONF)) {
+    const [simbolo, palabra] = E.CONF[nivel];
+    const html = E.confTag(nivel);
+    assert(html.includes(simbolo), `${nivel}: falta el símbolo ${simbolo}`);
+    assert(html.includes(palabra), `${nivel}: falta la palabra "${palabra}" — el símbolo solo no alcanza`);
+  }
+});
+
+check("confTag() cubre los cuatro niveles reales y no inventa uno para lo desconocido", () => {
+  assertEqual(Object.keys(E.CONF).sort().join(","), "deducido,posible,probable,visto");
+  assertEqual(E.confTag("inventado"), "", "un nivel que no existe no puede pintar una marca cualquiera");
+  assertEqual(E.confTag(undefined), "", "sin nivel no hay marca — no se cae a 'probable' por defecto");
+});
+
+check("dbg() mantiene el detalle técnico visible y con su código buscable", () => {
+  // Deliberado y temporal (future.md): mientras el proyecto esté en
+  // desarrollo, un fallo tiene que decir lo suficiente para arreglarlo.
+  const html = E.dbg("OCR-02", "SyntaxError: Unexpected token");
+  assert(html.includes("OCR-02"), "el código corto es lo que hace buscable el error en el código");
+  assert(html.includes("SyntaxError"), "el detalle técnico no se puede perder");
+  assertEqual(E.dbg("OCR-02", ""), "", "sin detalle no se dibuja un bloque vacío");
+});
+
+check("dbg() escapa el detalle: un error puede traer HTML adentro", () => {
+  const html = E.dbg("UI-01", "<img src=x onerror=alert(1)>");
+  assert(!html.includes("<img"), "el detalle tiene que ir escapado, no inyectarse crudo");
+  assert(html.includes("&lt;img"), "y tiene que seguir siendo legible una vez escapado");
 });
 
 // ── matriz de matchup de Previa (Fase 2, sprint 2.9) ──

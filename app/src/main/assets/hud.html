@@ -164,6 +164,30 @@ input[type=text]{width:100%;background:rgba(0,0,0,.30);color:var(--cream);border
 .btn:active,.btn.g{background:var(--pick);color:var(--ink)}
 .msg{font-size:9.5px;font-weight:600;color:var(--dim);line-height:1.4}
 .msg.w{color:var(--warn)}
+/* ── marca de confianza: símbolo + palabra, siempre las dos (decisión #24) ──
+   Angel corrigió la propuesta original, que dejaba solo el símbolo: la marca
+   sola se lee más rápido pero hay que aprenderla primero, y esto existe justo
+   para el que todavía no la aprendió. Los niveles son los de `inference.md`
+   §1, que el motor ya distingue desde el sprint 2.2 — acá solo se pintan. */
+.cf3{display:inline-flex;align-items:center;gap:3px;font-size:7.5px;font-weight:800;
+  letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:999px;
+  white-space:nowrap;vertical-align:middle}
+.cf3 i{font-style:normal;font-size:8px;line-height:1}
+.cf3.v{background:rgba(91,232,196,.16);color:var(--sure)}
+.cf3.d{background:rgba(155,197,255,.16);color:#9BC5FF}
+.cf3.p{background:rgba(255,255,255,.09);color:var(--faint)}
+.cf3.q{background:rgba(255,255,255,.05);color:var(--faint);opacity:.8}
+/* dentro de un título de tarjeta la marca no lleva fondo: el pill ya lo da */
+.hd .cf3{background:none;padding:2px 0 2px 6px}
+/* ── bloque técnico de error (decisión #24, temporal — ver future.md) ──
+   El mensaje humano va arriba; esto es el detalle para diagnosticar. Se
+   mantiene visible a propósito mientras el proyecto está en desarrollo. */
+.dbg{margin-top:6px;padding:6px 8px;border-radius:8px;background:rgba(0,0,0,.32);
+  border:1px solid rgba(255,255,255,.10)}
+.dbg b{display:block;font-size:7.5px;font-weight:800;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--warn);margin-bottom:3px}
+.dbg code{display:block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:8.5px;
+  font-weight:600;color:var(--dim);line-height:1.45;word-break:break-word;white-space:pre-wrap}
 
 /* ── predicción ── */
 .pl{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.09);
@@ -190,11 +214,18 @@ input[type=text]{width:100%;background:rgba(0,0,0,.30);color:var(--cream);border
 </head>
 <body>
 
+<!-- Íconos: formas con significado, no adornos geométricos (decisión #24).
+     ▲/▼ siguen la convención del propio juego — el rival arriba, vos abajo —
+     así que se aprenden solas y ya no son dos rombos casi iguales como antes.
+     "MÍO" pasó a "TUYO": el HUD te habla de vos ("marcá", "tu equipo"), así
+     que la pestaña se nombra desde su voz, no desde la del jugador.
+     Unicode a propósito por ahora: liviano y sin problema de licencia — el
+     set propio con revisión legal está anotado en `future.md`. -->
 <nav class="rail">
-  <button class="tab" data-tab="pre"><i>◈</i>PREVIA</button>
-  <button class="tab" data-tab="field" data-on="1"><i>▦</i>CAMPO</button>
-  <button class="tab" data-tab="foe"><i>◆</i>RIVAL</button>
-  <button class="tab" data-tab="mine"><i>●</i>MÍO</button>
+  <button class="tab" data-tab="pre"><i>⚑</i>PREVIA</button>
+  <button class="tab" data-tab="field" data-on="1"><i>⬢</i>CAMPO</button>
+  <button class="tab" data-tab="foe"><i>▲</i>RIVAL</button>
+  <button class="tab" data-tab="mine"><i>▼</i>TUYO</button>
   <button class="tab" data-tab="calc"><i>÷</i>CALC</button>
   <button class="tab" data-tab="set"><i>⚙</i></button>
 </nav>
@@ -215,7 +246,7 @@ input[type=text]{width:100%;background:rgba(0,0,0,.30);color:var(--cream);border
 <script>
 "use strict";
 /* ═════ REGLAS DE CHAMPIONS ═════
-   Sin IVs: todos cuentan como 31. Los EVs son Stat Points: 66 en total, tope 32
+   Sin IVs: todos cuentan como 31. Los EVs son Reparto de puntos: 66 en total, tope 32
    por stat, 1 SP = +1 punto de stat a nivel 50, sumado ANTES de la alineación.
    Verificado contra la pantalla de stats del juego: Gholdengo AtqEsp base 133
    con 32 SP y alineación que sube da 203 = floor((153+32)*1.1). Si fuera después
@@ -1119,15 +1150,14 @@ function whyBring(x){
   const n=META.sourceCounts?.teams;
   if(x.linked.length){
     const t=x.linked.slice(0,2).map(l=>`${nm(l.dex)} (${l.pct}%${
-      n?`, ${l.count} de ${n} equipos`:""})`).join(" y ");
-    return `Aparece junto a ${t}`;
+      n?`, ${l.count} de ${n}`:""})`).join(" y ");
+    return `Suele ir con ${t}`;
   }
   if(x.cbdLinks.length)
-    return `Sin core medido con el resto, pero Champions Battle Data lo lista entre los compañeros frecuentes de ${
-      x.cbdLinks.slice(0,2).map(d=>nm(d)).join(" y ")} (esa fuente no publica porcentaje)`;
+    return `Suele acompañar a ${x.cbdLinks.slice(0,2).map(d=>nm(d)).join(" y ")}, sin porcentaje medido`;
   if(x.usage!=null)
-    return `Sin vínculo medido con el resto de su equipo; uso general ${x.usage}%`;
-  return "Sin datos de meta para esta especie";
+    return `No suele ir con el resto de su equipo · ${x.usage}% de uso general`;
+  return "Sin datos de esta especie";
 }
 
 function predict(){
@@ -1429,6 +1459,32 @@ function bulkHypothesis(i){
   return l.ok?{level:"deduced",hp:l.hp,df:l.df,n:l.n,byEvent:l.id}
              :{level:"contradiction",move:l.move,pct:l.pct,byEvent:l.id};
 }
+/* ── Cómo se muestra la confianza (decisión #24) ──
+   Un solo vocabulario para todo el HUD. Antes cada tarjeta inventaba el suyo
+   ("✔ visto", "○ común en meta", "◇ solo posible", "(deducido)", "○ estimado,
+   no confirmado"), así que la misma idea se decía de cinco formas distintas.
+   Los cuatro niveles mapean 1:1 con lo que el motor ya distingue:
+     visto     — hecho observado, pasó en pantalla (`inference.md` §1)
+     deducido  — se descartó el resto (R1/R2/R4)
+     probable  — prior de meta, datos de torneo
+     posible   — solo sabemos que puede aprenderlo (learnset); no dice nada
+                 sobre qué tan probable es, y por eso es el más apagado. */
+const CONF={visto:["●","visto","v"],deducido:["◐","deducido","d"],
+  probable:["○","probable","p"],posible:["◇","posible","q"]};
+/** Marca de confianza: símbolo Y palabra, siempre las dos juntas. Angel
+    corrigió la propuesta que dejaba solo el símbolo — la marca sola se lee
+    más rápido pero hay que aprenderla primero. */
+const confTag=k=>{const c=CONF[k];
+  return c?`<span class="cf3 ${c[2]}"><i>${c[0]}</i>${c[1]}</span>`:""};
+/** Detalle técnico de un fallo, para poder arreglarlo rápido. Va SIEMPRE
+    debajo de un mensaje humano que explique qué pasó y qué hacer — este
+    bloque es el "por si querés el detalle", no la explicación.
+    Es deliberadamente verboso mientras el proyecto está en desarrollo
+    (pedido explícito de Angel); la pasada de limpieza para la versión final
+    está anotada en `future.md`. El código corto (`OCR-02`) es lo que hace
+    que un reporte sea buscable en el código. */
+const dbg=(code,detail)=>!detail?"":`<div class="dbg"><b>Detalle · ${esc(code)}</b>
+  <code>${esc(String(detail).slice(0,400))}</code></div>`;
 /** Qué filas de "por qué" están desplegadas — vive fuera de B a propósito:
     es un detalle de cómo se está mirando la pantalla ahora, no un hecho del
     combate, así que no tiene sentido guardarlo (mismo criterio que PICK/REG
@@ -2268,8 +2324,9 @@ function finishOwnScan(){
     team.push(s);
   }
   if(!leidos)
-    return `<div class="card f"><span class="hd">Captura de equipo</span>
-      <div class="msg w">No pude leer ningún Pokémon. Probá de nuevo, con el HUD fuera de las tarjetas.</div></div>`;
+    return `<div class="card f"><span class="hd">No reconocí ningún Pokémon</span>
+      <div class="msg w">Corré el HUD para que no tape las tarjetas y probá otra vez.</div>
+      ${dbg("OCR-04","0 de 6 tarjetas con especie reconocible")}</div>`;
   // Dónde va lo leído. Antes siempre creaba un equipo nuevo, y reescanear
   // para corregir una lectura fallida dejaba la lista llena de "Equipo
   // escaneado 2/3/4..." (Angel llegó a 5 guardados probando). Ahora se elige.
@@ -2357,10 +2414,9 @@ function render(){
   try{ renderInner() }catch(e){
     // Nunca dejar la interfaz muerta: si una vista falla, se muestra el error
     // y los eventos se enganchan igual para poder seguir navegando.
-    $("#body").innerHTML=`<div class="card f"><span class="hd">Error en la vista</span>
-      <div class="msg w">${esc(e&&e.message||e)}</div>
-      <div class="msg" style="margin-top:5px">Probá otra pestaña. Si se repite, mandame
-      este texto.</div></div>`;
+    $("#body").innerHTML=`<div class="card f"><span class="hd">Se rompió esta pantalla</span>
+      <div class="msg w">Las otras pestañas deberían seguir andando. Probá una y volvé.</div>
+      ${dbg("UI-01",(e&&e.stack)||(e&&e.message)||e)}</div>`;
   }
   try{ wire() }catch(e){}
   $("#bPin").dataset.on=B.pinned?"1":"0";
@@ -2534,21 +2590,19 @@ function vPre(){
   if(!so.length&&!th.length)
     return `<div class="card"><div class="msg">Escaneá al rival con ↻ y cargá tu equipo en MÍO.</div></div>`;
 
-  let h=`<div class="card"><span class="hd">Orden de velocidad<em>los 12, sin modificadores de turno</em></span>
+  let h=`<div class="card"><span class="hd">Quién pega primero<em>los 12, sin efectos de campo todavía</em></span>
     ${so.map((x,i)=>`<div class="row" style="padding:4px 8px">
       <b style="color:${x.me?"var(--pick)":"var(--foe-row)"}">${i+1}. ${esc(x.n)}${
         x.megaV?`<s>si megaevoluciona: ${x.megaV}</s>`:""}</b>
       <u>${x.me?x.v:x.lo+"–"+x.hi}</u></div>`).join("")}</div>
-  <div class="card f"><span class="hd">Mayores amenazas<em>su mejor golpe, contra tu peor respuesta</em></span>
+  <div class="card f"><span class="hd">Lo que más te puede doler<em>su mejor golpe contra tu peor respuesta</em></span>
     ${th.length?th.map(t=>{const vd=verdict(t.r,t.r.maxHP);
-      // De dónde salió el movimiento: visto en partida (hecho), común en el
-      // meta (prior), o solo posible por learnset. Sin esta marca los tres
-      // se leían igual y "posible" parecía una amenaza confirmada.
-      const marca={visto:"✔ visto",meta:"○ común en meta",posible:"◇ solo posible"}[t.src]||"";
-      return `<div class="row"><b>${esc(nm(t.f.dex))}<s>a ${esc(nm(myDex(t.m)))} · ${esc(mvName(t.r.move))}${
-        marca?` · ${marca}`:""}</s></b>
-        <u class="${vd.cls}">${vd.txt}</u></div>`}).join("")
-      :`<div class="msg">Sin datos suficientes todavía — escaneá al rival y cargá tu equipo.</div>`}</div>`;
+      // De dónde salió el movimiento. Sin esta marca los tres niveles se leían
+      // igual y "posible" parecía una amenaza confirmada.
+      const marca=confTag({visto:"visto",meta:"probable",posible:"posible"}[t.src]);
+      return `<div class="row"><b>${esc(nm(t.f.dex))}<s>a ${esc(nm(myDex(t.m)))} · ${esc(mvName(t.r.move))}</s></b>
+        ${marca}<u class="${vd.cls}">${vd.txt}</u></div>`}).join("")
+      :`<div class="msg">Todavía no hay con qué calcular. Tocá ↻ para leer al rival y cargá tu equipo en TUYO.</div>`}</div>`;
 
   // Predicción de team preview (quién va a sacar cada uno): por ahora el
   // algoritmo no acierta lo suficiente como para ser útil (feedback real de
@@ -2560,11 +2614,11 @@ function vPre(){
   const bring=foeBringOrder();
   if(bring.length){
     const n=META.sourceCounts?.teams;
-    h+=`<div class="card f" style="margin-top:10px"><span class="hd">Va a sacar<em>por evidencia, no por puntaje</em></span>
+    h+=`<div class="card f" style="margin-top:10px"><span class="hd">Probable que traiga${confTag("probable")}</span>
       ${bring.map((x,i)=>`<div class="row"><b>${i+1}. ${esc(nm(x.f.dex))}<s>${esc(whyBring(x))}</s></b>
         <u>${x.linked.length?x.linked[0].pct+"%":(x.usage!=null?x.usage+"%":"—")}</u></div>`).join("")}
-      <div class="msg" style="margin-top:5px">Orden por cuánto aparece cada uno junto a los otros que ya viste${
-        n?`, sobre ${n} equipos reales`:""}. No dice quién lidera: ninguna fuente publica ese dato.</div></div>`;
+      <div class="msg" style="margin-top:5px">Ordenado por cuánto suele aparecer junto a los otros que ya viste${
+        n?`, sobre ${n} equipos de torneo`:""}. Cuáles dos lideran no se puede saber: no hay datos de eso.</div></div>`;
   }
 
   // "Sacá vos" (sprint 2.9): ya no rankea ni arma LEAD/BACK — ver
@@ -2573,7 +2627,7 @@ function vPre(){
   // puramente descriptivo, así que se reusan tal cual para "Por qué".
   const mtx=previewMatrix();
   if(mtx){
-    h+=`<div class="card"><span class="hd">Matchups probables<em>${mtx.mine.length}×${mtx.foes.length}, contra quién más probable saca</em></span>
+    h+=`<div class="card"><span class="hd">Cómo te va contra cada uno<em>tu equipo, contra los ${mtx.foes.length} más probables</em></span>
       <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:9.5px">
       <tr><td></td>${mtx.foes.map(f=>`<td style="text-align:center;padding:3px;font-weight:800;color:var(--foe-row)">${esc(nm(f.dex))}</td>`).join("")}</tr>
       ${mtx.mine.map(m=>{
@@ -2587,11 +2641,11 @@ function vPre(){
           }).join("")}</tr>`;
       }).join("")}
       </table></div>
-      <div class="msg" style="margin-top:5px">→ lo que vos le hacés, ← lo que te hace. Sin orden ni elección: los datos son tuyos para decidir.</div></div>`;
+      <div class="msg" style="margin-top:5px">→ lo que le hacés · ← lo que te hace</div></div>`;
   }
   const p=predict();
   if(p&&p.notes.length){
-    h+=`<div class="card d"><span class="hd">Por qué</span>
+    h+=`<div class="card d"><span class="hd">Claves de este cruce</span>
       ${p.notes.map(n=>`<div class="note">${esc(n)}</div>`).join("")}</div>`;
   }
   return h;
@@ -2609,7 +2663,7 @@ function hpBar(id,label,val){
 function vCompact(){
   const mine=(B.doubles?B.mine:[B.mine[0]]).filter(i=>MY[i]);
   const foes=(B.doubles?B.foe:[B.foe[0]]).filter(i=>B.team[i]?.dex);
-  if(!mine.length||!foes.length)return `<div class="card"><div class="msg">Elegí los activos en CAMPO.</div></div>`;
+  if(!mine.length||!foes.length)return `<div class="card"><div class="msg">Elegí quién está en campo desde la pestaña CAMPO.</div></div>`;
   const fi=Math.min(B.focus,mine.length-1);
   const m=MY[mine[fi]];
   const S1=suggest(mine[fi],fi,mine,foes);
@@ -2640,7 +2694,7 @@ function vCompact(){
       `<button class="p" data-fc="${i}" data-on="${i===fi?1:0}">${esc(nm(myDex(MY[mi])))}</button>`).join("")}
       ${mine.map((mi,i)=>`<span class="p" style="background:none;padding:5px 4px">${B.hp["m"+i]??100}%</span>`).join("")}</div></div>
   ${alerta?`<div class="card f" style="padding:6px 8px"><div class="msg" style="color:var(--cream)">${alerta.texto}</div></div>`:""}
-  <div class="card"><span class="hd">Tus movimientos<em>por resultado, no por orden</em></span>
+  <div class="card"><span class="hd">Tus ataques<em>qué hace cada uno</em></span>
     ${S1.length?S1.map(x=>{const vd=x.dmg?verdict(x.dmg,x.cur):null;return`<div class="pl"><i class="b">${x.slot+1}</i>
       <b>${esc(mvName(x.k))}${x.tgt?` <span style="color:var(--foe-row)">→ ${esc(x.tgt)}</span>`:""}<s>${esc(x.why)}</s></b>
       <u class="${vd?vd.cls:"no"}">${vd?vd.txt:"apoyo"}</u></div>`}).join("")
@@ -2664,13 +2718,13 @@ function vCompact(){
 function vBrought(){
   const empty=!B.myBrought.length&&!B.team.some(f=>f.brought);
   return `<div class="card d"><span class="hd">Quién entra${empty?"":"<em>tocá para corregir o sumar</em>"}</span>
-    <div class="cap">Rivales confirmados en la partida</div>
+    <div class="cap">Los que sacó el rival</div>
     <div class="pills">${B.team.map((f,i)=>f.dex?
       `<button class="p" data-brf="${i}" data-on="${f.brought?1:0}">${esc(nm(f.dex))}</button>`:"").join("")}</div>
-    <div class="cap" style="margin-top:6px">Tus 4 elegidos</div>
+    <div class="cap" style="margin-top:6px">Los que sacaste vos</div>
     <div class="pills">${MY.map((m,i)=>
       `<button class="p" data-brm="${i}" data-on="${B.myBrought.includes(i)?1:0}">${esc(nm(myDex(m)))}</button>`).join("")}</div>
-    ${empty?`<div class="msg" style="margin-top:5px">Marcá quién entró de cada lado — con eso alcanza para calcular todo lo demás solo.</div>`:""}</div>`;
+    ${empty?`<div class="msg" style="margin-top:5px">Marcá quién entró de cada lado. Con eso solo, ya calculo velocidad, daño y amenazas.</div>`:""}</div>`;
 }
 
 function vField(){
@@ -2724,7 +2778,7 @@ function vField(){
     ${a.sta==="quemado"?`<div class="msg w" style="margin-top:4px">Quemado: su daño físico va a la mitad.</div>`:""}
     ${a.sta==="paralizado"?`<div class="msg w" style="margin-top:4px">Paralizado: velocidad a la mitad.</div>`:""}</div>`;
 
-  h+=`<div class="card"><span class="hd">Matriz de daño<em>${mineBrought.length}×${foesBrought.length}, activos y banca</em></span>
+  h+=`<div class="card"><span class="hd">Daño de ida y vuelta<em>→ lo que le hacés · ← lo que te hace</em></span>
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:9.5px">
     <tr><td></td>${foesBrought.map(fi=>`<td style="text-align:center;padding:3px;font-weight:800;color:var(--foe-row)">${esc(nm(B.team[fi].dex))}</td>`).join("")}</tr>
     ${mineBrought.map(mi=>{
@@ -2741,7 +2795,7 @@ function vField(){
         }).join("")}</tr>`;
     }).join("")}
     </table></div>
-    ${mineBrought.length&&foesBrought.length?"":`<div class="msg" style="margin-top:5px">Marcá quién entra más abajo para ver la matriz.</div>`}</div>`;
+    ${mineBrought.length&&foesBrought.length?"":`<div class="msg" style="margin-top:5px">Marcá quién entró, más abajo, para ver esta tabla.</div>`}</div>`;
 
   h+=`<div class="cols">
     <div class="card d"><span class="hd">Velocidad</span>${vSpeed(mine,foes)}</div>
@@ -2810,26 +2864,28 @@ function vFoe(){
       save()
     },"Corregir especie")}
     ${f.shiny?`<div class="row"><b>Variocolor</b><u class="cf">✦</u></div>`:""}
-    ${whyRow("speed","Velocidad",`${r.min}–${r.max}`,f.spdSure?"cf":"",speedHypothesis(B.pick).byEvent)}
-    ${whyRow("item","Objeto",f.item?esc(itName(f.item))+(itemHypothesis(B.pick).level==="deduced"?" (deducido)":""):"?",
-      f.itemSure?"cf":"",itemHypothesis(B.pick).byEvent)}
-    ${whyRow("abil","Habilidad",f.abil?esc(abilName(f.abil)):"?",f.abil?"cf":"",
-      abilityHypothesis(B.pick).byEvent,f.abil&&ABIL_DESC[f.abil])}
-    ${!f.abil&&ruledOut.value.length?whyRow("abilRuledOut","Descartadas",
+    ${whyRow("speed","Velocidad",`${r.min}–${r.max}${confTag(f.spdSure?"deducido":"probable")}`,
+      f.spdSure?"cf":"",speedHypothesis(B.pick).byEvent)}
+    ${whyRow("item","Objeto",f.item
+      ?esc(itName(f.item))+confTag(f.itemSure?"visto":itemHypothesis(B.pick).level==="deduced"?"deducido":"probable")
+      :"todavía no sabés",f.itemSure?"cf":"no",itemHypothesis(B.pick).byEvent)}
+    ${whyRow("abil","Habilidad",f.abil?esc(abilName(f.abil))+confTag("visto"):"todavía no sabés",
+      f.abil?"cf":"no",abilityHypothesis(B.pick).byEvent,f.abil&&ABIL_DESC[f.abil])}
+    ${!f.abil&&ruledOut.value.length?whyRow("abilRuledOut","Ya sabés que no tiene",
       ruledOut.value.map(k=>esc(abilName(k))).join(", "),"",ruledOut.byEvent):""}
-    ${f.bulk?whyRow("bulk","Resistencia deducida",
-      `PS ${f.bulk.hp[0]}–${f.bulk.hp[1]} · Def ${f.bulk.df[0]}–${f.bulk.df[1]}`,"cf",f.bulk.byEvent):""}</div>
-  <div class="card d"><span class="hd">Observar</span><div class="pills">
+    ${f.bulk?whyRow("bulk","Lo que aguanta",
+      `PS ${f.bulk.hp[0]}–${f.bulk.hp[1]} · Def ${f.bulk.df[0]}–${f.bulk.df[1]}${confTag("deducido")}`,"cf",f.bulk.byEvent):""}</div>
+  <div class="card d"><span class="hd">Anotá lo que viste<em>cuanto más marques, mejor calcula</em></span><div class="pills">
       <button class="p" data-obs="fast">Se movió antes</button>
       <button class="p" data-obs="slow">Se movió después</button>
       <button class="p" data-obs="out">${f.out?"Revivir":"Debilitado"}</button>
-      ${MY.some(x=>x.abil==="intimidate")?`<button class="p" data-obs="intimidateHit">Bajó el Ataque con Intimidación</button>`:""}</div>
-    <div class="cap" style="margin-top:7px">Confirmar por daño</div>
+      ${MY.some(x=>x.abil==="intimidate")?`<button class="p" data-obs="intimidateHit">Le bajó el Ataque con Intimidación</button>`:""}</div>
+    <div class="cap" style="margin-top:7px">Deducir lo que aguanta</div>
     <div class="f3">${sel(MY.map((m,j)=>j),B.obs.a,j=>nm(myDex(MY[j])),v=>{B.obs.a=+v;save()},"Con cuál")}
     ${sel(dmgPool(myDex(MY[B.obs.a]||MY[0])),B.obs.m,mvName,v=>{B.obs.m=v;save()},"Con qué movimiento",decoMove)}
     ${sel([...Array(20).keys()].map(i=>(i+1)*5),B.obs.p,x=>x+"%",v=>{B.obs.p=+v;save()},"Cuánto le bajó")}</div>
-    <button class="btn" id="oGo" style="margin-top:5px">Deducir resistencia</button>
-    <div class="msg" id="oOut" style="margin-top:5px">El % real que le bajaste descarta repartos.</div></div></div>`;
+    <button class="btn" id="oGo" style="margin-top:5px">Calcular</button>
+    <div class="msg" id="oOut" style="margin-top:5px">Poné cuánto le bajó de verdad y descarto los repartos que no dan ese número.</div></div></div>`;
   h+=`<div class="card"><span class="hd">Habilidad<em>tocá la que confirmes</em></span><div class="pills">${
     abilsOf(f.dex).map(ab=>{const out=ruledOut.value.includes(ab);
       return `<button class="p" data-fab="${esc(ab)}" data-on="${f.abil===ab?1:0}"${
@@ -2837,9 +2893,9 @@ function vFoe(){
       (m?.abilities||[]).find(x=>x[0]===ab)?`<em>${(m.abilities.find(x=>x[0]===ab))[1]}%</em>`:""}</button>`}).join("")}</div>
     ${f.abil==="intimidate"?`<div class="msg w" style="margin-top:5px">Al entrar baja −1 el Ataque de tus dos activos. Marcalo en CAMPO → Estado y etapas.</div>`:""}</div>`;
   if(m){
-    h+=`<div class="cols"><div class="card"><span class="hd">Objetos</span><div class="pills">${
+    h+=`<div class="cols"><div class="card"><span class="hd">Objetos que suele llevar${confTag("probable")}</span><div class="pills">${
       m.items.map(([i,p])=>`<button class="p" data-item="${esc(i)}" data-on="${f.item===i?1:0}">${esc(i)}<em>${p}%</em></button>`).join("")}</div></div>
-    <div class="card"><span class="hd">Movimientos</span><div class="pills">${
+    <div class="card"><span class="hd">Ataques que suele llevar${confTag("probable")}</span><div class="pills">${
       m.moves.map(([i,p])=>`<button class="p" data-mvk="${esc(i)}" data-on="${f.moves.includes(i)?1:0}">${esc(i)}<em>${p}%</em></button>`).join("")}</div></div></div>`;
     if((m.topNatures||[]).length||(m.topEvSpreads||[]).length){
       // Sprint 2.7 (roadmap.md, cruce con Champions Battle Data): naturaleza
@@ -2849,18 +2905,18 @@ function vFoe(){
       // inventaría una combinación que el dato no sostiene. Van separados,
       // con la marca "○" de prior de meta (product.md, sistema de
       // confianza) — nunca ◆ Deducido, architecture.md §10.1.1.
-      h+=`<div class="card"><span class="hd">Repartos habituales<em>○ estimado, no confirmado</em></span>
+      h+=`<div class="card"><span class="hd">Cómo suele venir${confTag("probable")}</span>
         ${(m.topNatures||[]).slice(0,3).map(n=>`<div class="row"><b>${esc(n.name)}${
           n.statUp?`<s>↑${esc(n.statUp)} ↓${esc(n.statDown)}</s>`:""}</b><u>${n.pct}%</u></div>`).join("")}
         ${(m.topEvSpreads||[]).slice(0,3).map(s=>`<div class="row"><b>${s.sp.join("/")}<s>PS/Atq/Def/AtqEsp/DefEsp/Vel</s></b><u>${s.pct}%</u></div>`).join("")}
-        <div class="msg" style="margin-top:5px">Naturaleza y reparto de EVs se miden por separado — no implica que vayan juntos.</div></div>`;
+        <div class="msg" style="margin-top:5px">La naturaleza y el reparto se miden por separado: que los dos sean los más comunes no significa que vayan juntos.</div></div>`;
     }
     if(m.sets){
       const cs=compatibleSets(f);
-      h+=`<div class="card"><span class="hd">Sets conocidos<em>${
-        f.moves.filter(x=>MV[x]).length?`${cs.length} de ${m.sets.length} siguen siendo compatibles`:"combos completos vistos en torneos reales"}</em></span>
+      h+=`<div class="card"><span class="hd">Combinaciones completas<em>${
+        f.moves.filter(x=>MV[x]).length?`quedan ${cs.length} de ${m.sets.length}`:"las que más se repiten en torneo"}</em>${confTag("probable")}</span>
         ${cs.map(s=>`<div class="row"><b>${s.moves.map(k=>esc(mvName(k))).join(" · ")}</b><u>${s.pct}%</u></div>`).join("")}
-        ${!cs.length?`<div class="msg">Ningún set conocido incluye todo lo que ya viste — puede traer un set fuera de los ${m.setsSample||0} más comunes.</div>`:""}</div>`;
+        ${!cs.length?`<div class="msg">Ninguna combinación conocida incluye todo lo que ya le viste. Debe estar usando algo fuera de lo común.</div>`:""}</div>`;
     }
   }
   h+=vMovesPP(f);
@@ -2878,7 +2934,7 @@ function vFoe(){
     el contador, en vez de fingir un número. */
 function vMovesPP(f){
   if(!f.moves.length)return "";
-  return `<div class="card"><span class="hd">PP y efecto<em>tocá el nombre para el efecto</em></span>
+  return `<div class="card"><span class="hd">Ataques que le viste<em>tocá uno para ver qué hace</em>${confTag("visto")}</span>
     ${f.moves.map(k=>{
       const d=mv(k);
       const openKey="mv_"+k;
@@ -2903,12 +2959,11 @@ function vEvidence(i){
   const evs=visibleEvents(i);
   if(!evs.length)return `<div class="card d"><span class="hd">Qué observamos</span>
     <div class="msg">Todavía nada de este rival. Lo que marques acá arriba —
-    movimientos, objeto, orden de velocidad, daño — queda registrado y se puede repasar.</div></div>`;
-  return `<div class="card d"><span class="hd">Qué observamos<em>${evs.length} en el registro</em></span>
+    movimientos, objeto, orden de velocidad, daño — queda acá para repasarlo.</div></div>`;
+  return `<div class="card d"><span class="hd">Lo que viste<em>${evs.length} ${evs.length===1?"anotación":"anotaciones"}</em></span>
     ${evs.map(e=>`<div class="row"><b>T${e.turn}<s>${describeEvent(e)}</s></b>${
       UNDOABLE.has(e.kind)?`<button class="ico" data-undo="${e.id}" title="Deshacer">↺</button>`:""}</div>`).join("")}
-    <div class="msg" style="margin-top:5px">Hechos observados, sin interpretar. Deshacer no borra el
-    registro: agrega una corrección, igual que cualquier otro cambio de opinión.</div></div>`;
+    <div class="msg" style="margin-top:5px">Todo lo que marcaste, en orden. Si te equivocaste en algo, tocá ↺ y se corrige.</div></div>`;
 }
 
 function vMine(){
@@ -2954,22 +3009,22 @@ function vMine(){
         v=>{m.up=+v; if(m.up&&m.dn===m.up)m.dn=m.up===1?2:1; saveMy()},"Stat que sube 10%")}</div>
       <div><div class="cap">Baja</div>${sel([0,1,2,3,4,5],m.dn,i=>i?STN[i]:"— ninguna",
         v=>{m.dn=+v; if(m.dn&&m.up===m.dn)m.up=m.dn===1?2:1; saveMy()},"Stat que baja 10%")}</div></div>
-    ${(!m.up||!m.dn)?`<div class="msg w" style="margin-top:3px">Naturaleza sin definir: se calcula
-      sin ±10%. La captura no puede leerla (el juego la muestra con flechas de color).</div>`:""}</div>
-  <div class="card d"><span class="hd">Stat Points<em id="spLeft">quedan ${left}</em></span>
+    ${(!m.up||!m.dn)?`<div class="msg w" style="margin-top:3px">Falta la naturaleza: calculo sin
+      el ±10%. La captura no la puede leer — el juego la marca con flechas de color, no con texto.</div>`:""}</div>
+  <div class="card d"><span class="hd">Reparto de puntos<em id="spLeft">quedan ${left}</em></span>
     ${[0,1,2,3,4,5].map(i=>`<div class="sp"><b>${STN[i]}</b>
       <div class="bar"><div class="bg"><div class="fl" style="width:${m.sp[i]/SP_MAX*100}%"></div></div>
         <input type="range" min="0" max="${SP_MAX}" step="1" value="${m.sp[i]}" data-sp="${i}"></div>
       <u>${m.sp[i]} <s style="display:inline;text-decoration:none;color:var(--pick)">${myStat(m,i)}</s></u></div>`).join("")}
-    ${left===0?`<div class="msg" style="color:var(--pick)">Repartidos los 66.</div>`:""}</div></div>
+    ${left===0?`<div class="msg" style="color:var(--pick)">Usaste los 66 puntos.</div>`:""}</div></div>
   <div class="card"><span class="hd">Movimientos</span>
     <div class="cols">${[0,1,2,3].map(i=>
       `<div style="margin-bottom:3px">${sel(["",...movePool(m.dex)],m.moves[i]||"",
         x=>x?mvName(x):"— vacío —",v=>{m.moves[i]=v;saveMy()},
         "Movimiento "+(i+1)+(learnable(m.dex)?" · solo los que aprende":""),decoMove)}</div>`).join("")}</div>
-    ${learnable(m.dex)?"":`<div class="msg" style="margin-top:5px">Sin dex.json cargado se
-      muestran todos los movimientos. Generalo con build_dex.py para que cada Pokémon
-      ofrezca solo los suyos.</div>`}</div>`;
+    ${learnable(m.dex)?"":`<div class="msg" style="margin-top:5px">Faltan los datos de ataques,
+      así que te muestro todos los del juego en vez de solo los que este Pokémon aprende.
+      ${dbg("DATA-01","dex.json no cargado · learnable("+m.dex+") = null")}</div>`}</div>`;
   h+=`<div class="card"><span class="hd">Importar equipo<em>pegá hasta 6, reemplaza el equipo activo</em></span>
     <textarea id="tPaste" rows="5" placeholder="${esc(TEAM_PASTE_PLACEHOLDER)}"
       style="width:100%;background:rgba(0,0,0,.30);color:var(--cream);border:none;
@@ -3021,27 +3076,25 @@ function vSet(){
       no se cierre solo a los 16 segundos. <b>↻</b> escanea al rival en la vista previa.</div>
     <button class="btn g" id="rs" style="margin-top:8px">Combate nuevo</button>
     <div class="msg" style="margin-top:5px">Borra turnos, revelados, estados y campo. Tu equipo no se toca.</div></div>
-  <div class="card"><span class="hd">Datos</span>
-    <div class="row"><b>Dex completo</b><u class="${DEX?"cf":"k"}">${DEX
-      ?Object.keys(DEX.species).length+" especies":"no cargado"}</u></div>
-    <div class="row"><b>Movimientos</b><u>${Object.keys(MV).length}</u></div>
-    <div class="row"><b>Learnsets</b><u class="${LEARN?"cf":"k"}">${LEARN?"sí":"no"}</u></div>
-    ${DEX?"":`<div class="msg w" style="margin-top:5px">Sin dex.json cada Pokémon ofrece
-      todos los movimientos. Corré build_dex.py y copiá el archivo a assets/.</div>`}</div>
-  <div class="card"><span class="hd">Meta</span>
+  <div class="card"><span class="hd">Datos del juego</span>
+    <div class="row"><b>Pokémon</b><u class="${DEX?"cf":"k"}">${DEX
+      ?Object.keys(DEX.species).length+" especies":"faltan"}</u></div>
+    <div class="row"><b>Ataques</b><u>${Object.keys(MV).length}</u></div>
+    <div class="row"><b>Qué aprende cada uno</b><u class="${LEARN?"cf":"k"}">${LEARN?"sí":"faltan"}</u></div>
+    ${DEX?"":`<div class="msg w" style="margin-top:5px">Faltan los datos del juego, así que cada
+      Pokémon ofrece todos los ataques en vez de solo los suyos.
+      ${dbg("DATA-02","dex.json ausente o ilegible en assets/")}</div>`}</div>
+  <div class="card"><span class="hd">Datos de torneos${confTag("probable")}</span>
     <div class="row"><b>Regulación</b><u>${esc(META.regulation||"?")}</u></div>
     <div class="row"><b>Actualizado</b><u>${esc(META.updated||"—")}</u></div>
     <div class="row"><b>Especies</b><u>${Object.keys(META.species||{}).length}</u></div>
-    ${META.source==="estimado"?`<div class="msg w" style="margin-top:5px">Datos estimados, no de uso real.</div>`:""}
-    <div class="msg" style="margin-top:6px">Son los porcentajes de uso: qué objeto,
-      movimientos y reparto suele llevar cada Pokémon. El HUD los usa para estimar
-      al rival antes de que muestre nada. Los que vienen de fábrica son mi criterio,
-      no datos medidos — por eso dicen «estimados».</div>
-    <div class="msg" style="margin-top:5px">Si conseguís un meta.json real y lo subís
-      a algún lado (Drive con link directo, GitHub, lo que sea), pegá la URL acá y se
-      reemplaza sin recompilar. Si la descarga falla, se queda con el que tenía.</div>
+    ${META.source==="estimado"?`<div class="msg w" style="margin-top:5px">Estos números están puestos a ojo, no medidos.</div>`:""}
+    <div class="msg" style="margin-top:6px">Qué objeto, ataques y reparto suele llevar cada Pokémon
+      en torneos. Es con lo que el HUD estima al rival antes de que muestre nada.</div>
+    <div class="msg" style="margin-top:5px">Si tenés un archivo más nuevo publicado en algún lado,
+      pegá el enlace y se actualiza sin reinstalar. Si falla la descarga, se queda con el que tiene.</div>
     <input type="text" id="mU" placeholder="https://…/meta.json" style="margin-top:5px">
-    <button class="btn" id="mGo" style="margin-top:4px">Descargar</button>
+    <button class="btn" id="mGo" style="margin-top:4px">Actualizar</button>
     <div class="msg" id="mOut" style="margin-top:4px"></div></div></div>`;
 }
 
@@ -3274,15 +3327,20 @@ window.onOwnScan=function(json){
   buzz(1);
   let d;try{d=JSON.parse(json)}catch(e){
     render();$("#body").insertAdjacentHTML("afterbegin",
-      `<div class="card f"><div class="msg w">La captura no devolvió datos legibles (JSON inválido).</div></div>`);
+      `<div class="card f"><span class="hd">No pude leer la pantalla</span>
+       <div class="msg w">Probá de nuevo. Si sigue igual, cerrá y volvé a abrir el HUD.</div>
+       ${dbg("OCR-02",(e&&e.message||e)+" · respuesta: "+String(json).slice(0,180))}</div>`);
     return}
   if(d.error){render();$("#body").insertAdjacentHTML("afterbegin",
-    `<div class="card f"><div class="msg w">${esc(d.error)}</div></div>`);return}
+    `<div class="card f"><span class="hd">No pude leer la pantalla</span>
+     <div class="msg w">Probá de nuevo con el HUD corrido de las tarjetas.</div>
+     ${dbg("OCR-03",d.error)}</div>`);return}
   const nlines=(d.lines||[]).length;
   if(!nlines){
     render();$("#body").insertAdjacentHTML("afterbegin",
-      `<div class="card f"><span class="hd">Captura de equipo</span>
-       <div class="msg w">No reconocí ningún texto en la captura (0 líneas). Probá con el HUD bien afuera de las tarjetas y buena luz de pantalla.</div></div>`);
+      `<div class="card f"><span class="hd">No encontré texto</span>
+       <div class="msg w">Movete el HUD para que no tape las tarjetas y subí el brillo de la pantalla.</div>
+       ${dbg("OCR-01","0 líneas reconocidas · imagen "+(d.w||"?")+"×"+(d.h||"?"))}</div>`);
     return;
   }
   const cards=clusterCards(d.lines,d.w,d.h);
@@ -3301,9 +3359,10 @@ window.onOwnScan=function(json){
         · ${marca(d.itemName,findItem)}<br><s style="opacity:.75">${mv}</s>`;
     }).join("<br>");
     $("#body").insertAdjacentHTML("afterbegin",
-      `<div class="card"><span class="hd">Paso 1 leído<em>${nlines} líneas</em></span>
+      `<div class="card"><span class="hd">Esto leí<em>ahora cambiá a Stats y tocá otra vez</em></span>
        <div class="msg">${sample}</div>
-       <div class="msg" style="margin-top:5px;opacity:.7">Lo marcado con "?" no lo reconocí. Si el orden de los campos está mal, mandame esta pantalla.</div></div>`);
+       <div class="msg" style="margin-top:5px;opacity:.7">Lo que tiene «?» no lo pude reconocer — lo podés corregir a mano después.</div>
+       ${dbg("OCR-DIAG-1",nlines+" líneas · "+cards.length+" tarjetas detectadas")}</div>`);
   }else{
     OCR_DRAFT[1]=cards.map(parseStatsCard);
     OCR_PHASE=0;
@@ -3314,7 +3373,7 @@ window.onOwnScan=function(json){
     const falladas=OCR_DRAFT[1].map((s,i)=>s?null:i).filter(i=>i!==null);
     let diag="";
     if(falladas.length){
-      diag=`<div class="card f"><span class="hd">Qué leí en Stats<em>${falladas.length} sin reparto</em></span>
+      diag=`<div class="card f"><span class="hd">No saqué el reparto de ${falladas.length}<em>los podés cargar a mano</em></span>
         <div class="msg">${falladas.map(i=>{
           // Todas las líneas, no solo las numéricas: las no numéricas son las
           // etiquetas y —si ML Kit llega a devolverlas— las flechas de
@@ -3323,7 +3382,7 @@ window.onOwnScan=function(json){
           const muestra=todas.slice(0,12).join(" | ")||"(sin texto)";
           return `${i+1}: ${muestra}${todas.length>12?` …+${todas.length-12}`:""}`;
         }).join("<br>")}</div>
-        <div class="msg" style="margin-top:5px;opacity:.7">Mandame esta pantalla si el reparto sigue sin salir.</div></div>`;
+        <div class="msg" style="margin-top:5px;opacity:.7">Arriba está el texto crudo que leí de cada tarjeta, por si el reparto sigue sin salir.</div></div>`;
     }
     // finishOwnScan() ya dejó el equipo guardado y activo — render() primero
     // (reconstruye #body entero), el resumen se inserta después.
