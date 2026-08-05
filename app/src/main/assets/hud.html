@@ -2685,7 +2685,7 @@ function vFoe(){
     h+=`<div class="cols"><div class="card"><span class="hd">Objetos</span><div class="pills">${
       m.items.map(([i,p])=>`<button class="p" data-item="${esc(i)}" data-on="${f.item===i?1:0}">${esc(i)}<em>${p}%</em></button>`).join("")}</div></div>
     <div class="card"><span class="hd">Movimientos</span><div class="pills">${
-      m.moves.map(([i,p])=>`<button class="p" data-mvk="${esc(i)}" data-on="${f.moves.includes(i)?1:0}">${esc(i)}<em>${p}%</em></button>`).join("")}</div></div></div>
+      m.moves.map(([i,p])=>`<button class="p" data-mvk="${esc(i)}" data-on="${f.moves.includes(i)?1:0}">${esc(i)}<em>${p}%</em></button>`).join("")}</div></div></div>`;
     if((m.topNatures||[]).length||(m.topEvSpreads||[]).length){
       // Sprint 2.7 (roadmap.md, cruce con Champions Battle Data): naturaleza
       // y reparto de EVs son dos rankings INDEPENDIENTES en la fuente real

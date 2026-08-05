@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hud-preview",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8743", "-d", "app/src/main/assets"],
+      "port": 8743
+    }
+  ]
+}

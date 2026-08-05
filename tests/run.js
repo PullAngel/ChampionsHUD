@@ -1546,5 +1546,35 @@ check("validate_data.py corre limpio contra el estado actual del repo", () => {
   if (!ran) throw new Error(`no se encontró python3 ni python en PATH (${lastErr && lastErr.message})`);
 });
 
+// ── sintaxis del script COMPLETO (bug real, 2026-08-04) ──
+// loadEngine() solo extrae hasta `function vPre(){` — un error de sintaxis
+// en cualquier función de render que viva DESPUÉS de ese corte (vFoe(),
+// vCompact(), vMine()...) es completamente invisible para el resto de esta
+// suite. Pasó de verdad: un template literal de vFoe() quedó sin cerrar al
+// insertar el bloque de "Repartos habituales" (sprint 2.7) y nadie lo
+// notó hasta abrir la app y ver la pantalla completamente en blanco —
+// exactamente el tipo de falla silenciosa que el proyecto evita en todos
+// lados menos, hasta ahora, en su propio test suite. Este chequeo no
+// reemplaza probar la UI de verdad, pero un `node --check` contra el
+// archivo entero es gratis y agarra esta clase de error en el momento,
+// no en producción.
+console.log("\nsintaxis del script completo:");
+check("hud.html no tiene errores de sintaxis en NINGUNA parte del script (no solo antes de vPre())", () => {
+  const html = fs.readFileSync(HUD_PATH, "utf-8");
+  const start = html.indexOf("<script>") + "<script>".length;
+  const end = html.indexOf("</script>", start);
+  if (start < 0 || end < 0) throw new Error("no se encontraron los tags <script>/</script>");
+  const os = require("os");
+  const tmp = path.join(os.tmpdir(), `hud_full_script_${Date.now()}.js`);
+  fs.writeFileSync(tmp, html.slice(start, end), "utf-8");
+  try {
+    execFileSync(process.execPath, ["--check", tmp], { stdio: "pipe" });
+  } catch (e) {
+    throw new Error(`error de sintaxis en hud.html (script completo):\n${e.stderr || e.message}`);
+  } finally {
+    fs.unlinkSync(tmp);
+  }
+});
+
 console.log(`\n${failed === 0 ? "OK" : "FALLÓ"}: ${failed} test(s) fallando.`);
 process.exit(failed === 0 ? 0 : 1);
