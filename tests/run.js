@@ -106,6 +106,9 @@ function loadEngine() {
     this.rolesFoe = rolesFoe;
     this.predict = predict;
     this.previewMatrix = previewMatrix;
+    this.numerosDeFila = numerosDeFila;
+    this.speciesFromTraits = speciesFromTraits;
+    this.getABIL = function () { return ABIL; };
     this.confTag = confTag;
     this.CONF = CONF;
     this.dbg = dbg;
@@ -1701,6 +1704,94 @@ check("ninguna nota de predict() da una orden — describe la posición (decisio
       }
     }
   });
+});
+
+// ── valor e inversión pegados en la captura de Stats (bug real, 2026-08-05) ──
+// Todos los casos salen de una captura REAL que mandó Angel, con la pantalla
+// del juego al lado para saber cuál era la respuesta correcta.
+console.log("\ncaptura de Stats: números pegados:");
+
+check("numerosDeFila() separa los tokens pegados de la captura real de Angel", () => {
+  // Venusaur: HP 155—0, Ataque 91—0, Def.Esp 120—0 salieron pegados porque
+  // con inversión baja la barra naranja casi no se dibuja.
+  assertEqual(E.numerosDeFila("1550").join(","), "155,0");
+  assertEqual(E.numerosDeFila("910").join(","), "91,0");
+  assertEqual(E.numerosDeFila("1200").join(","), "120,0");
+  // Grimmsnarl: también pasa con inversiones altas.
+  assertEqual(E.numerosDeFila("12418").join(","), "124,18");
+  assertEqual(E.numerosDeFila("10116").join(","), "101,16");
+  // Swampert.
+  assertEqual(E.numerosDeFila("1111").join(","), "111,1");
+});
+
+check("numerosDeFila() no toca los números que ya vienen bien separados", () => {
+  assertEqual(E.numerosDeFila("202 32").join(","), "202,32");
+  assertEqual(E.numerosDeFila("167 32").join(","), "167,32");
+  assertEqual(E.numerosDeFila("102").join(","), "102", "un stat de 3 dígitos solo se deja en paz");
+  assertEqual(E.numerosDeFila("0").join(","), "0");
+  assertEqual(E.numerosDeFila("32").join(","), "32");
+});
+
+check("numerosDeFila() reconstruye la fila entera que antes se descartaba", () => {
+  // La fila de Venusaur "HP 155 0 · Sp.Atk 167 32" llegaba como 3 números
+  // ("1550", "167", "32") en vez de 4, y el método 2 tiraba la tarjeta.
+  assertEqual(E.numerosDeFila("HP 1550 Sp. Atk 167 32").join(","), "155,0,167,32");
+  assertEqual(E.numerosDeFila("Attack 910 Sp. Def 1200").join(","), "91,0,120,0");
+});
+
+check("numerosDeFila() prefiere la cabeza larga: a nivel 50 las stats tienen 3 dígitos", () => {
+  assertEqual(E.numerosDeFila("2020").join(","), "202,0", "202+0 es mucho más probable que 20+20");
+});
+
+check("numerosDeFila() deja crudo lo que no puede separar, sin inventar una inversión", () => {
+  // 99999 no se parte en nada plausible: mejor que la fila falle a que el
+  // reparto salga con un número inventado (vision.md, fallo ruidoso).
+  assertEqual(E.numerosDeFila("99999").join(","), "99999");
+});
+
+// ── motes: deducir la especie por habilidad + ataques (bug real, 2026-08-05) ──
+// A los Pokémon se les puede poner apodo y la pantalla "Moves & More" muestra
+// el apodo, no la especie: el Rotom de Angel se llama "Wachin". El sprite está
+// al lado pero el OCR no lo lee.
+console.log("\nmotes: deducir especie por habilidad y ataques:");
+
+check("speciesFromTraits() deduce la especie cuando la habilidad es única", () => {
+  // La habilidad exclusiva se busca en las tablas cargadas en vez de fijar una
+  // especie a mano: así el test prueba el comportamiento y no depende de qué
+  // Pokémon estén en el dex mínimo del sandbox.
+  const ABIL = E.getABIL();
+  const cuenta = {};
+  for (const k of Object.keys(ABIL)) {
+    const d = Number(k);
+    if (d >= 900000 || !E.S(d)) continue;
+    for (const ab of ABIL[d] || []) cuenta[ab] = (cuenta[ab] || 0) + 1;
+  }
+  const unica = Object.keys(cuenta).find((ab) => cuenta[ab] === 1 && ab !== "—");
+  assert(unica, "el dex de prueba tiene que tener al menos una habilidad exclusiva");
+  const esperado = Object.keys(ABIL).map(Number)
+    .find((d) => d < 900000 && E.S(d) && (ABIL[d] || []).includes(unica));
+  assertEqual(E.speciesFromTraits(E.abilName(unica), []), esperado,
+    `"${unica}" la tiene una sola especie: tendría que alcanzar para identificarla`);
+});
+
+check("speciesFromTraits() no adivina cuando la habilidad la comparten varias especies", () => {
+  const ABIL = E.getABIL();
+  const cuenta = {};
+  for (const k of Object.keys(ABIL)) {
+    const d = Number(k);
+    if (d >= 900000 || !E.S(d)) continue;
+    for (const ab of ABIL[d] || []) cuenta[ab] = (cuenta[ab] || 0) + 1;
+  }
+  const compartida = Object.keys(cuenta).find((ab) => cuenta[ab] > 1 && ab !== "—");
+  assert(compartida, "el dex de prueba tiene que tener alguna habilidad compartida");
+  assertEqual(E.speciesFromTraits(E.abilName(compartida), []), null,
+    "con varias candidatas hay que fallar, no elegir la equivocada en silencio");
+});
+
+check("speciesFromTraits() devuelve null si la habilidad no se reconoce", () => {
+  assertEqual(E.speciesFromTraits("Habilidad Inventada", ["Protect"]), null);
+  assertEqual(E.speciesFromTraits("", ["Protect"]), null);
+  assertEqual(E.speciesFromTraits(null, null), null);
 });
 
 // ── cómo se comunica la confianza (decisión #24) ──

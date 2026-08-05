@@ -2205,6 +2205,40 @@ function naturalezaDeTarjeta(L){
 /** Devuelve `{sp:[6 inversiones], up, dn}` o null si no pudo leer el reparto
     completo. `up`/`dn` en 0 significa "naturaleza no determinada", no
     "neutra" — quien llama lo reporta para que se corrija a mano. */
+/* Rango plausible de un stat ya calculado a nivel 50. Sirve para separar un
+   valor de una inversión sin depender de dónde ML Kit puso los espacios. */
+const ST_MIN=20, ST_MAX=255;
+/** Los números de una fila de la tarjeta de Stats, separando los que vienen
+    PEGADOS.
+    Bug real reportado por Angel con capturas (2026-08-05): cuando la inversión
+    es baja la barra naranja entre el valor y el número casi no se dibuja, y
+    ML Kit devuelve los dos como UN solo token. Confirmado en tres tarjetas
+    distintas de la misma captura:
+      "1550"  → HP 155, inversión 0
+      "910"   → Ataque 91, inversión 0
+      "12418" → Def. Esp. 124, inversión 18
+      "10116" → Defensa 101, inversión 16
+    El método 2 espera cuatro números por fila y recibía tres, así que la
+    tarjeta entera se descartaba y el reparto nunca salía.
+    Un token que ya es plausible por sí solo no se toca; el resto se parte
+    prefiriendo la cabeza más larga, porque a nivel 50 las stats son de tres
+    dígitos mucho más seguido que de dos ("2020" es 202+0 antes que 20+20). */
+function numerosDeFila(txt){
+  const out=[];
+  for(const tok of (String(txt).match(/\d+/g)||[])){
+    const v=+tok;
+    if((v>=ST_MIN&&v<=ST_MAX)||v<=SP_MAX){out.push(v);continue}
+    let partido=false;
+    for(let corte=Math.min(3,tok.length-1);corte>=2&&!partido;corte--){
+      const a=+tok.slice(0,corte), cola=tok.slice(corte), b=+cola;
+      if(cola.length<=2&&a>=ST_MIN&&a<=ST_MAX&&b<=SP_MAX){out.push(a,b);partido=true}
+    }
+    // Si no se pudo separar se deja crudo: que la fila falle es mejor que
+    // inventar una inversión (`vision.md`, fallo ruidoso).
+    if(!partido)out.push(v);
+  }
+  return out;
+}
 function parseStatsCard(lines){
   const L=(lines||[]).filter(l=>l&&l.t);
   if(!L.length)return null;
@@ -2247,7 +2281,7 @@ function parseStatsCard(lines){
   const filas=splitRows(num,3);
   if(filas&&filas.length===3&&filas.every(f=>f.length)){
     const porFila=filas.map(f=>{
-      const n=(f.slice().sort((a,b)=>(a.x||0)-(b.x||0)).map(l=>l.t).join(" ").match(/\d+/g)||[]).map(Number);
+      const n=numerosDeFila(f.slice().sort((a,b)=>(a.x||0)-(b.x||0)).map(l=>l.t).join(" "));
       return n.length===4?[n[1],n[3]]:null;
     });
     if(porFila.every(Boolean)){
@@ -2281,15 +2315,49 @@ function parseStatsCard(lines){
     equipo nuevo o pisando el activo. Devuelve el HTML del resumen — quien
     llama lo inserta DESPUÉS de render(), nunca antes (render() reconstruye
     #body entero y se llevaría puesto cualquier inserción previa). */
+/** Deducir la especie cuando el nombre de la tarjeta es un MOTE.
+    Bug real reportado por Angel (2026-08-05): a los Pokémon se les puede poner
+    apodo, y la pantalla "Moves & More" muestra el apodo, no la especie — su
+    Rotom se llama "Wachin", su Talonflame "Hot-hot". `findSpecies()` no tiene
+    contra qué matchearlos y la tarjeta entera se perdía, aunque al lado
+    estuviera el sprite (que el OCR no lee).
+    Lo que sí se lee bien es la habilidad y los cuatro ataques, y eso alcanza:
+    se cruzan las especies que tienen esa habilidad con las que pueden
+    aprender todos esos ataques. Devuelve la especie SOLO si queda una sola
+    candidata — con dos o más se prefiere fallar y que Angel corrija a mano,
+    antes que elegir la equivocada en silencio. */
+function speciesFromTraits(abilName,moveNames){
+  const ab=abilName&&findAbility(abilName);
+  if(!ab)return null;
+  let cand=Object.keys(ABIL).map(Number)
+    .filter(d=>d<900000&&(ABIL[d]||[]).includes(ab)&&S(d));
+  if(!cand.length)return null;
+  const mvs=(moveNames||[]).map(n=>n&&findMove(n)).filter(Boolean);
+  if(mvs.length&&typeof learnable==="function"){
+    const porAtaques=cand.filter(d=>{
+      const L=learnable(d);
+      return L&&mvs.every(k=>L.includes(k));
+    });
+    // Si el cruce deja a todas afuera, el learnset o el OCR fallaron: vale más
+    // el filtro por habilidad solo que descartar todo.
+    if(porAtaques.length)cand=porAtaques;
+  }
+  return cand.length===1?cand[0]:null;
+}
 function finishOwnScan(){
   const moves=OCR_DRAFT[0]||[], stats=OCR_DRAFT[1]||[];
   // Los slots que ya había, para no perderlos si una tarjeta no se pudo leer.
   const prev=(activeTeam()&&activeTeam().team)||[];
-  const errors=[],team=[],sinNaturaleza=[];
+  const errors=[],team=[],sinNaturaleza=[],mote=[];
   let leidos=0;
   for(let i=0;i<6;i++){
     const mv=moves[i]||{}, st=stats[i];
-    const dex=mv.dexName?findSpecies(mv.dexName):null;
+    // Si el nombre no resuelve puede ser un mote: se deduce por habilidad +
+    // ataques antes de darla por perdida (ver speciesFromTraits()).
+    const porMote=!(mv.dexName&&findSpecies(mv.dexName))
+      ?speciesFromTraits(mv.abilName,mv.moveNames):null;
+    const dex=(mv.dexName?findSpecies(mv.dexName):null)||porMote;
+    if(porMote)mote.push(`Tarjeta ${i+1}: "${mv.dexName||"?"}" es un mote — deduje ${nm(porMote)} por su habilidad y sus ataques.`);
     if(!dex){
       errors.push(`Tarjeta ${i+1}: no reconozco la especie "${mv.dexName||"?"}".`);
       // El equipo SIEMPRE queda con 6 slots. Antes se salteaba la tarjeta
@@ -2345,7 +2413,8 @@ function finishOwnScan(){
   return `<div class="card${errors.length?" f":""}"><span class="hd">Captura de equipo<em>${esc(destino)}</em></span>
     <div class="msg${errors.length?" w":""}">${errors.length
       ?`Cargué ${leidos} de 6, con avisos:<br>${errors.map(esc).join("<br>")}`
-      :`Cargué los ${leidos} sin problemas.`} Revisá y corregí en MÍO si hace falta.</div>
+      :`Cargué los ${leidos} sin problemas.`} Revisá y corregí en TUYO si hace falta.</div>
+    ${mote.length?`<div class="msg" style="margin-top:5px">${mote.map(esc).join("<br>")}</div>`:""}
     ${sinNaturaleza.length?`<div class="msg w" style="margin-top:5px">
       <b>Naturaleza sin determinar</b> en ${esc(sinNaturaleza.join(", "))}. El juego la marca
       con flechas de color, no con texto, así que la captura no la puede leer todavía: quedaron

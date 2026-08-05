@@ -27,6 +27,7 @@ import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import org.json.JSONObject
 import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.min
 
 /**
@@ -61,6 +62,8 @@ class OverlayService : Service() {
 
     private lateinit var bubble: FrameLayout
     private lateinit var bubbleLp: WindowManager.LayoutParams
+    /** Blanco con la X que aparece solo mientras se arrastra la burbuja. */
+    private var closeTarget: TextView? = null
     private lateinit var badge: TextView
 
     private var panel: FrameLayout? = null
@@ -160,17 +163,36 @@ class OverlayService : Service() {
         runCatching { wm.addView(bubble, bubbleLp) }
     }
 
+    /**
+     * Toque de la burbuja: tocar abre/cierra el panel, arrastrar la mueve, y
+     * soltarla sobre el blanco de abajo cierra el HUD.
+     *
+     * ANTES cerraba con una mantención larga (`held > 650 -> stopSelf()`), y eso
+     * tenia dos fallas que Angel reporto como "se cierra solo":
+     *  1. ACTION_CANCEL caia en la MISMA rama que ACTION_UP. Cuando el sistema
+     *     cancela el gesto — que es justo lo que pasa al sacar una captura de
+     *     pantalla — el servicio se mataba solo. Un gesto cancelado no es una
+     *     intencion del usuario y ahora nunca cierra nada.
+     *  2. 650 ms sin moverse es muy poco: cualquier tap con el dedo apoyado, o
+     *     un ACTION_UP que llega tarde porque el hilo de UI estaba ocupado
+     *     (capturando pantalla, por ejemplo), se interpretaba como "cerrar".
+     *
+     * El patron nuevo es el de las apps flotantes conocidas: aparece un blanco
+     * con una X al empezar a arrastrar, se agranda cuando la burbuja entra, y
+     * recien ahi soltar cierra. Cerrar pasa a requerir una intencion clara y
+     * visible, imposible de disparar por accidente.
+     */
     private inner class DragHandler : View.OnTouchListener {
         private var downX = 0f; private var downY = 0f
         private var startX = 0; private var startY = 0
-        private var downAt = 0L; private var moved = false
+        private var moved = false
 
         override fun onTouch(v: View, e: MotionEvent): Boolean {
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = e.rawX; downY = e.rawY
                     startX = bubbleLp.x; startY = bubbleLp.y
-                    downAt = System.currentTimeMillis(); moved = false
+                    moved = false
                     bubble.animate().alpha(1f).scaleX(1.1f).scaleY(1.1f).setDuration(90).start()
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -178,26 +200,101 @@ class OverlayService : Service() {
                     if (!moved && (abs(dx) > 8 * dp || abs(dy) > 8 * dp)) {
                         moved = true
                         if (expanded) collapseNow()
+                        showCloseTarget()
                     }
                     if (moved) {
                         bubbleLp.x = startX + dx.toInt()
                         bubbleLp.y = startY + dy.toInt()
                         runCatching { wm.updateViewLayout(bubble, bubbleLp) }
+                        highlightCloseTarget(overCloseTarget())
                     }
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    val held = System.currentTimeMillis() - downAt
+                MotionEvent.ACTION_UP -> {
                     bubble.animate().alpha(if (expanded) 1f else 0.72f)
                         .scaleX(1f).scaleY(1f).setDuration(140).start()
+                    val cerrar = moved && overCloseTarget()
+                    hideCloseTarget()
                     when {
+                        cerrar -> stopSelf()
                         moved -> snapToEdge()
-                        held > 650 -> stopSelf()
                         else -> if (expanded) collapseNow() else expandNow()
                     }
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    // Gesto cancelado por el sistema (captura de pantalla, otra
+                    // ventana que se lleva el toque...). NUNCA cierra: se deja
+                    // la burbuja donde quedo y se sale sin hacer nada.
+                    bubble.animate().alpha(if (expanded) 1f else 0.72f)
+                        .scaleX(1f).scaleY(1f).setDuration(140).start()
+                    hideCloseTarget()
+                    if (moved) snapToEdge()
                 }
             }
             return true
         }
+    }
+
+    // ───────────────────── blanco para cerrar arrastrando ─────────────────────
+
+    /** Distancia (centro a centro) para considerar que la burbuja "entro". */
+    private fun closeSnapRadius() = 62 * dp
+
+    private fun overCloseTarget(): Boolean {
+        val t = closeTarget ?: return false
+        val (w, h) = metrics()
+        val size = (56 * dp).toInt()
+        // Centro del blanco: abajo al medio, con el mismo margen que usa su LP.
+        val tx = w / 2f
+        val ty = h - (86 * dp) - t.height / 2f
+        val bx = bubbleLp.x + size / 2f
+        val by = bubbleLp.y + size / 2f
+        return hypot(bx - tx, by - ty) < closeSnapRadius()
+    }
+
+    private fun showCloseTarget() {
+        if (closeTarget != null) return
+        val size = (64 * dp).toInt()
+        val view = TextView(this).apply {
+            text = "✕"
+            setTextColor(Color.parseColor("#FFF6E6"))
+            textSize = 22f
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#CC7E1D42"))
+                setStroke((2 * dp).toInt(), Color.parseColor("#E0678F"))
+            }
+            alpha = 0f
+        }
+        val lp = WindowManager.LayoutParams(
+            size, size, overlayType(),
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            val (w, h) = metrics()
+            x = (w - size) / 2
+            y = (h - (86 * dp) - size / 2).toInt()
+        }
+        if (runCatching { wm.addView(view, lp) }.isSuccess) {
+            closeTarget = view
+            view.animate().alpha(1f).setDuration(120).start()
+        }
+    }
+
+    private fun highlightCloseTarget(inside: Boolean) {
+        val t = closeTarget ?: return
+        val s = if (inside) 1.25f else 1f
+        if (t.scaleX != s) t.animate().scaleX(s).scaleY(s).setDuration(90).start()
+    }
+
+    private fun hideCloseTarget() {
+        val t = closeTarget ?: return
+        closeTarget = null
+        runCatching { wm.removeView(t) }
     }
 
     private fun snapToEdge() {
@@ -466,7 +563,7 @@ class OverlayService : Service() {
         }
         return NotificationCompat.Builder(this, CHANNEL)
             .setContentTitle("Champions HUD")
-            .setContentText("Mantené presionada la burbuja para cerrar")
+            .setContentText("Arrastrá la burbuja hasta la ✕ para cerrar")
             .setSmallIcon(R.drawable.ic_hud)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_MIN)
@@ -479,6 +576,7 @@ class OverlayService : Service() {
         collapseNow()
         web?.let { (it.parent as? ViewGroup)?.removeView(it); it.destroy() }
         web = null
+        hideCloseTarget()   // si el servicio muere en pleno arrastre, el blanco no queda pegado
         runCatching { wm.removeView(bubble) }
         capture?.release()
         io.quitSafely()
