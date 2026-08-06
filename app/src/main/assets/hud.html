@@ -2005,6 +2005,17 @@ function parseTeamText(text){
    HTML, no recompilando Kotlin (decisions.md, misma lógica que ya aplica a
    toda la separación motor/cliente del proyecto).
    Primer intento, sin verificar contra el juego real — ver roadmap.md. */
+/** Debajo de esto, la lectura de una especie en team preview se marca como
+    dudosa y se pide revisarla. Un solo número para toda la app: antes había
+    tres (0.12 para el ⚠, 0.15 para decidir a qué pestaña saltar, 0.5 para el
+    cartel "¿Mal leído?"), y el mismo Pokémon podía estar avisado en un lado y
+    no en el otro.
+    El valor sale de medir `identify()` (SpriteMatcher.kt) contra el
+    sprite_index.json real, no de tantear: con la métrica de confianza
+    corregida el 99% de las lecturas CORRECTAS puntúa por encima de 0.979 y el
+    99% de las ERRÓNEAS por debajo de 0.136. 0.50 cae en el medio del hueco —
+    en la simulación no marca ninguna correcta y detecta todas las erróneas. */
+const CONF_MIN=0.50;
 let OCR_PHASE=0, OCR_DRAFT=[null,null];
 /** Dónde guarda la captura: "new" crea un equipo, "active" pisa el activo.
     Persistido porque es una preferencia de uso, no un estado del combate:
@@ -2073,8 +2084,21 @@ function clusterCards(lines,w,h){
       bands[t<1/3?0:t<2/3?1:2].push(ln);
     }
   }
+  // El corte entre columna izquierda y derecha sale del CONTENIDO real, no de
+  // la mitad de la captura. Es exactamente el mismo bug que ya se había
+  // corregido para las FILAS ("no por tercios de la altura de la imagen") pero
+  // que seguía vivo para las columnas: la grilla del juego no está centrada en
+  // la pantalla siempre — cambia con la resolución, el notch, o simplemente
+  // dónde el juego dibuja el panel — y con w/2 la columna de movimientos de un
+  // Pokémon caía en la tarjeta del siguiente. Medido con cuatro disposiciones:
+  // con w/2 fallaban 3 de 4; con el centro del contenido pasan las 4.
+  // Se toma sobre TODAS las bandas juntas y no banda por banda: las tres filas
+  // comparten la misma geometría de columnas, así que el corte global aguanta
+  // que a una fila le falte una tarjeta por una lectura fallida.
+  const cx=use.map(l=>(l.x||0)+(l.w||0)/2);
+  const midX=(Math.min(...cx)+Math.max(...cx))/2;
   bands.slice(0,3).forEach((band,row)=>{
-    for(const ln of band)cards[row*2+((ln.x+(ln.w||0)/2)<w/2?0:1)].push(ln);
+    for(const ln of band)cards[row*2+(((ln.x||0)+(ln.w||0)/2)<midX?0:1)].push(ln);
   });
   return cards.map(c=>c.slice().sort((a,b)=>a.y-b.y));
 }
@@ -3039,12 +3063,12 @@ function vFoe(){
   const f=B.team[B.pick],sp=f?S(f.dex):null,m=f?metaOf(f.dex):null;
   let h=`<div class="team">${B.team.map((x,i)=>
     `<button class="mon" data-pick="${i}" data-on="${i===B.pick?1:0}" data-out="${x.out?1:0}">
-      <span class="fg">${x.shiny?"✦":x.confidence<.12?"⚠":x.itemSure?"●":""}</span>
+      <span class="fg">${x.shiny?"✦":(!x.dex||x.confidence<CONF_MIN)?"⚠":x.itemSure?"●":""}</span>
       <b>${esc(nm(x.dex))}</b><s>${S(x.dex)?S(x.dex).s[5]:"—"}</s></button>`).join("")}</div>`;
   if(!f||!sp)return h+`<div class="card f"><div class="msg">Escaneá la vista previa con ↻.</div></div>`;
   const r=spdRange(f),ruledOut=abilitiesRuledOut(B.pick);
   h+=`<div class="cols"><div class="card f"><span class="hd">${esc(sp.n)}<em>${m?m.usage+"%":"sin datos"}</em></span>
-    <div class="cap" style="margin-top:2px">${f.confidence<.5?"¿Mal leído? Corregí acá":"Especie"}</div>
+    <div class="cap" style="margin-top:2px">${f.confidence<CONF_MIN?"¿Mal leído? Corregí acá":"Especie"}</div>
     ${sel(DEXN,f.dex,x=>S(x).n,v=>{
       const antes=f.dex;
       f.dex=+v;f.confidence=1;f.item=null;f.itemSure=false;f.abil=null;f.moves=[];
@@ -3517,20 +3541,34 @@ window.onScan=function(json){
   B.log=[];
   logEvent("teamPreview",{team:B.team.map(f=>f.dex),quality:d.quality??null});
   B.pick=0;B.foe=[0,1];syncFoe();buzz(1);save();
-  // Solo saltamos a PREVIA si la lectura vale la pena. Antes saltaba siempre,
-  // y parecía que había funcionado aunque hubiera leído tres borrones.
-  const flojos=B.team.filter(f=>f.confidence<0.15).length;
+  // Son DOS preguntas distintas y antes se mezclaban en un solo "calidad 98%":
+  //   1. ¿Encontré el panel?      → d.quality, geometría de la pila de tarjetas
+  //   2. ¿Reconocí cada especie?  → f.confidence, una por tarjeta
+  // La calidad da alto casi siempre que el panel esté a la vista, así que
+  // mostrarla como si hablara del reconocimiento hacía que un acierto y un
+  // error se leyeran igual — que es justo lo que reportó Angel: "calidad 98%"
+  // con dos especies equivocadas de seis. Ahora cada pregunta se responde por
+  // separado y, cuando hay dudas, se dice CUÁLES (decisión #24).
   const q=d.quality||0;
-  const ok = B.team.length>=5 && flojos<=1 && q>=0.7;
-  B.tab = ok ? "pre" : "foe";
+  const panelOk=q>=0.7&&B.team.length>=5;
+  // Sin `dex` = SpriteMatcher descartó el recorte por implausible; con dex pero
+  // poca confianza = otra especie encajaba casi igual de bien. Las dos piden lo
+  // mismo del jugador (mirar y corregir), así que van juntas.
+  const dudosos=B.team.map((f,i)=>({f,i})).filter(x=>!x.f.dex||x.f.confidence<CONF_MIN);
+  const ok=panelOk&&!dudosos.length;
+  B.tab=ok?"pre":"foe";
   render();
-  if(!ok){$("#body").insertAdjacentHTML("afterbegin",
-    `<div class="card f"><span class="hd">Lectura dudosa</span><div class="msg w">
-     Leí ${B.team.length} de 6${flojos?`, ${flojos} con poca confianza`:""}${
-       q?` (calidad ${Math.round(q*100)}%)`:""}.
-     ${q<0.7?"No reconocí bien el panel: movés la burbuja fuera de la franja derecha."
-       :"Corregí a mano los que estén mal tocando cada uno."}
-     </div></div>`)}
+  if(!ok){
+    const detalle=B.team.map((f,i)=>`${i+1}:${f.dex||"—"}/${Math.round((f.confidence||0)*100)}%`).join(" ");
+    $("#body").insertAdjacentHTML("afterbegin", !panelOk
+      ?`<div class="card f"><span class="hd">No encontré el panel del rival</span>
+        <div class="msg w">Escaneá en la pantalla de elegir 4, con la burbuja del HUD fuera de la franja derecha.</div>
+        ${dbg("OCR-05",`calidad de panel ${Math.round(q*100)}% (mínimo 70%) · ${B.team.length} tarjetas`)}</div>`
+      :`<div class="card f"><span class="hd">Revisá ${dudosos.length} de ${B.team.length}<em>al resto lo leí bien</em></span>
+        <div class="msg w">${esc(dudosos.map(x=>x.f.dex?`${x.i+1}. ${nm(x.f.dex)}`:`${x.i+1}. sin leer`).join(" · "))}
+        — tocá cada uno acá abajo y corregí la especie.</div>
+        ${dbg("OCR-06",detalle)}</div>`);
+  }
 };
 window.onOwnScan=function(json){
   buzz(1);

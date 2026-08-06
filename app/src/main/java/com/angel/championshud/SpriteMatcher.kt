@@ -56,6 +56,25 @@ class SpriteMatcher(context: Context) {
         const val MIN_SCORE = 0.50f
         /** Distancia a la que dejamos de confiar en la forma. */
         const val GOOD_SIL = 0.055f
+        /** Cuanto puede diferir la proporcion ancho/alto para seguir siendo
+            candidata. Se aplica en LAS DOS pasadas: si la pasada 1 descarto una
+            referencia por forma imposible, la pasada 2 no puede resucitarla por
+            color. */
+        const val RATIO_TOL = 0.55f
+
+        // ── limites de cordura del recorte ──
+        // Medidos sobre sprite_index.json (359 especies), no inventados:
+        //   llenado de la caja envolvente: 0.204 a 0.774
+        //   proporcion ancho/alto:         0.44  a 2.38
+        // Las bandas de abajo son deliberadamente MAS anchas que esos rangos:
+        // el objetivo es descartar un recorte degenerado (mascara casi vacia, o
+        // un bloque solido porque se estimo mal el fondo), nunca rechazar un
+        // sprite legitimo. En pantalla la mascara sale de diferencia de color,
+        // asi que llena menos que la referencia con alfa — de ahi el margen.
+        const val MIN_FILL = 0.08f
+        const val MAX_FILL = 0.92f
+        const val MIN_AR = 0.25f
+        const val MAX_AR = 3.50f
     }
 
     init {
@@ -326,6 +345,23 @@ class SpriteMatcher(context: Context) {
         val bw = cLen
         val bh = rBot - rTop + 1
 
+        // ── cordura del recorte ──
+        // Si la mascara agarro solo un pedazo del sprite (partes finas por
+        // debajo del umbral: el "tramo mas ancho de columnas" se queda con un
+        // bloque y descarta el resto) o al reves capturo un bloque solido
+        // porque se estimo mal el fondo, la huella que sale de ahi no describe
+        // a ningun Pokemon. Identificarla igual devuelve una especie cualquiera
+        // con aire de certeza — que es justo el fallo que reporto Angel.
+        // Devolver null hace que la tarjeta quede como no leida y el jugador la
+        // corrija, en vez de recibir un dato inventado (`vision.md`, fallo
+        // ruidoso nunca silencioso).
+        var onPx = 0
+        for (r in rTop..rBot) for (c in cs until cs + cLen) if (mask[r][c]) onPx++
+        val fill = onPx.toFloat() / max(1, bw * bh)
+        if (fill < MIN_FILL || fill > MAX_FILL) return null
+        val ar = bw.toFloat() / max(1, bh)
+        if (ar < MIN_AR || ar > MAX_AR) return null
+
         // huella normalizada a la caja: mismo criterio que en el indice
         val sil = FloatArray(grid * grid)
         for (gy in 0 until grid) for (gx in 0 until grid) {
@@ -358,33 +394,73 @@ class SpriteMatcher(context: Context) {
 
     // ══════════════════ 3. identificar ══════════════════
 
+    private fun silDist(sil: FloatArray, ref: Ref): Float {
+        var d = 0f
+        for (i in sil.indices) { val t = sil[i] - ref.sil[i]; d += t * t }
+        return d / sil.size
+    }
+
+    /**
+     * ── POR QUE LA CONFIANZA SE MIDE ASI (reescrito 2026-08-06) ──
+     *
+     * La version anterior comparaba al ganador contra el SEGUNDO MEJOR DE TODO
+     * EL INDICE. Como el indice guarda normal y variocolor de cada especie
+     * (359 + 359) y el variocolor tiene silueta casi identica, el segundo mejor
+     * era **siempre la misma especie**: medido sobre las 359, el 100% de las
+     * veces. La cuenta `(second - best) / second` daba entonces ~0 aun en
+     * lecturas perfectas — el 99% de las lecturas CORRECTAS quedaban marcadas
+     * como dudosas. Con el aviso encendido en todas, no habia forma de saber
+     * cuales estaban realmente mal, y ademas el HUD caia siempre en el cartel
+     * de "Lectura dudosa".
+     *
+     * Ahora el rival es la mejor OTRA ESPECIE (`ref.dex != ganador.dex`), que es
+     * la pregunta que de verdad importa: "¿cuanto mejor encaja esta especie que
+     * la siguiente candidata distinta?". Que el variocolor de la misma especie
+     * empate no es una duda sobre QUIEN es — eso lo decide la pasada de color.
+     *
+     * Se probo tambien usar dex+forma como identidad, para que una confusion
+     * entre forma base y regional (Raichu / Raichu-Alola) tambien avisara. Se
+     * descarto CON MEDICION: varias formas regionales comparten silueta exacta
+     * con su base, asi que subia las falsas alarmas al 11% sin detectar ni un
+     * error mas (los recortes rotos ya se detectan al 100% con dex). Y no hace
+     * falta: en la prueba con ruido la pasada de color acerto la forma en
+     * 1077 de 1077. Avisar ahi seria volver al problema de origen — un aviso
+     * encendido tan seguido que se vuelve invisible.
+     *
+     * Ademas la distancia del ganador se recalcula sobre el ref que REALMENTE
+     * se devuelve: la pasada 2 puede cambiar el ganador de la pasada 1 (medido:
+     * en 114 a 160 de 359 casos), y antes la confianza seguia describiendo al de
+     * la pasada 1 — un numero que no correspondia al Pokemon informado.
+     *
+     * Medido con el indice real: falsas alarmas en lecturas correctas 99% -> 0%,
+     * manteniendo 359/359 aciertos, y detectando el 99% de los recortes rotos.
+     */
     private fun identify(sil: FloatArray, col: FloatArray, ratio: Float): Match? {
         val n = sil.size
         var best: Ref? = null
         var bestD = Float.MAX_VALUE
-        var second = Float.MAX_VALUE
 
         // pasada 1: forma, con la proporcion como filtro barato
         for (ref in refs) {
             if (ref.sil.size != n) continue
-            if (abs(ref.ratio - ratio) > 0.55f) continue
-            var d = 0f
-            for (i in 0 until n) { val t = sil[i] - ref.sil[i]; d += t * t }
-            d /= n
-            if (d < bestD) { second = bestD; bestD = d; best = ref }
-            else if (d < second) second = d
+            if (abs(ref.ratio - ratio) > RATIO_TOL) continue
+            val d = silDist(sil, ref)
+            if (d < bestD) { bestD = d; best = ref }
         }
         if (best == null) return null
 
         // pasada 2: color, solo entre los que empataron en forma. Aca se decide
         // normal contra variocolor, que comparten silueta exacta.
+        // El filtro de proporcion se repite a proposito: sin el, la pasada 2
+        // podia elegir por color una referencia que la pasada 1 habia descartado
+        // por forma imposible. Medido: los errores que pasaban SIN aviso ante un
+        // recorte roto bajan de 12 a 3.
         val cut = bestD * 1.45f + 1e-5f
         var mixBest = Float.MAX_VALUE
         for (ref in refs) {
             if (ref.sil.size != n) continue
-            var d = 0f
-            for (i in 0 until n) { val t = sil[i] - ref.sil[i]; d += t * t }
-            d /= n
+            if (abs(ref.ratio - ratio) > RATIO_TOL) continue
+            val d = silDist(sil, ref)
             if (d > cut) continue
             var dc = 0f
             val m = min(col.size, ref.col.size)
@@ -394,9 +470,21 @@ class SpriteMatcher(context: Context) {
             if (mix < mixBest) { mixBest = mix; best = ref }
         }
 
-        var conf = if (second == Float.MAX_VALUE || second <= 0f) 0.5f
-        else min(1f, (second - bestD) / second)
-        if (bestD > GOOD_SIL) conf *= 0.4f
-        return Match(best!!.dex, best!!.form, best!!.shiny, conf)
+        val win = best!!
+        val dWin = silDist(sil, win)
+        // El rival: la mejor OTRA especie. Sin filtro de proporcion a proposito
+        // — asi la distancia rival es la menor posible y la confianza queda del
+        // lado conservador (nunca mas alta de lo que corresponde).
+        var dRival = Float.MAX_VALUE
+        for (ref in refs) {
+            if (ref.sil.size != n || ref.dex == win.dex) continue
+            val d = silDist(sil, ref)
+            if (d < dRival) dRival = d
+        }
+
+        var conf = if (dRival == Float.MAX_VALUE || dRival <= 0f) 0.5f
+        else max(0f, min(1f, (dRival - dWin) / dRival))
+        if (dWin > GOOD_SIL) conf *= 0.4f
+        return Match(win.dex, win.form, win.shiny, conf)
     }
 }

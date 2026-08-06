@@ -509,6 +509,40 @@ check("clusterCards() cae al comportamiento anterior si no reconoce las pestaña
   assertEqual(cards[0][0].t, "A", "sin pestañas reconocidas, sigue agrupando por tercios de toda la imagen");
 });
 
+// Bug real encontrado en la revisión final de OCR (2026-08-06): el corte entre
+// columna izquierda y derecha se hacía en w/2 — una fracción fija del ancho de
+// la CAPTURA — mientras que las filas ya se habían corregido para cortar por el
+// contenido real. Si la grilla del juego no queda centrada en la pantalla, la
+// columna de movimientos de un Pokémon se leía como el nombre del siguiente.
+// Las cuatro disposiciones de abajo son la misma grilla movida: con w/2 fallaban
+// tres, y la única que pasaba era la perfectamente centrada.
+const grillaEn = (x0, x1) => {
+  const L = (t, x, y) => ({ t, x, y, w: t.length * 8, h: 14 });
+  const out = [L("Moves & More", 400, 20), L("Stats", 550, 20)];
+  [["Venusaur", "Sludge Bomb"], ["Kingambit", "Iron Head"], ["Rotom", "Thunderbolt"],
+   ["Incineroar", "Fake Out"], ["Amoonguss", "Spore"], ["Gholdengo", "Make It Rain"]]
+    .forEach((m, i) => {
+      const col = i % 2, row = (i - col) / 2;
+      const x = col === 0 ? x0 : x1, y = 100 + row * 200;
+      out.push(L(m[0], x, y), L(m[1], x + 150, y));
+    });
+  return out;
+};
+const ESPERADO_GRILLA = "Venusaur,Kingambit,Rotom,Incineroar,Amoonguss,Gholdengo";
+for (const [etiqueta, x0, x1] of [
+  ["centrada", 60, 560],
+  ["corrida a la izquierda", 30, 330],
+  ["corrida a la derecha", 460, 760],
+  ["comprimida al centro", 260, 460],
+]) {
+  check(`clusterCards() reparte las 2 columnas por el contenido, no por w/2 — grilla ${etiqueta}`, () => {
+    const cards = E.clusterCards(grillaEn(x0, x1), 1000, 700);
+    const nombres = cards.map((c) => (E.parseMovesCard(c) || {}).dexName || "(vacía)").join(",");
+    assertEqual(nombres, ESPERADO_GRILLA,
+      `con la grilla ${etiqueta} cada tarjeta tiene que quedarse con su propia columna de movimientos`);
+  });
+}
+
 check("parseMovesCard() lee especie/habilidad/ítem/movimientos en orden, ignora ruido de 1 carácter", () => {
   const lines = ["1", "Sinistcha", "Hospitality", "Colbur Berry", "Rage Powder", "Matcha Gotcha", "Life Dew", "Trick Room"]
     .map((t) => ({ t }));
@@ -2117,6 +2151,96 @@ check("fullSpeedOrder() con SPD_WHATIF activo cambia el número mostrado sin toc
   assert(foeDespues.lo > foeAntes.lo && foeDespues.hi > foeAntes.hi, "pañuelo hipotético debe subir el rango del rival");
   assertEqual(B.team[0].item, null, "el ítem real del rival no debe tocarse por la hipótesis");
   E.resetSpdWhatIf();
+});
+
+// ── reconocimiento de sprites (team preview) ──
+// SpriteMatcher.kt es Kotlin y no se puede correr acá. Lo que SÍ se puede
+// blindar son los hechos del sprite_index.json real sobre los que se apoya la
+// forma de medir confianza que quedó escrita en identify() — si el índice se
+// regenera y esos hechos dejan de valer, la lógica de Kotlin deja de tener
+// sentido y hay que revisarla. Sin estos tests ese acoplamiento es invisible.
+console.log("\nreconocimiento de sprites (índice real):");
+
+const SPRITE_INDEX = (() => {
+  const p = path.join(ROOT, "app/src/main/assets/sprite_index.json");
+  return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf-8")) : null;
+})();
+const silDist = (a, b) => {
+  let s = 0;
+  for (let i = 0; i < a.length; i++) { const t = a[i] - b[i]; s += t * t; }
+  return s / a.length;
+};
+
+check("el índice guarda normal Y variocolor de cada especie — el motivo por el que el rival tiene que ser OTRA especie", () => {
+  assert(SPRITE_INDEX, "falta sprite_index.json");
+  const porEspecie = {};
+  for (const s of SPRITE_INDEX.sprites) {
+    const k = s.dex + "|" + (s.form || "");
+    (porEspecie[k] = porEspecie[k] || []).push(s);
+  }
+  const conVariante = Object.values(porEspecie).filter((a) => a.length > 1).length;
+  const total = Object.keys(porEspecie).length;
+  assert(conVariante / total > 0.9,
+    `solo ${conVariante} de ${total} especies tienen más de una variante; si esto baja, ` +
+    `la confianza contra "el segundo mejor de todo el índice" dejaría de estar rota y ` +
+    `el comentario de identify() en SpriteMatcher.kt queda desactualizado`);
+});
+
+check("el 2º mejor por forma es la MISMA especie — la falla que hacía que el 99% de las lecturas correctas se marcaran dudosas", () => {
+  assert(SPRITE_INDEX, "falta sprite_index.json");
+  const refs = SPRITE_INDEX.sprites.map((s) => ({
+    dex: s.dex, shiny: !!s.shiny, sil: s.sil.map((v) => v / 100), ratio: s.ratio,
+  }));
+  let mismaEspecie = 0, n = 0;
+  for (const q of refs.filter((r) => !r.shiny)) {
+    let d1 = Infinity, d2 = Infinity, r1 = null, r2 = null;
+    for (const r of refs) {
+      if (r === q || Math.abs(r.ratio - q.ratio) > 0.55) continue;
+      const d = silDist(q.sil, r.sil);
+      if (d < d1) { d2 = d1; r2 = r1; d1 = d; r1 = r; }
+      else if (d < d2) { d2 = d; r2 = r; }
+    }
+    if (!r1) continue;
+    n++;
+    if (r1.dex === q.dex) mismaEspecie++;
+  }
+  assert(mismaEspecie / n > 0.9,
+    `el vecino más cercano es la misma especie en ${mismaEspecie}/${n}; identify() mide la ` +
+    `confianza contra la mejor OTRA especie justamente por esto`);
+});
+
+check("los pares que Angel reportó confundidos están LEJOS en forma: el fallo es el recorte, no el comparador", () => {
+  assert(SPRITE_INDEX, "falta sprite_index.json");
+  const get = (d) => SPRITE_INDEX.sprites.find((s) => s.dex === d && !s.shiny);
+  const GOOD_SIL = 0.055; // mismo valor que SpriteMatcher.kt
+  for (const [a, b, na, nb] of [[681, 670, "Aegislash", "Floette"], [778, 350, "Mimikyu", "Milotic"]]) {
+    const A = get(a), B = get(b);
+    if (!A || !B) continue; // si alguno no está en el índice, no hay nada que probar
+    const d = silDist(A.sil.map((v) => v / 100), B.sil.map((v) => v / 100));
+    assert(d > GOOD_SIL * 2,
+      `${na} y ${nb} están a ${d.toFixed(4)} de distancia de forma: si esto cayera cerca de ` +
+      `GOOD_SIL (${GOOD_SIL}) el problema sería el comparador y no el recorte, y la ` +
+      `validación de recorte de readCard() estaría atacando el síntoma equivocado`);
+  }
+});
+
+check("CONF_MIN cae en el hueco medido entre lecturas correctas y erróneas", () => {
+  const html = fs.readFileSync(HUD_PATH, "utf-8");
+  const m = /const CONF_MIN=([\d.]+)/.exec(html);
+  assert(m, "CONF_MIN tiene que existir en hud.html como umbral único de confianza");
+  const v = parseFloat(m[1]);
+  // Medido contra el índice real: correctas p1=0.979, erróneas p99=0.136.
+  assert(v > 0.136 && v < 0.979,
+    `CONF_MIN=${v} queda fuera del hueco medido (0.136 … 0.979): o marca lecturas buenas ` +
+    `como dudosas, o deja pasar lecturas malas sin aviso`);
+});
+
+check("un solo umbral de confianza en toda la interfaz — no vuelven los tres valores sueltos", () => {
+  const html = fs.readFileSync(HUD_PATH, "utf-8");
+  const cuerpo = html.slice(html.indexOf("<script>"));
+  const sueltos = cuerpo.match(/confidence\s*<\s*(?!CONF_MIN)[\d.]+/g) || [];
+  assert(sueltos.length === 0,
+    `quedaron comparaciones de confianza con un número suelto en vez de CONF_MIN: ${sueltos.join(", ")}`);
 });
 
 console.log("\nsintaxis del script completo:");
