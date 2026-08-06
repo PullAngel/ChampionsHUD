@@ -32,16 +32,15 @@ Concretamente:
 - **Reparto de EVs por slider de toque, no tecleado** — ya existe el patrón (`vMine()` usa sliders para repartir los 66 puntos), se reutiliza acá en vez de inventar un campo de texto nuevo.
 - **Botón ⇄ para invertir atacante/defensor** de un toque — el caso de uso más común ("¿quién le gana la carrera de daño a quién?") hoy exige rearmar los dos lados a mano.
 
-## 4. Qué se implementó en esta sesión (2026-08-06)
+## 4. Qué se implementó (2026-08-06, dos pasadas)
 
 - **Chips de selección rápida**, tus 6 + los 6 del rival, para Atacante y Defensor — con la lista completa de la Pokédex disponible aparte, para el caso "quiero probar con un Pokémon que no está en la partida".
 - **Autocompletado de objeto/habilidad** desde el Pokémon real cuando se elige uno de los 12 de la partida, con override manual explícito.
 - **Botón ⇄** para invertir atacante/defensor sin rearmar los dos lados.
-- Reparto de EVs por slider — pendiente, ver sección 5.
+- **Estado alterado del atacante, autocompletado si está ACTIVO ahora mismo.** `calc()` ya sabía aplicar quemadura al daño físico (`o.aSta`) desde antes de esta sesión — otro caso del mismo patrón que objeto/habilidad: el motor sabía, la UI nunca preguntaba. `calcActiveStatus(dex)` busca en `B.act` (m0/m1/f0/f1, los únicos slots con estado real — un Pokémon en banca no tiene, se curó al salir) y autocompleta cuando aplica, con override manual. No hay campo "dSta" — ninguna mecánica de este motor cambia el daño *recibido* por el estado del defensor, así que no se agregó uno que no haría nada.
 
 ## 5. Lo que queda para una próxima sesión
 
 - **Reparto de EVs/naturaleza por slider de toque** en vez de la lista `sel()` numérica actual (que ya es más táctil que un input de texto, pero no reusa el widget de reparto que `vMine()` ya tiene).
 - **Duplicar un cálculo** para comparar variantes (objeto A vs. objeto B) sin rearmar todo — necesita decidir dónde vive el historial (¿por turno? ¿por sesión?) antes de escribir código, no es una decisión técnica menor.
 - **Multi-hit / daño repartido en dobles más visible** — `calc()` ya lo soporta (`o.doubles&&m.sp` aplica el ×0.75), pero la UI no lo muestra como una opción explícita, así que hoy es invisible incluso cuando aplica.
-- **Estado alterado (quemado/paralizado/veneno) del atacante o defensor** — el motor no lo modela todavía en `calc()`; agregar el campo antes tiene que pasar por decidir cómo interactúa con lo que Campo ya registra en `B.act`.

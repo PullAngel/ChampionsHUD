@@ -3089,6 +3089,18 @@ function calcTeamMatch(dex){
     abil:foe.abil||null,side:"foe"};
   return null;
 }
+/** El estado alterado SOLO se conoce si ese Pokémon está ACTIVO ahora mismo
+    (m0/m1/f0/f1, `B.act`) — un Pokémon en banca no tiene estado, se curó al
+    salir. calc() ya sabe aplicar quemadura al daño físico (`o.aSta`), pero
+    CALC nunca lo exponía: este es el mismo hallazgo de objeto/habilidad
+    (docs/calc.md) — el motor sabía, la UI no preguntaba. */
+function calcActiveStatus(dex){
+  if(MY[B.mine[0]]&&myDex(MY[B.mine[0]])===dex)return B.act.m0?.sta||null;
+  if(MY[B.mine[1]]&&myDex(MY[B.mine[1]])===dex)return B.act.m1?.sta||null;
+  if(B.team[B.foe[0]]&&B.team[B.foe[0]].dex===dex)return B.act.f0?.sta||null;
+  if(B.team[B.foe[1]]&&B.team[B.foe[1]].dex===dex)return B.act.f1?.sta||null;
+  return null;
+}
 function vPre(){
   const so=fullSpeedOrder(), th=topThreats();
   if(!so.length&&!th.length)
@@ -3562,19 +3574,23 @@ function quickPickChips(side,current){
 }
 function vCalc(){
   const c=window.__c||(window.__c={atk:MY[0]?.dex||DEXN[0],def:B.team[B.foe[0]]?.dex||DEXN[0],move:"Terremoto",
-    aSP:32,dSP:0,dHP:0,aNat:1.1,dNat:1,crit:0,cur:100,aItemOv:null,dItemOv:null,aAbOv:null,dAbOv:null});
+    aSP:32,dSP:0,dHP:0,aNat:1.1,dNat:1,crit:0,cur:100,aItemOv:null,dItemOv:null,aAbOv:null,dAbOv:null,aStaOv:null});
   const aMatch=calcTeamMatch(c.atk), dMatch=calcTeamMatch(c.def);
   const aItem=c.aItemOv!==null?c.aItemOv:(aMatch?.item||"—");
   const dItem=c.dItemOv!==null?c.dItemOv:(dMatch?.item||"—");
   const aAb=c.aAbOv!==null?c.aAbOv:(aMatch?.abil||abilsOf(c.atk)[0]);
   const dAb=c.dAbOv!==null?c.dAbOv:(dMatch?.abil||abilsOf(c.def)[0]);
-  const r=calc({...c,aItem,dItem,aAb,dAb,...ctxFor("me"),doubles:B.doubles});
+  const aStaAuto=calcActiveStatus(c.atk);
+  const aStaSel=c.aStaOv!==null?c.aStaOv:(aStaAuto||"—");
+  const aSta=aStaSel==="—"?null:aStaSel;
+  const r=calc({...c,aItem,dItem,aAb,dAb,aSta,...ctxFor("me"),doubles:B.doubles});
   const cur=r?Math.floor(r.maxHP*c.cur/100):0;
   const auto=(m,ov)=>m&&ov===null?` <em style="text-transform:none;font-weight:600;opacity:.7">auto: ${esc(m.side==="mine"?"tuyo":"rival")}</em>`:"";
+  const autoSta=c.aStaOv===null&&aStaAuto?` <em style="text-transform:none;font-weight:600;opacity:.7">auto: activo ahora</em>`:"";
   return `<div class="cols">
     <div class="card"><span class="hd">Atacante<button class="cswap" data-cswap>⇄</button></span>
       ${quickPickChips("a",c.atk)}
-      <div style="margin-top:4px">${sel(DEXN,c.atk,x=>S(x).n,v=>{c.atk=+v;c.aItemOv=null;c.aAbOv=null},"Otro Pokémon")}</div>
+      <div style="margin-top:4px">${sel(DEXN,c.atk,x=>S(x).n,v=>{c.atk=+v;c.aItemOv=null;c.aAbOv=null;c.aStaOv=null},"Otro Pokémon")}</div>
       <div style="margin-top:3px">${sel(dmgPool(c.atk),c.move,mvName,v=>c.move=v,"Movimiento",decoMove)}</div>
       <div class="f2" style="margin-top:3px">
         ${sel([...Array(33).keys()],c.aSP,x=>x+" SP",v=>c.aSP=+v,"SP ofensivo")}
@@ -3582,7 +3598,9 @@ function vCalc(){
       <div class="cap" style="margin-top:4px">Objeto${auto(aMatch,c.aItemOv)}</div>
       ${sel(ITEMS_A(),aItem,itName,v=>c.aItemOv=v,"Objeto")}
       <div class="cap" style="margin-top:4px">Habilidad${auto(aMatch,c.aAbOv)}</div>
-      ${sel(abilsOf(c.atk),aAb,abilName,v=>c.aAbOv=v,"Habilidad")}</div>
+      ${sel(abilsOf(c.atk),aAb,abilName,v=>c.aAbOv=v,"Habilidad")}
+      <div class="cap" style="margin-top:4px">Estado${autoSta}</div>
+      ${sel(STATUS,aStaSel,x=>x,v=>c.aStaOv=v,"Estado")}</div>
     <div class="card f"><span class="hd">Defensor</span>
       ${quickPickChips("d",c.def)}
       <div style="margin-top:4px">${sel(DEXN,c.def,x=>S(x).n,v=>{c.def=+v;c.dItemOv=null;c.dAbOv=null},"Otro Pokémon")}</div>
@@ -3789,7 +3807,7 @@ function wire(){
   // override de objeto/habilidad: el que estaba tipeado a mano era para el
   // Pokémon anterior, no tiene sentido arrastrarlo al nuevo.
   on("[data-cpick]",e=>{const[side,d]=e.dataset.cpick.split(":"),c=window.__c;if(!c)return;
-    if(side==="a"){c.atk=+d;c.aItemOv=null;c.aAbOv=null}
+    if(side==="a"){c.atk=+d;c.aItemOv=null;c.aAbOv=null;c.aStaOv=null}
     else{c.def=+d;c.dItemOv=null;c.dAbOv=null}});
   on("[data-cswap]",()=>{const c=window.__c;if(!c)return;
     [c.atk,c.def]=[c.def,c.atk];
@@ -3797,6 +3815,10 @@ function wire(){
     [c.aNat,c.dNat]=[c.dNat,c.aNat];
     [c.aItemOv,c.dItemOv]=[c.dItemOv,c.aItemOv];
     [c.aAbOv,c.dAbOv]=[c.dAbOv,c.aAbOv];
+    // El estado alterado no tiene campo del lado defensor (no hay mecánica de
+    // "dSta" — quemadura/parálisis no cambian el daño RECIBIDO). Al invertir,
+    // no hay con qué cruzarlo: vuelve a auto-detectar para el nuevo atacante.
+    c.aStaOv=null;
     if(!dmgPool(c.atk).includes(c.move))c.move=dmgPool(c.atk)[0]||c.move});
 
   const to=$("#tOcr");if(to)to.onclick=()=>{keep();buzz(1);

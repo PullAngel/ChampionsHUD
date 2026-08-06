@@ -111,6 +111,7 @@ function loadEngine() {
     this.vSpeedDetail = vSpeedDetail;
     this.vSpeedSimple = vSpeedSimple;
     this.calcTeamMatch = calcTeamMatch;
+    this.calcActiveStatus = calcActiveStatus;
     this.applyMegaAbilities = applyMegaAbilities;
     this.abilsOf = abilsOf;
     this.myDex = myDex;
@@ -2307,6 +2308,38 @@ check("calcTeamMatch() devuelve null para una especie que no está en la partida
   B.team = [E.mkFoe(9, 0.9)];
   const my = E.getMY(); my.length = 0; my.push(E.slot(260));
   assertEqual(E.calcTeamMatch(445), null);
+});
+
+// El motor (calc()) ya sabía aplicar quemadura al daño físico desde antes de
+// esta sesión (o.aSta) — CALC nunca lo exponía. calcActiveStatus() solo
+// puede saber el estado de un Pokémon que está ACTIVO ahora mismo (m0/m1/f0/
+// f1, B.act): uno en banca no tiene estado, se curó al salir.
+check("calcActiveStatus() encuentra el estado del propio activo en m0 o m1, por dex efectivo", () => {
+  const B = E.getB();
+  const my = E.getMY(); my.length = 0;
+  my.push(E.slot(260), E.slot(1000)); // Swampert en m0, Gholdengo en m1
+  B.mine = [0, 1];
+  B.act = { m0: { sta: "quemado", bo: [0, 0, 0, 0, 0] }, m1: { sta: null, bo: [0, 0, 0, 0, 0] } };
+  assertEqual(E.calcActiveStatus(260), "quemado");
+  assertEqual(E.calcActiveStatus(1000), null, "m1 sin estado tiene que dar null, no inventar uno");
+});
+
+check("calcActiveStatus() encuentra el estado del rival activo en f0 o f1", () => {
+  const B = E.getB();
+  B.team = [E.mkFoe(9, 0.9), E.mkFoe(6, 0.9)];
+  B.foe = [0, 1];
+  B.act = { f0: { sta: "paralizado" }, f1: { sta: null } };
+  assertEqual(E.calcActiveStatus(9), "paralizado");
+  assertEqual(E.calcActiveStatus(6), null);
+});
+
+check("calcActiveStatus() devuelve null para un Pokémon que no está activo (en banca)", () => {
+  const B = E.getB();
+  const my = E.getMY(); my.length = 0;
+  my.push(E.slot(260), E.slot(1000), E.slot(445)); // Garchomp en banca (índice 2)
+  B.mine = [0, 1];
+  B.act = { m0: { sta: "quemado" }, m1: { sta: "quemado" } };
+  assertEqual(E.calcActiveStatus(445), null, "en banca no hay estado que mostrar, aunque los activos tengan uno");
 });
 
 // ── coherencia de números de Pokédex entre SPD y los datos reales ──
