@@ -1433,21 +1433,32 @@ check("priorityAlert() evalúa la amenaza de banca contra el HP actual, no el m�
 });
 
 // ── "descartar sets incompatibles" (Fase 2, sprint 2.5 R3, build_meta.py) ──
+// Bug real encontrado el 2026-08-06 (misma familia que ROLE_MV_EN, sprint
+// 2.9, y foeMovePool() de esta sesión): meta.json[].sets guarda los
+// movimientos en INGLÉS, pero f.moves (lo que el jugador marcó que vio) usa
+// las claves en ESPAÑOL del resto del HUD. Antes del fix, en vez de "no
+// descarta nada" (el fallback seguro), pasaba lo OPUESTO: con UN movimiento
+// visto, TODOS los sets quedaban descartados — "quedan 0 de 5" con un
+// movimiento que en realidad está en los 5. El fixture de este test estaba
+// escrito con sets en español, que no es el formato real de meta.json — por
+// eso pasaba en verde con el bug presente. Reescrito con sets en inglés,
+// como los devuelve build_meta.py de verdad.
 check("compatibleSets() angosta con lo que ya se vio, no descarta a ciegas", () => {
   const B = E.getB();
   const foe = E.mkFoe(983, 0.9);
   B.team = [foe];
   E.setMeta(983, { sets: [
-    { moves: ["Golpe Bajo", "Cabeza de Hierro", "Danza Espada", "Protección"], count: 70, pct: 32 },
-    { moves: ["Golpe Bajo", "Protección", "Danza Espada", "Terremoto"], count: 20, pct: 10 },
+    { moves: ["Sucker Punch", "Iron Head", "Swords Dance", "Protect"], count: 70, pct: 32 },
+    { moves: ["Sucker Punch", "Protect", "Swords Dance", "Earthquake"], count: 20, pct: 10 },
   ] });
   // Nada visto todavía: los dos combos siguen siendo posibles.
   assertEqual(E.compatibleSets(foe).length, 2);
-  // Se le vio Cabeza de Hierro: el segundo set no lo trae, queda descartado.
-  foe.moves = ["Cabeza de Hierro"];
+  // Se le vio Cabeza de Hierro (clave española, como la ve el resto del HUD):
+  // el segundo set no lo trae, queda descartado.
+  foe.moves = [E.findMove("Iron Head")];
   const cs = E.compatibleSets(foe);
-  assertEqual(cs.length, 1);
-  assert(cs[0].moves.includes("Cabeza de Hierro"));
+  assertEqual(cs.length, 1, `debería quedar 1 set compatible, dio ${cs.length}`);
+  assert(cs[0].moves.includes("Iron Head"));
 });
 
 check("compatibleSets() no inventa nada si la especie no tiene sets conocidos en meta.json", () => {
@@ -1781,6 +1792,27 @@ check("rolesFoe() detecta Tailwind desde meta.json, que lo guarda en inglés", (
     // no se emitía nunca para el rival.
     const roles = [...E.rolesFoe({ dex: 547, abil: null })];
     assert(roles.includes("tailwind"), `Whimsicott debería tener el rol tailwind, salió: ${roles.join(",")}`);
+  });
+});
+
+// Mismo patrón EN/ES que el bug de arriba, encontrado en el mismo barrido
+// (2026-08-06): meta.json[].sets guarda los movimientos en INGLÉS. Antes del
+// fix, ver UN movimiento real tiraba compatibleSets() a 0 en vez de angostar
+// — "quedan 0 de 5" con un movimiento que en realidad está en varios.
+check("compatibleSets() contra meta.json REAL: ver un movimiento real angosta, nunca descarta todo", () => {
+  conMetaReal(() => {
+    const B = E.getB();
+    // Venusaur (dex 3) trae sets reales con Protect en la mayoría.
+    const foe = E.mkFoe(3, 0.9);
+    B.team = [foe];
+    const total = E.compatibleSets(foe).length;
+    assert(total > 0, "Venusaur tiene que tener sets reales en el meta.json instalado");
+    foe.moves = [E.findMove("Protect")];
+    const angostado = E.compatibleSets(foe);
+    assert(angostado.length > 0,
+      "el bug real: ver UN movimiento de verdad tiraba esto a 0, aunque estuviera en varios sets");
+    assert(angostado.length <= total, "nunca puede quedar MÁS compatible que el total sin filtrar");
+    for (const s of angostado) assert(s.moves.includes("Protect"), "cada set que queda tiene que traer Protect de verdad");
   });
 });
 

@@ -1836,9 +1836,22 @@ const foeMoves=f=>foeMovePool(f).moves;
     espacio de hipótesis con evidencia (mismo patrón que `itemHypothesis()`
     del sprint 2.2): un set que no incluye un movimiento ya confirmado no
     puede ser el suyo. Sin nada visto todavía, o sin sets conocidos para la
-    especie, no hay nada que descartar — se devuelve la lista tal cual. */
+    especie, no hay nada que descartar — se devuelve la lista tal cual.
+
+    Bug real encontrado el 2026-08-06 (misma familia que ROLE_MV_EN del
+    sprint 2.9 y el de foeMovePool() de esta sesión): `s.moves` sale de
+    `meta.json[].sets`, que guarda los movimientos en INGLÉS — pero `seen`
+    son las claves de `f.moves`, que están en ESPAÑOL (las mismas que usa
+    el selector "Movimientos" del resto del HUD). `.includes(mv)` nunca
+    matcheaba, así que en vez de "no descarta nada" (el fallback seguro que
+    documenta el comentario de arriba) pasaba lo OPUESTO: apenas se veía
+    UN movimiento real, `.every()` fallaba para TODOS los sets y la función
+    devolvía 0 — "quedan 0 de 5" en pantalla, con un movimiento que en
+    verdad está en los 5. Corregido traduciendo `seen` a inglés una vez
+    (mismo campo `MV[k][7]` que ya usa `ROLE_MV_EN`), no al revés — hay como
+    mucho 4 movimientos vistos por combate, contra hasta decenas de sets. */
 const compatibleSets=f=>{
-  const seen=(f.moves||[]).filter(x=>MV[x]);
+  const seen=(f.moves||[]).filter(x=>MV[x]).map(k=>MV[k][7]).filter(Boolean);
   const sets=metaOf(f.dex)?.sets||[];
   if(!seen.length||!sets.length)return sets;
   return sets.filter(s=>seen.every(mv=>s.moves.includes(mv)));

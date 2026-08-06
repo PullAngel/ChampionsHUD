@@ -309,6 +309,18 @@ Angel pidió repensar CALC con nivel de detalle de la calculadora de Showdown pe
 
 **Pendiente, documentado en `calc.md` sección 5:** duplicar un cálculo para comparar variantes — es lo único que queda; necesita una decisión de producto (dónde vive el historial) antes de programarse.
 
+### Auditoría propia: mismo patrón EN/ES, tercera vez (2026-08-06)
+
+Después de cerrar CALC, se revisó el resto de `hud.html` buscando la misma familia de bug que ya había aparecido dos veces esta sesión (`foeMovePool()`, arriba, y `ROLE_MV_EN` en el sprint 2.9): comparar un nombre de movimiento en inglés (como lo guarda `meta.json`) contra una clave en español (como usa el resto del HUD) sin pasar por `findMove()`. Se encontró una tercera instancia, más grave que las dos anteriores porque no degradaba a "no sabemos" sino a un resultado incorrecto con apariencia de válido.
+
+**`compatibleSets()` — bug real, no solo "no descarta nada".** `meta.json[].sets` trae los movimientos en inglés; `f.moves` (lo que el jugador marcó que vio) usa las claves en español del resto del HUD. `s.moves.includes(mv)` nunca matcheaba, así que `.every()` fallaba para **todos** los sets apenas se veía un solo movimiento real — el panel "Combinaciones completas" pasaba de "quedan 5 de 5" a **"quedan 0 de 5"**, con un movimiento que en la realidad estaba en la mayoría de esos 5. Es justo lo opuesto del comportamiento documentado en el propio comentario de la función ("sin nada visto, no hay nada que descartar") — con algo visto, descartaba *todo*, cuando debía descartar *menos*.
+
+Corregido traduciendo `f.moves` a inglés una sola vez por llamada (mismo campo `MV[k][7]` que ya usa `ROLE_MV_EN`) antes de comparar contra `s.moves`. El test existente para esta función tenía un fixture con sets escritos en español — no reflejaba el formato real de `meta.json`, y por eso pasaba en verde con el bug presente. Reescrito con sets en inglés reales, más un test nuevo contra el `meta.json` instalado de verdad (Venusaur, dex 3).
+
+**Auditado y descartado como bug:** `items`/`abilities` de `meta.json` — confirmado que ya vienen en español (items) o en slug inglés que ya coincide con `ABIL_I18N`/`ROLE_AB` (abilities), ningún punto de comparación cruza idiomas ahí.
+
+**Tests:** 1 reescrito + 1 nuevo contra datos reales (197 en total). Verificado en navegador real con dos escenarios: sets que coincidentemente compartían el movimiento visto (mostró correctamente que ninguno se descarta) y sets con uno explícitamente sin ese movimiento (mostró "quedan 1 de 2", descartando exactamente el que no lo trae).
+
 ### "Probable que traiga" con movimientos probables (2026-08-06)
 
 Angel pidió que el panel "Probable que traiga" (Previa) muestre también los movimientos que más suele traer cada rival, "para tomar mejores decisiones teniendo la pestaña de previa abierta, en el team preview" — mismo dato que ya cita "Repartos habituales" en Rival (`metaOf(dex).moves`, uso real medido), puesto donde ayuda a decidir sin cambiar de pestaña. `probableMoves(dex,n)`, hecha.
