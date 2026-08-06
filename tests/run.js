@@ -162,6 +162,12 @@ function loadEngine() {
     this.findMove = findMove;
     this.megaSpeed = megaSpeed;
     this.canMega = canMega;
+    this.stageMul = stageMul;
+    this.applyWhatIf = applyWhatIf;
+    this.whatIfMine = whatIfMine;
+    this.whatIfFoe = whatIfFoe;
+    this.resetSpdWhatIf = resetSpdWhatIf;
+    this.getSpdWhatIf = function () { return SPD_WHATIF; };
   `;
 
   const sandbox = {
@@ -2057,6 +2063,62 @@ check("validate_data.py corre limpio contra el estado actual del repo", () => {
 // reemplaza probar la UI de verdad, pero un `node --check` contra el
 // archivo entero es gratis y agarra esta clase de error en el momento,
 // no en producción.
+console.log("\nvelocidad: interruptores \"qué pasaría si\" (SPD_WHATIF):");
+
+check("stageMul() da la fórmula real del juego para fases positivas y negativas", () => {
+  assertEqual(E.stageMul(0), 1, "fase 0 debe ser neutra");
+  assertEqual(E.stageMul(2), 2, "+2 debe ser ×2 ((2+2)/2)");
+  assertEqual(E.stageMul(6), 4, "+6 debe ser ×4 tope");
+  assertEqual(E.stageMul(-2), 0.5, "-2 debe ser ×0.5 (2/(2+2))");
+  assertEqual(E.stageMul(-6), 0.25, "-6 debe ser ×0.25 tope");
+});
+
+check("applyWhatIf() aplica fase, pañuelo y viento afín en ese orden, no cambia nada sin estado", () => {
+  assertEqual(E.applyWhatIf(100, null), 100, "sin estado no debe tocar el valor");
+  assertEqual(E.applyWhatIf(100, { stage: 0, scarf: false, tw: false }), 100, "estado neutro no debe tocar el valor");
+  assertEqual(E.applyWhatIf(100, { stage: 2, scarf: false, tw: false }), 200, "+2 fases sola");
+  assertEqual(E.applyWhatIf(100, { stage: 0, scarf: true, tw: false }), 150, "pañuelo solo");
+  assertEqual(E.applyWhatIf(100, { stage: 0, scarf: false, tw: true }), 200, "viento afín solo");
+  assertEqual(E.applyWhatIf(100, { stage: 2, scarf: true, tw: true }), 600, "las tres combinadas: 100×2×1.5×2");
+});
+
+check("whatIfMine()/whatIfFoe() crean estado neutro la primera vez y lo reusan después", () => {
+  E.resetSpdWhatIf();
+  const t1 = E.whatIfMine(0);
+  assertEqual(JSON.stringify(t1), JSON.stringify({ tw: false, stage: 0 }), "mine arranca neutro, sin pañuelo (ya está en la stat real)");
+  t1.tw = true;
+  const t2 = E.whatIfMine(0);
+  assert(t2.tw === true, "la segunda llamada debe devolver el MISMO objeto, no reiniciar");
+  const f1 = E.whatIfFoe(3);
+  assertEqual(JSON.stringify(f1), JSON.stringify({ scarf: false, tw: false, stage: 0 }), "foe arranca neutro y SÍ tiene pañuelo como opción");
+});
+
+check("resetSpdWhatIf() vacía todo — se llama al escanear un equipo nuevo o resetear", () => {
+  E.whatIfMine(0).tw = true;
+  E.whatIfFoe(1).scarf = true;
+  E.resetSpdWhatIf();
+  assertEqual(JSON.stringify(E.getSpdWhatIf()), JSON.stringify({ mine: {}, foe: {} }), "debe quedar completamente vacío");
+});
+
+check("fullSpeedOrder() con SPD_WHATIF activo cambia el número mostrado sin tocar m.item/f.item reales", () => {
+  E.resetSpdWhatIf();
+  const B = E.getB();
+  B.team = [6].map(d => E.mkFoe(d, 0.9)); // Charizard
+  const my = E.getMY(); my.length = 0; my.push(E.slot(1000)); // Gholdengo
+  const antes = E.fullSpeedOrder().find(x => x.me);
+  const itemAntes = my[0].item;
+  E.whatIfMine(0).tw = true;
+  const despues = E.fullSpeedOrder().find(x => x.me);
+  assertEqual(despues.v, antes.v * 2, "viento afín debe duplicar el número mostrado");
+  assertEqual(my[0].item, itemAntes, "el ítem real del propio Gholdengo no debe tocarse");
+  const foeAntes = E.fullSpeedOrder().find(x => !x.me);
+  E.whatIfFoe(0).scarf = true;
+  const foeDespues = E.fullSpeedOrder().find(x => !x.me);
+  assert(foeDespues.lo > foeAntes.lo && foeDespues.hi > foeAntes.hi, "pañuelo hipotético debe subir el rango del rival");
+  assertEqual(B.team[0].item, null, "el ítem real del rival no debe tocarse por la hipótesis");
+  E.resetSpdWhatIf();
+});
+
 console.log("\nsintaxis del script completo:");
 check("hud.html no tiene errores de sintaxis en NINGUNA parte del script (no solo antes de vPre())", () => {
   const html = fs.readFileSync(HUD_PATH, "utf-8");

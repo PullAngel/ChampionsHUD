@@ -68,6 +68,19 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 .k{color:var(--warn)} .ok{color:var(--pick)} .no{color:var(--faint)}
 .cf{color:var(--sure)} .bd{color:var(--bad)}
 
+/* Interruptores "qué pasaría si" de velocidad (Previa) — pedido de Angel,
+   2026-08-05: probar Pañuelo/Viento Afín/fases sin tocar el objeto o la
+   habilidad real de ningún Pokémon. Viven en SPD_WHATIF, nunca en B/MY, así
+   que save() nunca los persiste — son de esta pantalla, se pierden con un
+   equipo nuevo a propósito. */
+.wc{display:flex;gap:2px;align-items:center;flex:0 0 auto}
+.wtog{width:16px;height:16px;border-radius:5px;background:rgba(255,255,255,.1);color:var(--dim);
+  font-size:7px;font-weight:800;display:grid;place-items:center;line-height:1}
+.wtog[data-on="1"]{background:var(--pick);color:var(--ink)}
+.wstep{display:flex;align-items:center;background:rgba(255,255,255,.1);border-radius:5px;overflow:hidden}
+.wstep button{width:14px;height:16px;font-size:8px;font-weight:800;color:var(--dim);line-height:1}
+.wstep span{font-size:7px;font-weight:800;min-width:13px;text-align:center;color:var(--cream)}
+
 .track{position:relative;height:5px;background:rgba(0,0,0,.42);border-radius:4px;
   overflow:hidden;margin-top:3px}
 .track::after{content:"";position:absolute;top:0;bottom:0;right:0;width:2px;background:#fff;opacity:.55}
@@ -2568,6 +2581,32 @@ function megaSpeedFoeRange(f){
   const sp=S(entry[0]); if(!sp)return null;
   return {min:stOf(sp.s[5],0,0.9),max:stOf(sp.s[5],SP_MAX,1.1)};
 }
+/** Multiplicador de una fase de estadística (-6..+6), fórmula real del juego:
+    positiva = (2+n)/2, negativa = 2/(2-n). n=0 (sin fase) da ×1. */
+const stageMul=n=>n>=0?(2+n)/2:2/(2-n);
+/** Aplica el estado "qué pasaría si" (SPD_WHATIF) a una velocidad ya
+    calculada: fase primero (multiplica la base), después Pañuelo Elección,
+    después Viento Afín — mismo orden que usa el juego de verdad. */
+const applyWhatIf=(v,t)=>{
+  if(!t)return v;
+  let x=Math.floor(v*stageMul(t.stage||0));
+  if(t.scarf)x=Math.floor(x*1.5);
+  if(t.tw)x=Math.floor(x*2);
+  return x;
+};
+/** Capa de exploración de "Quién pega primero" (pedido de Angel, 2026-08-05):
+    probar Pañuelo/Viento Afín/fases por Pokémon SIN tocar `m.item`/`f.item`
+    reales ni el B.tw de verdad. Vive fuera de B y MY a propósito — save()
+    serializa B, saveMy() serializa MY, y SPD_WHATIF no es ninguno de los
+    dos, así que nunca se guarda ni sobrevive a un equipo nuevo (ver
+    resetSpdWhatIf(), llamada en window.onScan y en el botón de reset). Del
+    lado propio solo tiene sentido Viento Afín y fases (el ítem real ya está
+    reflejado); del lado rival se agrega Pañuelo porque ahí sí es una
+    hipótesis genuina ("¿y si lo trae?"). */
+let SPD_WHATIF={mine:{},foe:{}};
+const whatIfMine=i=>SPD_WHATIF.mine[i]||(SPD_WHATIF.mine[i]={tw:false,stage:0});
+const whatIfFoe=i=>SPD_WHATIF.foe[i]||(SPD_WHATIF.foe[i]={scarf:false,tw:false,stage:0});
+const resetSpdWhatIf=()=>{SPD_WHATIF={mine:{},foe:{}}};
 function fullSpeedOrder(){
   // Bug real reportado por Angel (2026-08-05): esta función usaba myStat(m,5)
   // en crudo. myStat() es DELIBERADAMENTE la stat sin objeto (mismo criterio
@@ -2576,10 +2615,17 @@ function fullSpeedOrder(){
   // pero acá faltaba. Un Gholdengo con Pañuelo Elección confirmado (136 base)
   // se mostraba sin sus ×1.5 (204), y por eso aparecía más lento que rivales
   // con solo el rango teórico.
-  const mine=MY.filter(m=>m.dex&&S(m.dex)).map(m=>
-    ({me:1,n:nm(myDex(m)),v:Math.floor(myStat(m,5)*(m.item==="Pañuelo Elección"?1.5:1)),lo:null,hi:null,megaV:megaSpeed(m)}));
-  const foes=B.team.filter(f=>f.dex&&S(f.dex)).map(f=>{const r=spdRange(f);
-    return {me:0,n:nm(f.dex),v:r.max,lo:r.min,hi:r.max,megaV:megaSpeedFoeRange(f)}});
+  const mine=MY.map((m,mi)=>({m,mi})).filter(x=>x.m.dex&&S(x.m.dex)).map(({m,mi})=>{
+    const base=Math.floor(myStat(m,5)*(m.item==="Pañuelo Elección"?1.5:1));
+    const wt=whatIfMine(mi), mg=megaSpeed(m);
+    return {me:1,mi,n:nm(myDex(m)),v:applyWhatIf(base,wt),lo:null,hi:null,
+      megaV:mg==null?null:applyWhatIf(mg,{...wt,scarf:false}),wt};
+  });
+  const foes=B.team.map((f,fi)=>({f,fi})).filter(x=>x.f.dex&&S(x.f.dex)).map(({f,fi})=>{
+    const r=spdRange(f),wt=whatIfFoe(fi),mg=megaSpeedFoeRange(f);
+    return {me:0,fi,n:nm(f.dex),v:applyWhatIf(r.max,wt),lo:applyWhatIf(r.min,wt),hi:applyWhatIf(r.max,wt),
+      megaV:mg==null?null:{min:applyWhatIf(mg.min,{...wt,scarf:false}),max:applyWhatIf(mg.max,{...wt,scarf:false})},wt};
+  });
   return [...mine,...foes].sort((a,b)=>b.v-a.v);
 }
 
@@ -2727,9 +2773,19 @@ function vPre(){
       const mega=x.megaV==null?"":typeof x.megaV==="number"
         ?`<s style="color:var(--sure)">◆ mega ${x.megaV}</s>`
         :`<s style="color:var(--sure)">◆ mega ${x.megaV.min}–${x.megaV.max}</s>`;
+      const side=x.me?"m":"f", idx=x.me?x.mi:x.fi, t=x.wt;
+      // "Qué pasaría si": prueba, no cambia el ítem/estado real de nadie.
+      // Pañuelo solo tiene sentido del lado rival — el propio ya está en `x.v`.
+      const wc=`<div class="wc">
+        ${x.me?"":`<button class="wtog" data-wsc="${idx}" data-on="${t.scarf?1:0}">PE</button>`}
+        <button class="wtog" data-wtw="${side}:${idx}" data-on="${t.tw?1:0}">TW</button>
+        <div class="wstep">
+          <button data-wst="${side}:${idx}:-1">▾</button><span>${t.stage>0?"+":""}${t.stage}</span>
+          <button data-wst="${side}:${idx}:1">▴</button>
+        </div></div>`;
       return `<div class="row" style="padding:4px 8px">
       <b style="color:${x.me?"var(--pick)":"var(--foe-row)"}">${i+1}. ${esc(x.n)}</b>
-      <u>${x.me?x.v:x.lo+"–"+x.hi}${mega}</u></div>`;
+      <u>${x.me?x.v:x.lo+"–"+x.hi}${mega}</u>${wc}</div>`;
     }).join("")}</div>`;
   h+=`
   <div class="card f"><span class="hd">Lo que más te puede doler<em>su mejor golpe contra tu peor respuesta</em></span>
@@ -3275,6 +3331,14 @@ function wire(){
   on("[data-w]",e=>{const v=e.dataset.w;B.weather=B.weather===v?null:v;B.wTurns=B.weather?5:0});
   on("[data-t]",e=>{const v=e.dataset.t;B.terrain=B.terrain===v?null:v;B.tTurns=B.terrain?5:0});
   on("[data-tw]",e=>{const s=e.dataset.tw;B.tw[s]=B.tw[s]>0?0:4});
+  // "Qué pasaría si" de velocidad (Previa): SPD_WHATIF, no B/MY — nunca pasa
+  // por logEvent ni saveMy(), es una prueba de esta pantalla, no un hecho.
+  on("[data-wtw]",e=>{const[side,i]=e.dataset.wtw.split(":");
+    const t=side==="m"?whatIfMine(+i):whatIfFoe(+i);t.tw=!t.tw});
+  on("[data-wsc]",e=>{whatIfFoe(+e.dataset.wsc).scarf=!whatIfFoe(+e.dataset.wsc).scarf});
+  on("[data-wst]",e=>{const[side,i,d]=e.dataset.wst.split(":");
+    const t=side==="m"?whatIfMine(+i):whatIfFoe(+i);
+    t.stage=Math.max(-6,Math.min(6,t.stage+(+d)))});
   on("[data-tr]",()=>B.tr=B.tr>0?0:5);
   on("[data-sc]",e=>{const s=e.dataset.sc;B.screen[s]=B.screen[s]>0?0:5});
   on("[data-fmt]",e=>{B.doubles=e.dataset.fmt==="1";syncFoe()});
@@ -3420,6 +3484,7 @@ function wire(){
   const rt=$("#rt");if(rt)rt.onclick=()=>{keep();buzz(1);resetTurns()};
   const rs=$("#rs");if(rs)rs.onclick=()=>{keep();buzz(1);
     const t=B.team;B=NEW();B.team=t.map(f=>mkFoe(f.dex,f.confidence,f.shiny));syncFoe();
+    resetSpdWhatIf();
     if(has)try{Android.clearBattle()}catch(e){} save();render()};
 }
 
@@ -3444,6 +3509,7 @@ window.onScan=function(json){
     `<div class="card f"><div class="msg w">${esc(d.error)}</div></div>`);return}
   if(!d.team?.length)return;
   B.team=d.team.map(x=>mkFoe(x.dex,x.confidence,x.shiny));
+  resetSpdWhatIf();
   // Un team preview nuevo es una partida nueva: los índices `foe` del log
   // anterior apuntarían a otros Pokémon. Se reinicia y el primer evento es
   // la lectura misma — reinterpretar evidencia vieja contra un equipo

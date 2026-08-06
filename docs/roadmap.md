@@ -281,6 +281,42 @@ Lo único que falta para el **criterio de salida de Fase 2** de arriba es la mit
 - `architecture.md` §11.1 — descripción de habilidad expandible en Peek: **hecho** (sprint 2.5).
 - `architecture.md` §11.2 — PP de todos los movimientos: **hecho** (sprint 2.5) — resultó no necesitar la migración de ~150 entradas que se había previsto, el dato ya estaba en la fuente que `build_dex.py` ya consumía.
 
+## Post-Fase 2 (2026-08-05): comunicación, bugs de dispositivo real, y velocidad ampliada
+
+Con la Fase 2 cerrada, el trabajo de esta fecha no encaja en un sprint numerado — es una mezcla de rediseño de comunicación (decisión #24), corrección de bugs reportados con capturas reales, y una feature grande pedida por Angel a mitad de sesión (velocidad ampliada). Se documenta acá en vez de forzarlo dentro de la Fase 2 ya cerrada.
+
+**Rediseño de comunicación (decisión #24) — hecho.** Íconos del riel, textos de Previa/Campo/Rival/Tuyo/Ajustes, sistema de confianza `confTag()`/`dbg()`. Ver el detalle completo en `decisions.md` #24.
+
+**Bugs reales reportados con 4 capturas de dispositivo — los 3 primeros hechos, el 4° diferido a propósito:**
+1. **App cerrándose sola** (a veces al sacar una captura de pantalla) — causa real encontrada: `ACTION_CANCEL` compartía rama con `ACTION_UP` en `DragHandler` (`OverlayService.kt`); un gesto cancelado por el sistema podía leerse como "cerrar". Corregido con rama propia que nunca cierra, y **reemplazado el gesto de cierre** (mantener presionado → arrastrar hasta una `✕`), investigado primero como patrón estándar de apps flotantes antes de escribir código.
+2. **Captura de stats del equipo con motes:** un Pokémon con apodo no se reconocía aunque tuviera el sprite al lado. `speciesFromTraits()` deduce la especie cruzando habilidad + los 4 movimientos contra el dex real, solo cuando queda una única candidata.
+3. **Números de stats pegados** ("1550" en vez de HP 155 + inversión 0): `numerosDeFila()` separa los tokens usando los 5 casos reales de la captura de Angel como referencia.
+4. **Captura del equipo rival confunde especies** (Aegislash↔Floette, Mimikyu↔Milotic, con 98% de confianza reportada) — **diferido a propósito**, es `SpriteMatcher.kt` (Kotlin) y necesita su propia investigación, no se mezcló con lo anterior.
+
+**Velocidad ampliada — pedido de Angel, 2026-08-05, en cuatro partes. Las tres mecánicas y la capa de hipótesis, hechas; la vista "Detallada" queda planificada abajo:**
+- Pañuelo Elección no se aplicaba a la velocidad propia mostrada en "Quién pega primero" — bug de una línea (`fullSpeedOrder()` usaba `myStat()` crudo, sin el ×1.5 que el resto del archivo ya aplicaba).
+- Velocidad de mega rival (`megaSpeedFoeRange()`) y visibilidad mejorada de la mega propia (badge junto al número, no subtexto tenue).
+- Habilidades que duplican velocidad por clima (Nado Rápido/lluvia, Clorofila/sol, Polvo Escudo/arena, Manto Nieve/granizo) vía `WEATHER_SPD_ABIL`/`effSpd()`. Encontrados de paso dos bugs preexistentes: el selector de habilidad usaba `m.dex` en vez de `myDex(m)` (una mega nunca podía elegir su habilidad real), y `ABIL[megaKey]` nunca se poblaba para las megas clásicas hardcodeadas — `applyMegaAbilities()` las resuelve por nombre contra `dex.json`.
+- **Capa "qué pasaría si" (decisión #25):** interruptores de Pañuelo/Viento Afín/fases (−6 a +6) por Pokémon, en vivo, sin tocar el ítem/estado real de nadie. `SPD_WHATIF`, fuera de `B`/`MY` a propósito. Diseñado con 3 rondas de mockup (ver abajo) antes de escribir código en `hud.html`.
+- **Tests:** 18 casos nuevos entre las tres mecánicas y la capa de hipótesis (172 en total). Verificado en navegador real (`hud-preview`) con captura de pantalla del render final, no solo con tests.
+
+### Vista "Detallada" de velocidad — planificada, no implementada
+
+Angel pidió una segunda forma de ver "Quién pega primero", conmutable con la actual ("Simple"): en vez de comparar contra el máximo teórico de cada rival, mostrar una distribución ponderada por los `topEvSpreads`/`topNatures` reales de `meta.json` — "quizás la velocidad máxima de X es mayor a la mía, pero ese X casi nunca invierte en velocidad". El diseño pasó por 3 rondas de mockup interactivo (2 con la herramienta de visualización, 1 con la paleta real del HUD en formato horizontal) hasta llegar a un diseño que Angel aprobó. Piezas confirmadas del diseño, listas para implementar:
+
+- **Eje de velocidad horizontal** (0–230) compartido por todas las filas — aprovecha que el panel real es más ancho que alto (`hud.html` línea 10, ya documentado en el propio CSS).
+- **Los 6 Pokémon propios como chips** (nombre + velocidad, cada uno una sola vez) en una franja libre arriba, en vez de posicionarlos exactamente en su X — con velocidades típicas de VGC (80–140) chocaban entre sí. Cada chip se conecta con una línea guía punteada hasta su posición real en el eje (técnica de "etiqueta con línea guía", estándar para datos apretados).
+- **Barras de densidad por rival:** peso de cada franja de velocidad = `spread.pct × nature.pct` (`topEvSpreads`×`topNatures`, cruce independiente, ya usado hoy para "Repartos habituales" en Rival). Si falta esa data para una especie, degradar visiblemente a una distribución uniforme marcada como tal — nunca mostrar una barra ponderada que no está respaldada por datos reales (`vision.md`, confianza calibrada).
+- **Spread dominante (≥40% de uso):** en vez de la barra difusa, una franja tenue + una línea sólida en el valor exacto de ese spread con su % al lado — más preciso cuando un solo spread concentra la mayoría de los casos reales (pedido explícito de Angel).
+- **Mega representada aparte:** una segunda franja (rango si megaevoluciona) por debajo de la del rival base, no mezclada — el Pañuelo hipotético no se le aplica a esa franja (mecánicamente incompatible, ver decisión #25).
+- **Los mismos interruptores de la capa "qué pasaría si"** (decisión #25), ya implementados y reutilizables tal cual — no hay trabajo nuevo de lógica acá, solo de wiring a la vista nueva.
+- **Persistencia del modo elegido (Simple/Detallada):** a definir — candidato natural es `localStorage`, igual que `LANG`/`OCR_TARGET`.
+
+**Plan de sprints:**
+- **Sprint 3.1 — Distribución ponderada (lógica pura, sin UI).** `speedWeights(dex)`: cruza `topEvSpreads`×`topNatures` de una especie, devuelve buckets de peso + detección de spread dominante (≥40%) + degradación visible a uniforme cuando falta data. Testeable 100% sin DOM, mismo patrón que `previewMatrix()`/`foeBringOrder()`.
+- **Sprint 3.2 — Vista "Detallada", wiring a `vPre()`.** Eje horizontal, chips propios con línea guía, barras de densidad por rival, franjas de mega, toggle Simple/Detallada persistido. El mockup de referencia queda en el historial de la conversación con Angel (2026-08-05) — recrear la estructura CSS ahí probada (`.chip`, `.leaders` SVG, `.rrow`) adaptada a las clases reales de `hud.html`.
+- **Sprint 3.3 — QA en dispositivo real y ajuste fino.** Verificar que el wrap de chips a una segunda fila se vea bien en el panel real (no solo en el mockup de escritorio), que las barras de densidad no se recorten con equipos de nombres largos, y que el toggle sobreviva a un cambio de pestaña.
+
 ## Fase 3 — Formalizar la separación Motor / Cliente
 
 - Extraer explícitamente el motor de dominio como módulo independiente de Android/Kotlin (decisión #10), sin que esto implique construir todavía un segundo cliente — es preparar el terreno, no anticipar trabajo que no hace falta hoy.
