@@ -81,6 +81,32 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 .wstep button{width:14px;height:16px;font-size:8px;font-weight:800;color:var(--dim);line-height:1}
 .wstep span{font-size:7px;font-weight:800;min-width:13px;text-align:center;color:var(--cream)}
 
+/* Vista "Detallada" de velocidad (decisión #25, sprint 3.2) — eje horizontal
+   compartido, los 6 propios como chips (uno por línea, sin repetir), franjas
+   de densidad real por rival. Diseñada en 3 rondas de mockup con Angel antes
+   de escribir esto. */
+.spdseg{display:flex;gap:6px;margin-bottom:6px}
+.spdseg button{flex:1;font-size:9px;font-weight:800;padding:5px 0;border-radius:999px;
+  background:rgba(255,255,255,.08);color:var(--dim)}
+.spdseg button[data-on="1"]{background:var(--pick);color:var(--ink)}
+.spdaxis{position:relative;height:12px;margin:2px 6px 0}
+.spdaxis span{position:absolute;top:0;font-size:8px;color:var(--faint);transform:translateX(-50%)}
+.spdchips{position:relative;margin:0 6px}
+.spdchip{position:absolute;transform:translateX(-50%);display:inline-flex;align-items:center;gap:1px;
+  background:rgba(0,0,0,.3);border:1px solid color-mix(in srgb,var(--pick) 55%,transparent);
+  border-radius:999px;padding:2px 4px;white-space:nowrap;font-size:8px;font-weight:800}
+.spdchip b{color:var(--pick)}
+.spdchip u{color:var(--cream);margin-left:3px}
+.spdchip s{color:var(--sure);margin-left:3px;text-decoration:none}
+.spdrow{display:flex;align-items:center;gap:6px;margin-top:5px}
+.spdrow .nm{flex:0 0 30%;max-width:120px;font-weight:800;color:var(--foe-row);font-size:9.5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.spdrow .area{flex:1;position:relative;height:12px;background:rgba(0,0,0,.35);border-radius:4px;min-width:0}
+.spdrow .seg{position:absolute;top:0;bottom:0;background:var(--foe-row);border-radius:4px}
+.spdrow .spike{position:absolute;top:0;bottom:0;width:2px;background:var(--foe-row)}
+.spdrow .megaband{position:absolute;top:1px;bottom:1px;border:1px dashed var(--sure);border-radius:4px}
+.spdrow .dlab{font-size:7.5px;color:var(--dim);margin-top:1px;margin-left:calc(30% + 6px)}
+
 .track{position:relative;height:5px;background:rgba(0,0,0,.42);border-radius:4px;
   overflow:hidden;margin-top:3px}
 .track::after{content:"";position:absolute;top:0;bottom:0;right:0;width:2px;background:#fff;opacity:.55}
@@ -2036,6 +2062,10 @@ let OCR_PHASE=0, OCR_DRAFT=[null,null], OCR_ICONS=[];
     quien reescanea para corregir una lectura fallida quiere "active" varias
     veces seguidas, y que se lo pregunte cada vez sería fricción pura. */
 let OCR_TARGET=(()=>{try{return localStorage.getItem("hudOcrTarget")||"new"}catch(e){return "new"}})();
+/** "Simple" (min–máx teórico) o "detail" (distribución ponderada real, ver
+    speedWeights()) para "Quién pega primero". Persistido como preferencia de
+    uso, no como estado de combate — mismo criterio que OCR_TARGET. */
+let SPD_VIEW=(()=>{try{return localStorage.getItem("hudSpdView")||"simple"}catch(e){return "simple"}})();
 
 /** Agrupa líneas de OCR en 6 "cards" por posición (grilla de 2 columnas × 3
     filas, la que se ve en las capturas de referencia de Angel). Usa
@@ -2718,6 +2748,46 @@ let SPD_WHATIF={mine:{},foe:{}};
 const whatIfMine=i=>SPD_WHATIF.mine[i]||(SPD_WHATIF.mine[i]={tw:false,stage:0});
 const whatIfFoe=i=>SPD_WHATIF.foe[i]||(SPD_WHATIF.foe[i]={scarf:false,tw:false,stage:0});
 const resetSpdWhatIf=()=>{SPD_WHATIF={mine:{},foe:{}}};
+/** Vista "Detallada" de velocidad (decisión #25, sprint 3.1 de roadmap.md):
+    en vez de min–máx teórico, pesa cada franja de velocidad por los spreads
+    y naturalezas REALES de esa especie (`topEvSpreads`×`topNatures` de
+    meta.json — mismos datos que ya se muestran en "Repartos habituales" de
+    Rival, sprint 2.7). `spread` y `naturaleza` son medidos por separado en
+    la fuente, no como pares — por eso se cruzan como independientes
+    (`pct1×pct2`), no se buscan combinaciones ya emparejadas.
+    Si la especie no tiene esos datos todavía, degrada a `uniform:true` — la
+    vista tiene que poder distinguir "no sabemos, es parejo" de "sabemos que
+    es parejo", nunca inventar una distribución con aire de medida real
+    (`vision.md`, confianza calibrada). */
+function speedWeights(dex,wt){
+  const sp=S(dex); if(!sp)return null;
+  const base=sp.s[5];
+  const min=applyWhatIf(stOf(base,0,0.9),wt), max=applyWhatIf(stOf(base,SP_MAX,1.1),wt);
+  const meta=metaOf(dex);
+  const spreads=meta?.topEvSpreads||[], nats=meta?.topNatures||[];
+  if(!spreads.length||!nats.length)return {min,max,uniform:true,buckets:null,dominant:null};
+  // Spread dominante (pedido de Angel, 2026-08-06): con >=40% de uso, una
+  // franja difusa es MENOS precisa que mostrar el valor exacto de ESE
+  // spread — se muestra aparte, con la naturaleza más común como referencia
+  // (no se pondera, es solo la etiqueta del punto).
+  const top=spreads[0];
+  const natTop=nats[0];
+  const dominant=(top&&top.pct>=40)?{pct:top.pct,
+    v:applyWhatIf(stOf(base,top.sp[5],natTop?(natTop.statUp==="Speed"?1.1:natTop.statDown==="Speed"?0.9:1):1),wt),
+    nature:natTop?natTop.name:null}:null;
+  const N=5,buckets=new Array(N).fill(0);
+  let total=0;
+  for(const s of spreads)for(const n of nats){
+    const nm2=n.statUp==="Speed"?1.1:n.statDown==="Speed"?0.9:1;
+    const v=applyWhatIf(stOf(base,s.sp[5],nm2),wt);
+    const w=(s.pct||0)*(n.pct||0);
+    total+=w;
+    const idx=Math.min(N-1,Math.max(0,Math.floor((v-min)/((max-min)||1)*N)));
+    buckets[idx]+=w;
+  }
+  return {min,max,uniform:false,dominant,
+    buckets:total>0?buckets.map(w=>w/total*100):buckets};
+}
 function fullSpeedOrder(){
   // Bug real reportado por Angel (2026-08-05): esta función usaba myStat(m,5)
   // en crudo. myStat() es DELIBERADAMENTE la stat sin objeto (mismo criterio
@@ -2729,12 +2799,12 @@ function fullSpeedOrder(){
   const mine=MY.map((m,mi)=>({m,mi})).filter(x=>x.m.dex&&S(x.m.dex)).map(({m,mi})=>{
     const base=Math.floor(myStat(m,5)*(m.item==="Pañuelo Elección"?1.5:1));
     const wt=whatIfMine(mi), mg=megaSpeed(m);
-    return {me:1,mi,n:nm(myDex(m)),v:applyWhatIf(base,wt),lo:null,hi:null,
+    return {me:1,mi,dex:myDex(m),n:nm(myDex(m)),v:applyWhatIf(base,wt),lo:null,hi:null,
       megaV:mg==null?null:applyWhatIf(mg,{...wt,scarf:false}),wt};
   });
   const foes=B.team.map((f,fi)=>({f,fi})).filter(x=>x.f.dex&&S(x.f.dex)).map(({f,fi})=>{
     const r=spdRange(f),wt=whatIfFoe(fi),mg=megaSpeedFoeRange(f);
-    return {me:0,fi,n:nm(f.dex),v:applyWhatIf(r.max,wt),lo:applyWhatIf(r.min,wt),hi:applyWhatIf(r.max,wt),
+    return {me:0,fi,dex:f.dex,n:nm(f.dex),v:applyWhatIf(r.max,wt),lo:applyWhatIf(r.min,wt),hi:applyWhatIf(r.max,wt),
       megaV:mg==null?null:{min:applyWhatIf(mg.min,{...wt,scarf:false}),max:applyWhatIf(mg.max,{...wt,scarf:false})},wt};
   });
   return [...mine,...foes].sort((a,b)=>b.v-a.v);
@@ -2870,34 +2940,120 @@ function priorityAlert(mine,foes,fi,S1,worst,wv,myHp){
   return candidatos[0];
 }
 
+/** Controles "qué pasaría si" de una fila (decisión #25) — compartidos entre
+    Simple y Detallada, mismos data-attributes, mismo wire(). */
+function wcOf(x){
+  const side=x.me?"m":"f", idx=x.me?x.mi:x.fi, t=x.wt;
+  return `<div class="wc">
+    ${x.me?"":`<button class="wtog" data-wsc="${idx}" data-on="${t.scarf?1:0}">Scarf</button>`}
+    <button class="wtog" data-wtw="${side}:${idx}" data-on="${t.tw?1:0}">TW</button>
+    <div class="wstep">
+      <button data-wst="${side}:${idx}:-1">▾</button><span>${t.stage>0?"+":""}${t.stage}</span>
+      <button data-wst="${side}:${idx}:1">▴</button>
+    </div></div>`;
+}
+function vSpeedSimple(so){
+  return so.map((x,i)=>{
+    // La velocidad mega vivía como subtexto tenue bajo el NOMBRE — Angel
+    // reportó que "queda un poco escondida" (2026-08-05). Ahora va junto
+    // al número, que es lo primero que se mira, con su propio color para
+    // no confundirla con el valor real de ahora mismo.
+    const mega=x.megaV==null?"":typeof x.megaV==="number"
+      ?`<s style="color:var(--sure)">◆ mega ${x.megaV}</s>`
+      :`<s style="color:var(--sure)">◆ mega ${x.megaV.min}–${x.megaV.max}</s>`;
+    return `<div class="row" style="padding:4px 8px">
+    <b style="color:${x.me?"var(--pick)":"var(--foe-row)"}">${i+1}. ${esc(x.n)}</b>
+    <u>${x.me?x.v:x.lo+"–"+x.hi}${mega}</u>${wcOf(x)}</div>`;
+  }).join("");
+}
+/** Vista "Detallada" (sprint 3.2): eje horizontal compartido + los 6 propios
+    como chips (una vez cada uno, con línea guía implícita en su propia
+    posición X) + franjas de densidad real por rival. Diseñada con Angel en 3
+    rondas de mockup (2026-08-05/06) antes de escribir esto — ver decisions.md
+    #25 y roadmap.md "vista Detallada de velocidad". */
+function vSpeedDetail(so){
+  const mine=so.filter(x=>x.me), foes=so.filter(x=>!x.me);
+  if(!mine.length||!foes.length)
+    return `<div class="msg">Hace falta tu equipo y al menos un rival visto para esta vista.</div>`;
+  const nums=n=>Array.isArray(n)?n:[n];
+  const scaleMax=Math.max(50,...so.flatMap(x=>[
+    x.v,x.hi||x.v,
+    ...(typeof x.megaV==="number"?[x.megaV]:x.megaV?[x.megaV.min,x.megaV.max]:[]),
+  ]))*1.08;
+  const px=v=>Math.min(100,Math.max(0,v/scaleMax*100));
+
+  // Los 6 propios como chips, ordenados por velocidad, apilados en el
+  // mínimo de "pisos" que hace falta para no superponerse — se estima el
+  // ancho por longitud de texto porque esto arma un string en el servidor,
+  // no hay layout real del navegador todavía para medir (a diferencia de
+  // los mockups, que sí podían leer getBoundingClientRect()).
+  const CONT_W=640; // ancho de referencia del área del eje, en px
+  const chips=mine.slice().sort((a,b)=>a.v-b.v).map(x=>{
+    const label=`${x.n} ${x.v}`;
+    const w=20+label.length*5.4+(x.megaV!=null?26:0);
+    return {x,w,leftPct:px(x.v)};
+  });
+  const tierEdge=[];
+  for(const c of chips){
+    const leftPx=c.leftPct/100*CONT_W;
+    let tier=0;
+    while(tierEdge[tier]!==undefined&&leftPx<tierEdge[tier])tier++;
+    tierEdge[tier]=leftPx+c.w;
+    c.tier=tier;
+  }
+  const nTiers=Math.max(1,...chips.map(c=>c.tier+1));
+  const chipsHtml=chips.map(c=>{
+    const x=c.x;
+    const mega=x.megaV!=null?`<s>◆${typeof x.megaV==="number"?x.megaV:x.megaV.min+"–"+x.megaV.max}</s>`:"";
+    return `<div class="spdchip" style="left:${c.leftPct}%;top:${c.tier*16}px">
+      <b>${esc(x.n)}</b><u>${x.v}</u>${mega}</div>`;
+  }).join("");
+
+  const ticks=[0,0.25,0.5,0.75,1].map(f=>Math.round(scaleMax*f));
+  const axisHtml=ticks.map(v=>`<span style="left:${px(v)}%">${v}</span>`).join("");
+
+  const rowsHtml=foes.map(x=>{
+    const w=speedWeights(x.dex,x.wt);
+    let bars="",lab="";
+    if(!w||w.uniform){
+      bars=`<div class="seg" style="left:${px(x.lo)}%;width:${px(x.hi)-px(x.lo)}%;opacity:.55"></div>`;
+      lab=w?"sin datos de spread/naturaleza — rango teórico":"sin datos de meta";
+    }else if(w.dominant){
+      bars=`<div class="seg" style="left:${px(w.min)}%;width:${px(w.max)-px(w.min)}%;opacity:.10"></div>
+        <div class="spike" style="left:${px(w.dominant.v)}%"></div>`;
+      lab=`${w.dominant.pct}% con ${esc(w.dominant.nature||"su reparto más usado")} (${w.dominant.v})`;
+    }else{
+      const bw=(w.max-w.min)/5;
+      bars=w.buckets.map((pct,i)=>{
+        const l=w.min+bw*i;
+        return `<div class="seg" style="left:${px(l)}%;width:${px(l+bw)-px(l)}%;opacity:${Math.min(.95,.08+pct/100*1.6)}"></div>`;
+      }).join("");
+      lab="peso de spreads/naturalezas reales (Champions Battle Data)";
+    }
+    const megaBand=x.megaV?`<div class="megaband" style="left:${px(x.megaV.min)}%;width:${px(x.megaV.max)-px(x.megaV.min)}%"></div>`:"";
+    return `<div class="spdrow">
+      <b class="nm">${esc(x.n)}</b>
+      <div class="area">${bars}${megaBand}</div>
+      <u style="font-size:9.5px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--cream)">${x.lo}–${x.hi}</u>
+      ${wcOf(x)}</div>
+    <div class="dlab">${esc(lab)}${x.megaV?" · ◆ mega si evoluciona":""}</div>`;
+  }).join("");
+
+  return `<div class="spdaxis">${axisHtml}</div>
+    <div class="spdchips" style="height:${nTiers*16+14}px">${chipsHtml}</div>
+    ${rowsHtml}`;
+}
 function vPre(){
   const so=fullSpeedOrder(), th=topThreats();
   if(!so.length&&!th.length)
     return `<div class="card"><div class="msg">Escaneá al rival con ↻ y cargá tu equipo en MÍO.</div></div>`;
 
   let h=`<div class="card"><span class="hd">Quién pega primero<em>los 12, sin efectos de campo todavía</em></span>
-    ${so.map((x,i)=>{
-      // La velocidad mega vivía como subtexto tenue bajo el NOMBRE — Angel
-      // reportó que "queda un poco escondida" (2026-08-05). Ahora va junto
-      // al número, que es lo primero que se mira, con su propio color para
-      // no confundirla con el valor real de ahora mismo.
-      const mega=x.megaV==null?"":typeof x.megaV==="number"
-        ?`<s style="color:var(--sure)">◆ mega ${x.megaV}</s>`
-        :`<s style="color:var(--sure)">◆ mega ${x.megaV.min}–${x.megaV.max}</s>`;
-      const side=x.me?"m":"f", idx=x.me?x.mi:x.fi, t=x.wt;
-      // "Qué pasaría si": prueba, no cambia el ítem/estado real de nadie.
-      // Pañuelo solo tiene sentido del lado rival — el propio ya está en `x.v`.
-      const wc=`<div class="wc">
-        ${x.me?"":`<button class="wtog" data-wsc="${idx}" data-on="${t.scarf?1:0}">Scarf</button>`}
-        <button class="wtog" data-wtw="${side}:${idx}" data-on="${t.tw?1:0}">TW</button>
-        <div class="wstep">
-          <button data-wst="${side}:${idx}:-1">▾</button><span>${t.stage>0?"+":""}${t.stage}</span>
-          <button data-wst="${side}:${idx}:1">▴</button>
-        </div></div>`;
-      return `<div class="row" style="padding:4px 8px">
-      <b style="color:${x.me?"var(--pick)":"var(--foe-row)"}">${i+1}. ${esc(x.n)}</b>
-      <u>${x.me?x.v:x.lo+"–"+x.hi}${mega}</u>${wc}</div>`;
-    }).join("")}</div>`;
+    <div class="spdseg">
+      <button data-spdview="simple" data-on="${SPD_VIEW==="simple"?1:0}">Simple</button>
+      <button data-spdview="detail" data-on="${SPD_VIEW==="detail"?1:0}">Detallada</button>
+    </div>
+    ${SPD_VIEW==="detail"?vSpeedDetail(so):vSpeedSimple(so)}</div>`;
   h+=`
   <div class="card f"><span class="hd">Lo que más te puede doler<em>su mejor golpe contra tu peor respuesta</em></span>
     ${th.length?th.map(t=>{const vd=verdict(t.r,t.r.maxHP);
@@ -3456,6 +3612,8 @@ function wire(){
   on("[data-lang]",e=>{LANG=e.dataset.lang;try{localStorage.setItem("hudLang",LANG)}catch(x){}});
   on("[data-ocrt]",e=>{OCR_TARGET=e.dataset.ocrt;
     try{localStorage.setItem("hudOcrTarget",OCR_TARGET)}catch(x){}});
+  on("[data-spdview]",e=>{SPD_VIEW=e.dataset.spdview;
+    try{localStorage.setItem("hudSpdView",SPD_VIEW)}catch(x){}});
   on("[data-why]",e=>{const k=e.dataset.why;WHY_OPEN[k]=!WHY_OPEN[k]});
   on("[data-undo]",e=>undoEvent(+e.dataset.undo));
   on("[data-pp]",e=>{const k=e.dataset.pp,d=+e.dataset.d,f=B.team[B.pick];if(!f)return;

@@ -105,6 +105,9 @@ function loadEngine() {
     this.effSpd = effSpd;
     this.WEATHER_SPD_ABIL = WEATHER_SPD_ABIL;
     this.megaSpeedFoeRange = megaSpeedFoeRange;
+    this.speedWeights = speedWeights;
+    this.vSpeedDetail = vSpeedDetail;
+    this.vSpeedSimple = vSpeedSimple;
     this.applyMegaAbilities = applyMegaAbilities;
     this.abilsOf = abilsOf;
     this.myDex = myDex;
@@ -2148,6 +2151,86 @@ check("previewMatrix() devuelve null sin equipo propio o sin rival visto — no 
   const MY = E.getMY();
   MY.length = 0; MY.push(E.slot(9));
   assertEqual(E.previewMatrix(), null, "sin rival visto no hay con qué armar columnas");
+});
+
+// ── vista "Detallada" de velocidad: distribución ponderada real (sprint 3.1) ──
+console.log("\nvelocidad detallada: distribución ponderada por spread/naturaleza real:");
+
+const WT_NEUTRO = { tw: false, stage: 0, scarf: false };
+
+check("speedWeights() degrada a uniform:true cuando la especie no tiene spreads/naturalezas", () => {
+  E.setMeta(9, {}); // Blastoise sin topEvSpreads/topNatures
+  const w = E.speedWeights(9, WT_NEUTRO);
+  assert(w, "tiene que devolver algo — hay stat base aunque no haya meta");
+  assertEqual(w.uniform, true, "sin datos reales, la vista tiene que saber que no sabe (vision.md)");
+  assertEqual(w.buckets, null);
+  assertEqual(w.dominant, null);
+});
+
+check("speedWeights() pesa por spread×naturaleza — más uso en un spread + naturaleza de Velocidad da más peso a esa franja", () => {
+  E.setMeta(9, {
+    topEvSpreads: [{ sp: [0, 0, 0, 0, 0, 32], pct: 60 }, { sp: [0, 0, 0, 0, 0, 0], pct: 40 }],
+    topNatures: [{ name: "Timid", pct: 100, statUp: "Speed", statDown: "Attack" }],
+  });
+  const w = E.speedWeights(9, WT_NEUTRO);
+  assertEqual(w.uniform, false);
+  assertEqual(w.buckets.length, 5, "5 franjas de velocidad entre min y máx");
+  const suma = w.buckets.reduce((a, b) => a + b, 0);
+  assert(Math.abs(suma - 100) < 0.01, `los pesos tienen que sumar 100%, dio ${suma}`);
+  // el spread de 32 EVs (60% de uso) cae en una franja más alta que el de 0 EVs
+  const iMax = w.buckets.indexOf(Math.max(...w.buckets));
+  assert(iMax >= 2, "con 60% de uso invirtiendo a fondo en velocidad, el grueso del peso tiene que estar en la mitad alta");
+});
+
+check("speedWeights() marca un spread dominante (≥40% de uso) con su valor exacto, no solo el %", () => {
+  E.setMeta(9, {
+    topEvSpreads: [{ sp: [0, 0, 0, 0, 0, 4], pct: 58 }, { sp: [0, 0, 0, 0, 0, 32], pct: 10 }],
+    topNatures: [{ name: "Bold", pct: 90, statUp: "Defense", statDown: "Attack" }],
+  });
+  const w = E.speedWeights(9, WT_NEUTRO);
+  assert(w.dominant, "58% de uso tiene que marcarse como dominante (umbral 40%)");
+  assertEqual(w.dominant.pct, 58);
+  assertEqual(w.dominant.nature, "Bold");
+  assert(w.dominant.v >= w.min && w.dominant.v <= w.max, "el valor del dominante tiene que caer dentro del rango min–máx");
+});
+
+check("speedWeights() no marca dominante por debajo del 40% de uso", () => {
+  E.setMeta(9, {
+    topEvSpreads: [{ sp: [0, 0, 0, 0, 0, 4], pct: 35 }, { sp: [0, 0, 0, 0, 0, 32], pct: 30 }],
+    topNatures: [{ name: "Bold", pct: 90, statUp: "Defense", statDown: "Attack" }],
+  });
+  assertEqual(E.speedWeights(9, WT_NEUTRO).dominant, null);
+});
+
+check("speedWeights() respeta SPD_WHATIF: Viento Afín duplica min y máx igual que en fullSpeedOrder()", () => {
+  E.setMeta(9, {});
+  const base = E.speedWeights(9, WT_NEUTRO);
+  const conViento = E.speedWeights(9, { tw: true, stage: 0, scarf: false });
+  assertEqual(conViento.min, base.min * 2);
+  assertEqual(conViento.max, base.max * 2);
+});
+
+check("speedWeights() devuelve null para una especie que no existe", () => {
+  assertEqual(E.speedWeights(999999, WT_NEUTRO), null);
+});
+
+check("vSpeedDetail() renderiza eje + chips propios + filas rivales sin explotar", () => {
+  E.resetSpdWhatIf();
+  const B = E.getB();
+  B.team = [6, 445].map((d) => E.mkFoe(d, 0.9));
+  const my = E.getMY(); my.length = 0; my.push(E.slot(1000), E.slot(260));
+  const html = E.vSpeedDetail(E.fullSpeedOrder());
+  assert(html.includes('class="spdaxis"'), "tiene que traer el eje");
+  assert((html.match(/class="spdchip"/g) || []).length === 2, "un chip por cada propio con especie cargada");
+  assert((html.match(/class="spdrow"/g) || []).length === 2, "una fila por cada rival visto");
+  assert(html.includes("Gholdengo") && html.includes("Swampert"), "los nombres propios tienen que aparecer en los chips");
+});
+
+check("vSpeedDetail() pide equipo y rival antes de renderizar filas", () => {
+  const B = E.getB();
+  B.team = [];
+  const my = E.getMY(); my.length = 0;
+  assert(E.vSpeedDetail([]).includes("Hace falta"), "sin datos, tiene que decirlo en vez de renderizar vacío");
 });
 
 // ── coherencia de números de Pokédex entre SPD y los datos reales ──
