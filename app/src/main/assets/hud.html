@@ -196,6 +196,14 @@ input[type=text]{width:100%;background:rgba(0,0,0,.30);color:var(--cream);border
 .abc button:active{background:var(--pick);color:var(--ink)}
 .f2{display:grid;grid-template-columns:1fr 1fr;gap:4px}
 .f3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}
+/* CALC (docs/calc.md): chips de selección rápida de los 12 de la partida —
+   "todo lo que el HUD ya sabe, se toca, no se tipea". */
+.qprow{display:flex;flex-wrap:wrap;gap:3px;margin-top:3px}
+.qp{font-size:8px;font-weight:800;padding:3px 7px;border-radius:999px;
+  background:rgba(255,255,255,.09);color:var(--dim)}
+.qp[data-on="1"]{background:var(--pick);color:var(--ink)}
+.cswap{width:22px;height:22px;border-radius:999px;background:rgba(255,255,255,.12);
+  color:var(--cream);font-size:12px;float:right}
 .cap{font-size:8px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;
   color:var(--dim);margin:0 0 2px 4px}
 .btn{width:100%;padding:9px;border-radius:999px;background:var(--ally-pill);
@@ -3066,6 +3074,21 @@ function vSpeedDetail(so){
     <div class="spdchips" style="height:${nTiers*16+14}px">${chipsHtml}</div>
     ${rowsHtml}`;
 }
+/** ¿Este dex es uno de los 12 de la partida? Si es un propio, objeto/
+    habilidad vienen de lo que ya está cargado; si es un rival, solo lo que
+    ya está CONFIRMADO (nunca la estimación de meta — acá no hay marca de
+    confianza para mostrar de dónde salió el dato, así que mostrar algo no
+    confirmado sería fingir una certeza que no hay, decisión #24).
+    Ver docs/calc.md — "todo lo que el HUD ya sabe, lo completa solo". */
+function calcTeamMatch(dex){
+  const mine=MY.find(m=>m.dex&&myDex(m)===dex);
+  if(mine)return {item:mine.item&&mine.item!=="—"?mine.item:null,
+    abil:mine.abil&&mine.abil!=="—"?mine.abil:null,side:"mine"};
+  const foe=B.team.find(f=>f.dex===dex);
+  if(foe)return {item:foe.itemSure&&foe.item?foe.item:null,
+    abil:foe.abil||null,side:"foe"};
+  return null;
+}
 function vPre(){
   const so=fullSpeedOrder(), th=topThreats();
   if(!so.length&&!th.length)
@@ -3528,24 +3551,49 @@ function vMine(){
   return h;
 }
 
+/** Chips de los 12 de la partida (tus 6 + los 6 del rival) para elegir de un
+    toque, en vez de tipear en la lista completa de la Pokédex — la lista
+    completa sigue disponible debajo, como escape hatch. */
+function quickPickChips(side,current){
+  const chip=(d,cls)=>`<button class="qp ${cls}" data-cpick="${side}:${d}" data-on="${d===current?1:0}">${esc(nm(d))}</button>`;
+  const mine=MY.filter(m=>m.dex&&S(myDex(m))).map(m=>chip(myDex(m),"")).join("");
+  const foes=B.team.filter(f=>f.dex&&S(f.dex)).map(f=>chip(f.dex,"")).join("");
+  return `<div class="qprow">${mine}</div><div class="qprow">${foes}</div>`;
+}
 function vCalc(){
-  const c=window.__c||(window.__c={atk:MY[0].dex,def:B.team[B.foe[0]]?.dex||445,move:"Terremoto",
-    aSP:32,dSP:0,dHP:0,aNat:1.1,dNat:1,crit:0,cur:100});
-  const r=calc({...c,...ctxFor("me"),doubles:B.doubles});
+  const c=window.__c||(window.__c={atk:MY[0]?.dex||DEXN[0],def:B.team[B.foe[0]]?.dex||DEXN[0],move:"Terremoto",
+    aSP:32,dSP:0,dHP:0,aNat:1.1,dNat:1,crit:0,cur:100,aItemOv:null,dItemOv:null,aAbOv:null,dAbOv:null});
+  const aMatch=calcTeamMatch(c.atk), dMatch=calcTeamMatch(c.def);
+  const aItem=c.aItemOv!==null?c.aItemOv:(aMatch?.item||"—");
+  const dItem=c.dItemOv!==null?c.dItemOv:(dMatch?.item||"—");
+  const aAb=c.aAbOv!==null?c.aAbOv:(aMatch?.abil||abilsOf(c.atk)[0]);
+  const dAb=c.dAbOv!==null?c.dAbOv:(dMatch?.abil||abilsOf(c.def)[0]);
+  const r=calc({...c,aItem,dItem,aAb,dAb,...ctxFor("me"),doubles:B.doubles});
   const cur=r?Math.floor(r.maxHP*c.cur/100):0;
+  const auto=(m,ov)=>m&&ov===null?` <em style="text-transform:none;font-weight:600;opacity:.7">auto: ${esc(m.side==="mine"?"tuyo":"rival")}</em>`:"";
   return `<div class="cols">
-    <div class="card"><span class="hd">Atacante</span>
-      ${sel(DEXN,c.atk,x=>S(x).n,v=>c.atk=+v,"Atacante")}
+    <div class="card"><span class="hd">Atacante<button class="cswap" data-cswap>⇄</button></span>
+      ${quickPickChips("a",c.atk)}
+      <div style="margin-top:4px">${sel(DEXN,c.atk,x=>S(x).n,v=>{c.atk=+v;c.aItemOv=null;c.aAbOv=null},"Otro Pokémon")}</div>
       <div style="margin-top:3px">${sel(dmgPool(c.atk),c.move,mvName,v=>c.move=v,"Movimiento",decoMove)}</div>
       <div class="f2" style="margin-top:3px">
         ${sel([...Array(33).keys()],c.aSP,x=>x+" SP",v=>c.aSP=+v,"SP ofensivo")}
-        ${sel([1.1,1,0.9],c.aNat,x=>x==1.1?"Sube":x==1?"Neutra":"Baja",v=>c.aNat=+v,"Alineación")}</div></div>
+        ${sel([1.1,1,0.9],c.aNat,x=>x==1.1?"Sube":x==1?"Neutra":"Baja",v=>c.aNat=+v,"Alineación")}</div>
+      <div class="cap" style="margin-top:4px">Objeto${auto(aMatch,c.aItemOv)}</div>
+      ${sel(ITEMS_A(),aItem,itName,v=>c.aItemOv=v,"Objeto")}
+      <div class="cap" style="margin-top:4px">Habilidad${auto(aMatch,c.aAbOv)}</div>
+      ${sel(abilsOf(c.atk),aAb,abilName,v=>c.aAbOv=v,"Habilidad")}</div>
     <div class="card f"><span class="hd">Defensor</span>
-      ${sel(DEXN,c.def,x=>S(x).n,v=>c.def=+v,"Defensor")}
+      ${quickPickChips("d",c.def)}
+      <div style="margin-top:4px">${sel(DEXN,c.def,x=>S(x).n,v=>{c.def=+v;c.dItemOv=null;c.dAbOv=null},"Otro Pokémon")}</div>
       <div class="f2" style="margin-top:3px">
         ${sel([...Array(33).keys()],c.dHP,x=>"PS "+x,v=>c.dHP=+v,"SP en PS")}
         ${sel([...Array(33).keys()],c.dSP,x=>"Def "+x,v=>c.dSP=+v,"SP defensivo")}</div>
-      <div style="margin-top:3px">${sel([1.1,1,0.9],c.dNat,x=>x==1.1?"Sube":x==1?"Neutra":"Baja",v=>c.dNat=+v,"Alineación")}</div></div></div>
+      <div style="margin-top:3px">${sel([1.1,1,0.9],c.dNat,x=>x==1.1?"Sube":x==1?"Neutra":"Baja",v=>c.dNat=+v,"Alineación")}</div>
+      <div class="cap" style="margin-top:4px">Objeto${auto(dMatch,c.dItemOv)}</div>
+      ${sel(ITEMS_A(),dItem,itName,v=>c.dItemOv=v,"Objeto")}
+      <div class="cap" style="margin-top:4px">Habilidad${auto(dMatch,c.dAbOv)}</div>
+      ${sel(abilsOf(c.def),dAb,abilName,v=>c.dAbOv=v,"Habilidad")}</div></div>
   <div class="card d"><span class="hd">Resultado</span>
     ${hpBar("calc","PS del defensor",c.cur)}
     ${rowFx(nm(c.atk)+" → "+nm(c.def),mvName(c.move),verdict(r,cur),r,cur)}
@@ -3736,6 +3784,20 @@ function wire(){
     save()};
 
   on("[data-c2]",e=>window.__c[e.dataset.c2]=window.__c[e.dataset.c2]?0:1);
+  // CALC (docs/calc.md): chip de uno de los 12 de la partida — un toque en
+  // vez de tipear en la lista completa. Cambiar de Pokémon resetea el
+  // override de objeto/habilidad: el que estaba tipeado a mano era para el
+  // Pokémon anterior, no tiene sentido arrastrarlo al nuevo.
+  on("[data-cpick]",e=>{const[side,d]=e.dataset.cpick.split(":"),c=window.__c;if(!c)return;
+    if(side==="a"){c.atk=+d;c.aItemOv=null;c.aAbOv=null}
+    else{c.def=+d;c.dItemOv=null;c.dAbOv=null}});
+  on("[data-cswap]",()=>{const c=window.__c;if(!c)return;
+    [c.atk,c.def]=[c.def,c.atk];
+    [c.aSP,c.dSP]=[c.dSP,c.aSP]; // el HP del defensor no tiene equivalente del lado ofensivo, no se cruza
+    [c.aNat,c.dNat]=[c.dNat,c.aNat];
+    [c.aItemOv,c.dItemOv]=[c.dItemOv,c.aItemOv];
+    [c.aAbOv,c.dAbOv]=[c.dAbOv,c.aAbOv];
+    if(!dmgPool(c.atk).includes(c.move))c.move=dmgPool(c.atk)[0]||c.move});
 
   const to=$("#tOcr");if(to)to.onclick=()=>{keep();buzz(1);
     if(has)Android.scanOwnTeam();

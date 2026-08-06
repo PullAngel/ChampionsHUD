@@ -293,6 +293,19 @@ Con la Fase 2 cerrada, el trabajo de esta fecha no encaja en un sprint numerado 
 3. **Números de stats pegados** ("1550" en vez de HP 155 + inversión 0): `numerosDeFila()` separa los tokens usando los 5 casos reales de la captura de Angel como referencia.
 4. **Captura del equipo rival confunde especies** (Aegislash↔Floette, Mimikyu↔Milotic, con 98% de confianza reportada) — se difirió en su momento por ser Kotlin; **resuelto en la revisión final de OCR del 2026-08-06**, ver más abajo.
 
+### CALC: análisis + primer incremento táctil (2026-08-06)
+
+Angel pidió repensar CALC con nivel de detalle de la calculadora de Showdown pero pensada para toques, con curva de aprendizaje más amable, precargada con el equipo propio y el rival ya escaneado — pidió explícitamente analizar primero, documentar, y recién después programar. Análisis completo (auditoría de fortalezas/debilidades de Showdown, principio de diseño, qué queda pendiente) en [`docs/calc.md`](./calc.md).
+
+**Hecho esta sesión:**
+- **Chips de los 12 de la partida** (tus 6 + los 6 del rival) para elegir Atacante/Defensor de un toque, con la lista completa de la Pokédex como escape hatch debajo (para el caso "quiero probar con algo que no está en la partida").
+- **Autocompletado de objeto/habilidad** desde el Pokémon real elegido (`calcTeamMatch()`) — propio: lo que ya está cargado; rival: solo lo CONFIRMADO (`itemSure`), nunca la estimación de meta sin marca de confianza (decisión #24). Con override manual explícito, nunca bloqueado — tocar el selector de objeto/habilidad pasa a modo manual para ESE cálculo.
+- **Botón ⇄** para invertir atacante/defensor de un toque, con el resto de los campos relevantes (SP, naturaleza, overrides) cruzados también.
+- **Hallazgo real (no un bug encontrado, una CAPACIDAD del motor nunca conectada a la UI):** `calc()` ya soportaba objetos y habilidades desde antes de esta sesión (`aItem`/`dItem`/`aAb`/`dAb` — ítems como Vidasfera/Cinta Fuerte, habilidades como Levitate/Multiscale/Guts, todo ya modelado), pero `vCalc()` nunca pasaba esos campos — la calculadora manual literalmente no podía calcular el efecto de un objeto o una habilidad, aunque el motor sí supiera hacerlo. La causa era 100% de UI, no de motor.
+- **Tests:** 3 nuevos (193 en total) — `calcTeamMatch()` sigue al propio por su dex efectivo (mega incluida, no el dex base); del lado rival respeta `itemSure` y no muestra una estimación como si fuera un hecho; devuelve `null` para una especie fuera de la partida. Verificado en navegador real: autocompletado mostrando "auto: tuyo"/"auto: rival" sin tocar nada, cambio de chip resetea los overrides del Pokémon anterior, botón ⇄ cruza los dos lados correctamente.
+
+**Pendiente, documentado en `calc.md` sección 5:** reparto de EVs por slider de toque (hoy sigue siendo una lista `sel()` numérica), duplicar un cálculo para comparar variantes, exponer el multiplicador de daño repartido en dobles como opción visible, estado alterado del atacante/defensor.
+
 ### "Probable que traiga" con movimientos probables (2026-08-06)
 
 Angel pidió que el panel "Probable que traiga" (Previa) muestre también los movimientos que más suele traer cada rival, "para tomar mejores decisiones teniendo la pestaña de previa abierta, en el team preview" — mismo dato que ya cita "Repartos habituales" en Rival (`metaOf(dex).moves`, uso real medido), puesto donde ayuda a decidir sin cambiar de pestaña. `probableMoves(dex,n)`, hecha.

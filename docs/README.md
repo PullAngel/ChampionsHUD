@@ -14,6 +14,7 @@ Esta carpeta es la fuente de verdad del proyecto. Antes de diseñar o implementa
 | [`audit.md`](./audit.md) | Auditoría técnica del estado del código: qué funciona, qué está roto, deuda técnica. |
 | [`roadmap.md`](./roadmap.md) | Fases de desarrollo, en orden, con criterios de salida de cada una. |
 | [`future.md`](./future.md) | Ideas deliberadamente pospuestas (Premium, licencias, ads, sync, multi-cliente). No condicionan la arquitectura actual, pero están documentadas para no perderlas ni improvisarlas. |
+| [`calc.md`](./calc.md) | Análisis y diseño de la pestaña CALC: auditoría de la calculadora de Showdown, principios para la versión táctil de Champions HUD, qué se implementó y qué queda. |
 
 ## Cómo usar esta documentación
 

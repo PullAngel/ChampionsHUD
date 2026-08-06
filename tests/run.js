@@ -110,6 +110,7 @@ function loadEngine() {
     this.speedWeights = speedWeights;
     this.vSpeedDetail = vSpeedDetail;
     this.vSpeedSimple = vSpeedSimple;
+    this.calcTeamMatch = calcTeamMatch;
     this.applyMegaAbilities = applyMegaAbilities;
     this.abilsOf = abilsOf;
     this.myDex = myDex;
@@ -2266,6 +2267,46 @@ check("vSpeedDetail() pide equipo y rival antes de renderizar filas", () => {
   B.team = [];
   const my = E.getMY(); my.length = 0;
   assert(E.vSpeedDetail([]).includes("Hace falta"), "sin datos, tiene que decirlo en vez de renderizar vacío");
+});
+
+// ── CALC (docs/calc.md): autocompletar objeto/habilidad de los 12 de la partida ──
+console.log("\nCALC: autocompletar desde el equipo cargado (docs/calc.md):");
+
+check("calcTeamMatch() trae el ítem y la habilidad reales de un propio, por su dex EFECTIVO (mega incluido)", () => {
+  const my = E.getMY(); my.length = 0;
+  const m = E.slot(260); m.item = "Swampertite"; m.abil = "torrent"; m.mega = false;
+  my.push(m);
+  const antes = E.calcTeamMatch(260);
+  assertEqual(antes.side, "mine");
+  assertEqual(antes.item, "Swampertite");
+  assertEqual(antes.abil, "torrent");
+  // Al megaevolucionar, myDex(m) cambia — calcTeamMatch tiene que seguirlo,
+  // no quedarse pegado al dex base (mismo criterio que el resto del HUD:
+  // nunca usar m.dex crudo cuando hay mega de por medio).
+  m.mega = true;
+  const md = E.myDex(m);
+  const despues = E.calcTeamMatch(md);
+  assertEqual(despues.side, "mine", "tiene que encontrar al propio por su dex de mega");
+});
+
+check("calcTeamMatch() del lado rival solo trae lo CONFIRMADO, nunca la estimación de meta", () => {
+  const B = E.getB();
+  B.team = [E.mkFoe(9, 0.9)];
+  B.team[0].item = "Concha Rasposa"; B.team[0].itemSure = false; // visto pero NO confirmado
+  B.team[0].abil = "torrent";
+  let m = E.calcTeamMatch(9);
+  assertEqual(m.item, null, "sin itemSure, no se puede mostrar como si fuera un hecho — decisión #24");
+  assertEqual(m.abil, "torrent", "la habilidad no tiene el mismo campo *Sure — se toma tal cual, igual que el resto del HUD");
+  B.team[0].itemSure = true;
+  m = E.calcTeamMatch(9);
+  assertEqual(m.item, "Concha Rasposa", "confirmado, ahora sí");
+});
+
+check("calcTeamMatch() devuelve null para una especie que no está en la partida", () => {
+  const B = E.getB();
+  B.team = [E.mkFoe(9, 0.9)];
+  const my = E.getMY(); my.length = 0; my.push(E.slot(260));
+  assertEqual(E.calcTeamMatch(445), null);
 });
 
 // ── coherencia de números de Pokédex entre SPD y los datos reales ──
