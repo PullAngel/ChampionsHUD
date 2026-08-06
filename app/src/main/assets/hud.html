@@ -3107,6 +3107,31 @@ function calcTeamMatch(dex){
     salir. calc() ya sabe aplicar quemadura al daño físico (`o.aSta`), pero
     CALC nunca lo exponía: este es el mismo hallazgo de objeto/habilidad
     (docs/calc.md) — el motor sabía, la UI no preguntaba. */
+/** ── CALC FUERA DE COMBATE (pedido de Angel, 2026-08-06) ──
+    CALC tiene que servir para dos cosas distintas: consultar en medio de una
+    partida (donde heredar el clima/terreno/pantallas actuales es justo lo que
+    se quiere) y hacer cuentas armando equipo (donde ese mismo estado, si
+    quedó de una partida anterior, envenena el resultado en silencio).
+    Medido antes de escribir esto, con una lluvia sobrante de un combate
+    previo: un Acua Jet pasaba de 36 a 54 de daño (+50%). Y CALC no mostraba
+    nada de eso — el número cambiaba sin explicación, que es exactamente la
+    degradación silenciosa que `vision.md` prohíbe.
+    `field:"battle"` (default) mantiene el comportamiento de siempre;
+    `"neutral"` limpia SOLO lo transitorio. El formato (dobles/individual) no
+    se toca: es una preferencia de Ajustes, no un residuo de combate. */
+const calcFieldCtx=c=>c&&c.field==="neutral"
+  ? {doubles:B.doubles,weather:null,terrain:null,screen:false}
+  : {...ctxFor("me"),doubles:B.doubles};
+/** Qué efectos de campo hay activos ahora mismo, en texto. "sin efectos"
+    cuando no hay ninguno — nunca vacío: que el jugador pueda confirmar de un
+    vistazo que el número no trae nada escondido. */
+function calcFieldLabel(){
+  const p=[];
+  if(B.weather)p.push(B.weather);
+  if(B.terrain)p.push("campo "+B.terrain);
+  if(B.screen.them>0)p.push("pantalla rival");
+  return p.length?p.join(" · "):"sin efectos";
+}
 function calcActiveStatus(dex){
   if(MY[B.mine[0]]&&myDex(MY[B.mine[0]])===dex)return B.act.m0?.sta||null;
   if(MY[B.mine[1]]&&myDex(MY[B.mine[1]])===dex)return B.act.m1?.sta||null;
@@ -3583,7 +3608,11 @@ function quickPickChips(side,current){
   const chip=(d,cls)=>`<button class="qp ${cls}" data-cpick="${side}:${d}" data-on="${d===current?1:0}">${esc(nm(d))}</button>`;
   const mine=MY.filter(m=>m.dex&&S(myDex(m))).map(m=>chip(myDex(m),"")).join("");
   const foes=B.team.filter(f=>f.dex&&S(f.dex)).map(f=>chip(f.dex,"")).join("");
-  return `<div class="qprow">${mine}</div><div class="qprow">${foes}</div>`;
+  // Las dos filas eran visualmente idénticas: sin etiqueta, no se sabía cuál
+  // era tu equipo y cuál el del rival — sobre todo usando CALC fuera de
+  // combate, donde el "rival" puede ser el equipo de ejemplo.
+  return `<div class="cap" style="margin-top:3px">Tuyos</div><div class="qprow">${mine}</div>
+    <div class="cap" style="margin-top:3px">Rivales</div><div class="qprow">${foes}</div>`;
 }
 /** Slider táctil para un SP de CALC — mismo widget visual que ya usa
     "Reparto de puntos" en TUYO (`.sp`/`.bar`/`.bg`/`.fl`), reusado en vez de
@@ -3596,7 +3625,8 @@ const calcSlider=(label,key,val)=>`<div class="sp"><b>${esc(label)}</b>
   <u>${val}</u></div>`;
 function vCalc(){
   const c=window.__c||(window.__c={atk:MY[0]?.dex||DEXN[0],def:B.team[B.foe[0]]?.dex||DEXN[0],move:"Terremoto",
-    aSP:32,dSP:0,dHP:0,aNat:1.1,dNat:1,crit:0,cur:100,aItemOv:null,dItemOv:null,aAbOv:null,dAbOv:null,aStaOv:null});
+    aSP:32,dSP:0,dHP:0,aNat:1.1,dNat:1,crit:0,cur:100,aItemOv:null,dItemOv:null,aAbOv:null,dAbOv:null,aStaOv:null,
+    field:"battle"});
   const aMatch=calcTeamMatch(c.atk), dMatch=calcTeamMatch(c.def);
   const aItem=c.aItemOv!==null?c.aItemOv:(aMatch?.item||"—");
   const dItem=c.dItemOv!==null?c.dItemOv:(dMatch?.item||"—");
@@ -3605,7 +3635,7 @@ function vCalc(){
   const aStaAuto=calcActiveStatus(c.atk);
   const aStaSel=c.aStaOv!==null?c.aStaOv:(aStaAuto||"—");
   const aSta=aStaSel==="—"?null:aStaSel;
-  const r=calc({...c,aItem,dItem,aAb,dAb,aSta,...ctxFor("me"),doubles:B.doubles});
+  const r=calc({...c,aItem,dItem,aAb,dAb,aSta,...calcFieldCtx(c)});
   const cur=r?Math.floor(r.maxHP*c.cur/100):0;
   const auto=(m,ov)=>m&&ov===null?` <em style="text-transform:none;font-weight:600;opacity:.7">auto: ${esc(m.side==="mine"?"tuyo":"rival")}</em>`:"";
   const autoSta=c.aStaOv===null&&aStaAuto?` <em style="text-transform:none;font-weight:600;opacity:.7">auto: activo ahora</em>`:"";
@@ -3636,6 +3666,13 @@ function vCalc(){
     ${hpBar("calc","PS del defensor",c.cur)}
     ${rowFx(nm(c.atk)+" → "+nm(c.def),mvName(c.move),verdict(r,cur),r,cur)}
     <div class="pills" style="margin-top:5px"><button class="p" data-c2="crit" data-on="${c.crit?1:0}">Crítico</button></div>
+    <div class="cap" style="margin-top:6px">Efectos de campo</div>
+    <div class="pills">
+      <button class="p" data-cfield="battle" data-on="${c.field!=="neutral"?1:0}">Los del combate<em>${esc(calcFieldLabel())}</em></button>
+      <button class="p" data-cfield="neutral" data-on="${c.field==="neutral"?1:0}">Ninguno</button></div>
+    <div class="msg" style="margin-top:4px">${c.field==="neutral"
+      ?"Cuenta limpia, sin clima ni pantallas — para armar equipo fuera de combate."
+      :"Usa el clima, el terreno y las pantallas que marcaste en CAMPO."}</div>
     ${B.doubles&&mv(c.move)?.sp?`<div class="msg" style="margin-top:5px">Formato Dobles (Ajustes) y este movimiento pega a los dos rivales: el daño ya viene con el ×0.75 de repartirlo.</div>`:""}</div>`;
 }
 
@@ -3834,6 +3871,7 @@ function wire(){
     save()};
 
   on("[data-c2]",e=>window.__c[e.dataset.c2]=window.__c[e.dataset.c2]?0:1);
+  on("[data-cfield]",e=>{if(window.__c)window.__c.field=e.dataset.cfield});
   // CALC (docs/calc.md): chip de uno de los 12 de la partida — un toque en
   // vez de tipear en la lista completa. Cambiar de Pokémon resetea el
   // override de objeto/habilidad: el que estaba tipeado a mano era para el

@@ -112,6 +112,8 @@ function loadEngine() {
     this.vSpeedSimple = vSpeedSimple;
     this.calcTeamMatch = calcTeamMatch;
     this.calcActiveStatus = calcActiveStatus;
+    this.calcFieldCtx = calcFieldCtx;
+    this.calcFieldLabel = calcFieldLabel;
     this.applyMegaAbilities = applyMegaAbilities;
     this.abilsOf = abilsOf;
     this.myDex = myDex;
@@ -2363,6 +2365,47 @@ check("calcActiveStatus() encuentra el estado del rival activo en f0 o f1", () =
   B.act = { f0: { sta: "paralizado" }, f1: { sta: null } };
   assertEqual(E.calcActiveStatus(9), "paralizado");
   assertEqual(E.calcActiveStatus(6), null);
+});
+
+// Pedido de Angel (2026-08-06): CALC tiene que servir también fuera de
+// combate, armando equipo. Antes heredaba SIEMPRE clima/terreno/pantallas de
+// B, sin decirlo: medido, una lluvia sobrante de una partida anterior subía
+// un Acua Jet de 36 a 54 (+50%) sin ninguna indicación en pantalla.
+check("calcFieldCtx() en modo 'battle' hereda el campo del combate", () => {
+  const B = E.getB();
+  B.weather = "lluvia"; B.terrain = null; B.screen = { me: 0, them: 5 };
+  const ctx = E.calcFieldCtx({ field: "battle" });
+  assertEqual(ctx.weather, "lluvia");
+  assertEqual(ctx.screen, true, "la pantalla del rival aplica al daño que le hacés");
+});
+
+check("calcFieldCtx() en modo 'neutral' limpia SOLO lo transitorio, no el formato", () => {
+  const B = E.getB();
+  B.weather = "lluvia"; B.terrain = "eléctrico"; B.screen = { me: 0, them: 5 };
+  B.doubles = true;
+  const ctx = E.calcFieldCtx({ field: "neutral" });
+  assertEqual(ctx.weather, null);
+  assertEqual(ctx.terrain, null);
+  assertEqual(ctx.screen, false);
+  assertEqual(ctx.doubles, true,
+    "dobles/individual es una preferencia de Ajustes, no un residuo de combate: no se limpia");
+});
+
+check("calcFieldCtx() sin estado (primera vez que se abre CALC) hereda, no rompe", () => {
+  const B = E.getB();
+  B.weather = "sol"; B.screen = { me: 0, them: 0 };
+  assertEqual(E.calcFieldCtx(null).weather, "sol");
+  assertEqual(E.calcFieldCtx(undefined).weather, "sol");
+});
+
+check("calcFieldLabel() nombra lo que está activo, y dice 'sin efectos' en vez de quedar vacío", () => {
+  const B = E.getB();
+  B.weather = null; B.terrain = null; B.screen = { me: 0, them: 0 };
+  assertEqual(E.calcFieldLabel(), "sin efectos",
+    "nunca vacío: el jugador tiene que poder confirmar que el número no trae nada escondido");
+  B.weather = "lluvia"; B.screen = { me: 0, them: 5 };
+  const l = E.calcFieldLabel();
+  assert(l.includes("lluvia") && l.includes("pantalla"), `debería nombrar los dos, dio "${l}"`);
 });
 
 check("calcActiveStatus() devuelve null para un Pokémon que no está activo (en banca)", () => {

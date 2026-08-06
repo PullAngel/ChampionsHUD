@@ -41,6 +41,18 @@ Concretamente:
 - **Daño repartido en dobles, visible.** `calc()` ya aplicaba el ×0.75 (`o.doubles&&m.sp`) desde antes de esta sesión, pero no había ninguna indicación en pantalla de que ya estaba aplicado — con Individual seleccionado en Ajustes, el mismo cálculo daba un número distinto sin explicación visible. Ahora, cuando el formato es Dobles y el movimiento elegido pega a los dos rivales, el Resultado muestra una nota explícita.
 - **Reparto de SP por slider de toque**, reusando el widget visual que "Reparto de puntos" (TUYO) ya tenía (`.sp`/`.bar`/`.bg`/`.fl`) en vez de la lista `sel()` numérica que obligaba a abrir una hoja de 33 opciones para mover un solo número. `calcSlider()` genera el mismo widget apuntando a `window.__c` en vez de al Pokémon en edición — con cuidado explícito de no colisionar con el slider real de TUYO, que comparte las mismas clases CSS (`inp.dataset.sp` vs `inp.dataset.cev` se distinguen en el handler compartido).
 
+## 4.1 Uso fuera de combate (2026-08-06)
+
+Angel preguntó si CALC servía también **fuera de batalla**, para armar equipo. Se probó antes de responder, y la respuesta era "corre, pero no es confiable": heredaba **siempre** el clima, terreno y pantallas de `B` (el estado de la partida) sin ninguna indicación en pantalla. Medido: con una lluvia que quedó de un combate anterior, un Acua Jet pasaba de 36 a 54 de daño (+50%); con una pantalla rival vieja, bajaba de 36 a 24. El número cambiaba y no había forma de saber por qué — la degradación silenciosa que `vision.md` prohíbe, en la única pantalla del HUD que es puro cálculo manual.
+
+**Resuelto con un control explícito de efectos de campo**, no con un "modo fuera de combate" separado (que hubiera duplicado la pantalla entera para un solo eje de diferencia):
+- **"Los del combate"** (default): comportamiento de siempre, y ahora **muestra cuáles** están activos (`calcFieldLabel()` → "lluvia · pantalla rival", o "sin efectos" cuando no hay ninguno — nunca vacío, para que se pueda confirmar de un vistazo que el número no trae nada escondido).
+- **"Ninguno"**: cuenta limpia para armar equipo. Limpia **solo lo transitorio** (clima/terreno/pantallas). El formato dobles/individual **no** se toca: es una preferencia de Ajustes, no un residuo de combate.
+
+También se etiquetaron las dos filas de chips ("Tuyos" / "Rivales"), que eran visualmente idénticas — importa más fuera de combate, donde el "rival" puede ser el equipo de ejemplo por defecto y no uno escaneado de verdad.
+
+**Nota de método:** la primera verificación de esto casi da un falso negativo. El escenario de prueba tenía lluvia *y* pantalla a la vez, y en dobles la pantalla es ×2/3 — que contra el ×1.5 de la lluvia da exactamente ×1.0, así que el daño salía idéntico en los dos modos y parecía que el toggle no hacía nada. Se aisló cada efecto por separado (36 → 54 con lluvia sola, 36 → 24 con pantalla sola) antes de concluir nada. Vale como recordatorio: un test que da "sin diferencia" puede estar midiendo dos efectos que se cancelan, no la ausencia de efecto.
+
 ## 5. Lo que queda para una próxima sesión
 
 - **Duplicar un cálculo** para comparar variantes (objeto A vs. objeto B) sin rearmar todo — necesita decidir dónde vive el historial (¿por turno? ¿por sesión?) antes de escribir código, no es una decisión técnica menor. Es lo único que queda de esta lista: el resto de los puntos identificados en el análisis original ya está resuelto.
