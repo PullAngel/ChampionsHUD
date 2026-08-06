@@ -35,7 +35,9 @@ Preguntale a Angel antes de asumir. No se resuelve una ambigüedad de producto c
 
 ## Estado del código base
 
-Ver `docs/audit.md` para el detalle completo. En resumen: la lógica de combate vive en `hud.html` (JS plano, sin módulos — decisión deliberada, ver `docs/decisions.md` #18), el cascarón Android en Kotlin (`MainActivity`, `OverlayService`, `ScreenCapture`, `SpriteMatcher`, `Storage`). La Fase 0 (estabilización) se completó — no asumir que sigue vigente sin chequear `docs/roadmap.md`.
+Ver `docs/audit.md` para el detalle completo. En resumen: la lógica de combate vive en `hud.html` (JS plano, sin módulos — decisión deliberada, ver `docs/decisions.md` #18), el cascarón Android en Kotlin (`MainActivity`, `OverlayService`, `ScreenCapture`, `SpriteMatcher`, `TeamOCR`, `Storage`). Las Fases 0, 1 y 2 están cerradas (2026-07-31 / 08-03 / 08-04); desde entonces el trabajo va por pedidos de Angel contra uso real, documentado en `docs/roadmap.md` bajo "Post-Fase 2" — chequear ahí antes de asumir en qué anda el proyecto.
+
+**Trampa recurrente, encontrada tres veces:** `meta.json` guarda movimientos en **inglés**, la tabla `MV` de `hud.html` está keyeada en **español**. Comparar directo nunca matchea y falla en silencio. Cualquier código que consuma `meta.json` tiene que pasar por `findMove()` (o `MV[k][7]` para ir al revés). Ver `docs/audit.md` §7 punto 0.b.
 
 ## Documentación
 
@@ -50,5 +52,6 @@ Ver `docs/audit.md` para el detalle completo. En resumen: la lógica de combate 
 | `docs/audit.md` | Estado real del código |
 | `docs/roadmap.md` | En qué fase estamos y qué sigue |
 | `docs/future.md` | Lo que se pospuso a propósito |
+| `docs/calc.md` | La pestaña CALC: análisis de calculadoras de daño, diseño táctil, qué falta |
 
 Si actualizás alguno de estos documentos como parte de un cambio, hacelo en el mismo commit que el código al que corresponde — esta documentación es la que reemplaza la memoria de sesiones de chat pasadas.

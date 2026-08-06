@@ -27,7 +27,7 @@ Sin features nuevas. Objetivo: que la auditoría, si se re-ejecutara hoy, no enc
 
 **Criterio de salida: cumplido, 2026-07-31.** Los 8 ítems están cerrados (7 resueltos con código, 1 — la modularización — cerrado como decisión explícita de no hacerlo, `decisions.md` #18). Todos los hallazgos de `audit.md` §5 que describían comportamiento incorrecto están resueltos, y hay pruebas (`tests/run.js`, `validate_data.py`) que impedirían que se reintroduzcan en silencio. **Fase 0 completa — el proyecto pasa a Fase 1.**
 
-## Fase 1 — Reducir la fricción crítica de uso (fase actual)
+## Fase 1 — Reducir la fricción crítica de uso — ~~**CERRADA, 2026-08-03**~~
 
 **Reformulada el 2026-07-31** tras revisar el primer intento con Angel: la importación de equipo por texto no era lo que esperaba — quiere captura automática (OCR) de la pantalla "View Details" del juego, como ya funciona para el rival en team preview. Se replanteó el alcance con él en cuatro partes, en el orden que eligió: **A. equipos guardados, B. Previa, C. Campo, D. OCR del equipo propio — las cuatro hechas.** Ninguna se probó todavía en dispositivo real (ver aviso al final de la sección).
 

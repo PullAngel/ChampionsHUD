@@ -52,6 +52,8 @@ El puente son **13** métodos `@JavascriptInterface` (Kotlin→JS) y **2** callb
 
 Esta es la parte más sofisticada y mejor iterada de todo el proyecto — reescrita varias veces contra evidencia real, no por intuición. El enfoque de hipótesis-y-verificación generaliza mejor que asumir un color fijo y es el patrón a imitar en el resto del sistema.
 
+**Corrección importante, 2026-08-06** — esta valoración era demasiado generosa y hay que leerla con el hallazgo de abajo (§5.14): los pasos 1 y 3 son sólidos, pero **el paso 2 (recortar) es el eslabón débil y es el que causa los errores reales de identificación** que Angel viene reportando. Además, la confianza que el sistema reportaba estaba estructuralmente rota y no servía para detectar esos errores.
+
 ## 5. Hallazgos confirmados
 
 ### 5.1 ~~Bug de producción — mismatch de campos `predict()` ↔ `vPre()`~~ — **RESUELTO, verificado 2026-07-31**
@@ -106,22 +108,37 @@ El escaneo del rival no lo sufre porque el team preview está animado (llegan fo
 ### 5.9 `build_meta.py` sigue siendo un stub — **RESUELTO, 2026-08-03 (Fase 2, sprint 2.3)**
 Reescrito por completo: descarga torneos reales de Limitless TCG, agrega equipos en especies/ítems/movimientos/habilidades/cores, y escribe `meta.json` con metadatos (`generatedAt`, `sourceCounts`, `partial`). Corrido de verdad contra la API — no solo escrito y sin probar — y `assets/meta.json` ya es la salida real de esa corrida (1838 equipos, 169 especies, 60 cores). Detalle completo en `roadmap.md`, Fase 2 sprint 2.3.
 
+### 5.14 La confianza del reconocimiento de sprites estaba rota de raíz — **RESUELTO, 2026-08-06**
+
+Angel reportó, con capturas: *"me dice 'calidad 98%' pero coloca a Aegislash en vez de Floette y mimikyu en vez de milotic. 2 errores de 6. Y pasa seguido"*. Se auditó simulando `identify()` en Node contra el `sprite_index.json` real (209 especies / 718 entradas), en vez de por lectura de código. Tres fallas encadenadas:
+
+1. **La confianza se medía contra el segundo mejor de TODO el índice.** Como el índice guarda normal y variocolor de cada especie, y el variocolor tiene silueta casi idéntica, el segundo mejor era **la misma especie el 100% de las veces medidas**. `(second-best)/second` daba ~0 hasta en lecturas perfectas: **el 99% de las lecturas correctas quedaban marcadas como dudosas**. Con el aviso encendido en todas, no distinguía nada — y como `flojos` nunca bajaba del umbral, el HUD caía **siempre** en el cartel "Lectura dudosa (calidad 98%)". Corregido: el rival es la mejor **otra especie**. Medido: falsas alarmas 99% → 0%, manteniendo 359/359 aciertos.
+2. **La confianza describía al ganador de la pasada 1, pero se devolvía el de la pasada 2** (la de color reasigna el ganador en 114–160 de 359 casos medidos). El número informado no correspondía al Pokémon mostrado.
+3. **La pasada 2 no aplicaba el filtro de proporción de la pasada 1**, así que podía resucitar por color una referencia descartada por forma imposible. Corregido; los errores que pasaban *sin aviso* ante un recorte roto bajaron de 12 a 3.
+
+**Dónde está el error de verdad:** los pares que Angel reportó están **lejos** en forma (Aegislash↔Floette 0.244, Mimikyu↔Milotic 0.131, contra un umbral de 0.055). El comparador nunca los confundiría con un recorte sano — **el que falla es el recorte** (paso 2 de §4: partes finas del sprite caen bajo el umbral y el "tramo más ancho de columnas" se queda con un pedazo). Se agregó validación de cordura del recorte con límites medidos sobre el índice real, que hace fallar la tarjeta de forma visible en vez de devolver una especie inventada.
+
+**Qué queda:** el recorte en sí sigue sin rediseñarse — solo se le agregó una red de contención. Rediseñarlo requiere capturas reales del juego y un ciclo de compilación de Kotlin, ninguno de los dos disponible en el entorno de desarrollo. Con la confianza ya arreglada, el sistema al menos **avisa cuáles** revisar en vez de presentar los seis como igual de confiables.
+
 ## 6. Qué funciona bien y por qué vale la pena preservarlo
 
 - **Lógica de combate en HTML/JS, cascarón en Kotlin.** La decisión más importante del proyecto y bien tomada — permite iterar en segundos sin recompilar. Se formaliza y refuerza en `architecture.md` como separación Motor/Cliente.
 - **Captura persistente con un solo `VirtualDisplay` por permiso.** Verificado en `ScreenCapture.kt`. **La reconexión automática ya no está confirmada** (ver §5.8) — se retira esa parte de la afirmación hasta investigarlo.
 - **`render()` con manejo de errores** — un error en una vista ya no congela toda la interfaz. Re-verificado en `hud.html:1015`.
 - **Selectores propios en vez de `<select>` nativo**, justificado por la ventana `FLAG_NOT_FOCUSABLE` (no robarle foco al juego).
-- **Detección de sprites por hipótesis-y-verificación** en vez de asumir un color fijo — el patrón más sólido del proyecto. Re-verificado línea por línea en `SpriteMatcher.kt` contra esta descripción: coincide en los tres pasos y en los umbrales.
+- **Detección de la pila de tarjetas por hipótesis-y-verificación** en vez de asumir un color fijo — sigue siendo un patrón sólido y vale la pena imitarlo. **Acotado el 2026-08-06:** esto vale para el paso 1 (encontrar la pila) y el 3 (comparar contra el índice), no para el 2 (recortar el sprite), que es el que falla en uso real — ver §5.14.
 - **WebView único y persistente** — no se pierde el estado del combate al abrir/cerrar el panel.
 - **Persistencia atómica y tolerante a fallos:** escritura atómica, versionado por campo `v`, degradación a `{}` si el archivo está corrupto en vez de crashear.
 
-## 7. Deuda técnica, en orden de severidad (actualizado 2026-08-03, cuarta pasada — sprint 2.3)
+## 7. Deuda técnica, en orden de severidad (actualizado 2026-08-06, quinta pasada)
+
+0. **El recorte del sprite (`readCard()` paso 2) es el que falla en uso real** (§5.14). **Vigente**, con red de contención puesta (validación de cordura + confianza ya arreglada, así que ahora avisa cuáles revisar). Rediseñarlo de verdad necesita capturas reales del juego y un ciclo de compilación de Kotlin — ninguno disponible hoy. Es la causa directa de los errores de identificación que Angel reporta seguido, así que va primero.
+0.b. **Comparaciones inglés/español sin pasar por `findMove()`** — misma familia de bug encontrada **tres veces** (`ROLE_MV_EN` sprint 2.9; `foeMovePool()` y `compatibleSets()` el 2026-08-06). `meta.json` guarda movimientos en inglés, `MV` está keyeado en español. Las tres instancias conocidas están corregidas y con test, y se auditaron `items`/`abilities` (limpios). **Riesgo vigente para código nuevo**: cualquier consumidor futuro de `meta.json` puede repetirlo. La mitigación real sería un contrato tipado en el borde (deuda #4), no vigilancia manual.
 
 1. La naturaleza no se captura: es gráfica, no texto (§5.13). **Vigente y mitigado** — ya no se inventa, pero hay que ponerla a mano después de cada captura. Sesga daño y velocidad, así que sigue siendo lo de mayor impacto sobre la calidad del cálculo. Resolverlo requiere análisis de imagen en Kotlin.
 2. Tabla `MEGA`: de 15 a 40 de las 76 formas mega que trae `dex.json` (§5.10). **Casi resuelto** — las 36 que quedan son megas exclusivas de Champions sin ninguna fuente real de su nombre; no es trabajo pendiente por hacer, es un límite real de los datos disponibles hoy.
 3. `loadDex()` genera claves de formas alternativas de forma frágil y colisionable (§5.11). **Vigente.** Hoy no rompe, pero es una trampa puesta para el futuro.
-4. Un único archivo de ~2300 líneas sin módulos ni contratos tipados entre secciones — la causa raíz que permitió que 5.2 y 5.3 (ya resueltos) ocurrieran sin que nada las detectara. **Vigente**, y creciendo. La decisión de no modularizar (#18) sigue en pie, pero el contrapeso acordado ahí era la suite de tests — que sí creció en proporción (de 0 a 65+18 casos entre JS y Python), así que el trato se está cumpliendo.
+4. Un único archivo de ~2300 líneas sin módulos ni contratos tipados entre secciones — la causa raíz que permitió que 5.2 y 5.3 (ya resueltos) ocurrieran sin que nada las detectara. **Vigente**, y creciendo. La decisión de no modularizar (#18) sigue en pie, pero el contrapeso acordado ahí era la suite de tests — que sí creció en proporción (de 0 a 201 casos al 2026-08-06), así que el trato se está cumpliendo.
 5. Captura potencialmente estancada en un fotograma viejo en pantallas estáticas (§5.12). **Vigente, sin manifestarse todavía**; documentado el arreglo por si aparece.
 6. Dependencia declarada sin uso (§5.6). **Vigente, trivial.**
 7. Texto de interfaz (labels, mensajes de las vistas `vX()`) sigue hardcodeado en español pese a que el selector de idioma ya cubre los datos del juego (§5.5) — inconsistencia menor, no un bug.

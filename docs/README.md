@@ -28,9 +28,11 @@ Esta carpeta es la fuente de verdad del proyecto. Antes de diseñar o implementa
 
 ## Estado actual
 
-El proyecto completó la **Fase 0 — Estabilización** el 2026-07-31 y está en **Fase 1 — Reducir la fricción crítica de uso**, con todo el código escrito y seis vueltas de corrección contra uso real; lo único que falta para cerrarla es jugar un combate completo sin bugs nuevos. La **Fase 2** ya tiene su diseño cerrado ([`inference.md`](./inference.md)) y un plan por sprints en [`roadmap.md`](./roadmap.md), más su primer hito de investigación ya hecho.
+**Actualizado 2026-08-06.** Las tres primeras fases están cerradas: **Fase 0 — Estabilización** (2026-07-31), **Fase 1 — Fricción crítica de uso** (2026-08-03, confirmada por Angel en dispositivo real) y **Fase 2 — Datos de meta reales y motor de inferencia** (2026-08-04). La **Fase 3** (formalizar la separación Motor/Cliente) todavía no arrancó.
 
-`validate_data.py` y `tests/run.js` (65 casos) protegen contra que los bugs resueltos se reintroduzcan en silencio. La deuda técnica viva está priorizada en [`audit.md`](./audit.md) §7 — hoy la más visible en uso es la cobertura incompleta de piedras mega (§5.10).
+Entre medio, el trabajo no está siguiendo la numeración de fases: desde el cierre de Fase 2 el proyecto viene atendiendo pedidos y reportes de Angel contra uso real (rediseño de comunicación, revisión de OCR, vista de velocidad detallada, calculadora). Todo eso está documentado en [`roadmap.md`](./roadmap.md) bajo "Post-Fase 2", no como sprints numerados — buscar ahí antes de asumir en qué anda el proyecto.
+
+`validate_data.py` y `tests/run.js` (201 casos) protegen contra que los bugs resueltos se reintroduzcan en silencio. La deuda técnica viva está priorizada en [`audit.md`](./audit.md) §7 — la de mayor impacto sobre la calidad del cálculo sigue siendo que **la naturaleza no se puede capturar** (es gráfica, no texto: hay que ponerla a mano después de cada captura).
 
 ## Convención de idioma
 
