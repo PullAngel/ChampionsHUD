@@ -1235,6 +1235,20 @@ function whyBring(x){
     return `No suele ir con el resto de su equipo · ${x.usage}% de uso general`;
   return "Sin datos de esta especie";
 }
+/** Pedido de Angel (2026-08-06): "Probable que traiga" solo decía CON QUIÉN
+    suele ir cada rival, no CON QUÉ — para eso había que ir a Rival y abrir
+    "Repartos habituales" aparte. Con team preview recién leído, antes de
+    marcar nada, esto ya está disponible: `metaOf(dex).moves` es el mismo uso
+    real por movimiento que ya cita "Repartos habituales" (sprint 2.7), solo
+    que acá se muestra junto a la predicción de quién entra, en vez de tener
+    que cambiar de pestaña para verlo. No es información nueva — es la misma
+    evidencia, puesta donde hace falta para decidir. */
+function probableMoves(dex,n){
+  const raw=metaOf(dex)?.moves||[];
+  const mv=raw.map(x=>({k:findMove(x[0]),pct:x[1]})).filter(x=>x.k);
+  if(!mv.length)return null;
+  return mv.sort((a,b)=>b.pct-a.pct).slice(0,n||4);
+}
 
 function predict(){
   const foes=B.team.filter(f=>f.dex&&S(f.dex));
@@ -1790,7 +1804,16 @@ const myMoves=m=>(m.moves||[]).filter(x=>MV[x]);
 const foeMovePool=f=>{
   const seen=(f.moves||[]).filter(x=>MV[x]);
   if(seen.length)return {moves:seen,src:"visto"};
-  const meta=(metaOf(f.dex)?.moves||[]).map(x=>x[0]).filter(x=>MV[x]);
+  // Bug real encontrado el 2026-08-06 mientras se armaba probableMoves():
+  // meta.json guarda los movimientos en INGLÉS (decisión ya documentada en
+  // ROLE_MV_EN, sprint 2.9) pero acá se filtraba con `MV[x]` — las claves de
+  // MV son español, así que esto NUNCA matcheaba y la rama "meta" de esta
+  // función jamás se usaba: cualquier rival sin movimientos vistos todavía
+  // caía derecho a "posible" (todo el learnset) en vez de a los movimientos
+  // realmente más usados, sin ningún aviso de que la rama intermedia estaba
+  // rota. findMove() ya resuelve inglés↔español (lo usa toda la captura de
+  // OCR); reusarlo acá corrige el mismo bug con la misma herramienta.
+  const meta=(metaOf(f.dex)?.moves||[]).map(x=>findMove(x[0])).filter(Boolean);
   if(meta.length)return {moves:meta,src:"meta"};
   const L=(typeof learnable==="function")&&learnable(f.dex);
   if(L&&L.length)return {moves:L.filter(k=>MV[k]&&MV[k][2]!=="E"&&MV[k][0]>0),src:"posible"};
@@ -3075,8 +3098,19 @@ function vPre(){
   if(bring.length){
     const n=META.sourceCounts?.teams;
     h+=`<div class="card f" style="margin-top:10px"><span class="hd">Probable que traiga${confTag("probable")}</span>
-      ${bring.map((x,i)=>`<div class="row"><b>${i+1}. ${esc(nm(x.f.dex))}<s>${esc(whyBring(x))}</s></b>
-        <u>${x.linked.length?x.linked[0].pct+"%":(x.usage!=null?x.usage+"%":"—")}</u></div>`).join("")}
+      ${bring.map((x,i)=>{
+        // Pedido de Angel (2026-08-06): mientras está team preview abierto,
+        // ver de una con quién suele ir CADA rival y con qué movimientos
+        // suele venir, sin tener que ir a Rival a buscarlo aparte. Mismo dato
+        // que ya cita "Repartos habituales" (metaOf().moves), puesto donde
+        // ayuda a decidir. Con learnset apenas, degrada solo (probableMoves
+        // devuelve null y no se muestra la línea) — nunca inventa un "top 4"
+        // sin uso real detrás.
+        const mv=probableMoves(x.f.dex,4);
+        return `<div class="row"><b>${i+1}. ${esc(nm(x.f.dex))}<s>${esc(whyBring(x))}</s>${
+          mv?`<s>${mv.map(m=>`${esc(mvName(m.k))} ${m.pct}%`).join(" · ")}</s>`:""}</b>
+        <u>${x.linked.length?x.linked[0].pct+"%":(x.usage!=null?x.usage+"%":"—")}</u></div>`;
+      }).join("")}
       <div class="msg" style="margin-top:5px">Ordenado por cuánto suele aparecer junto a los otros que ya viste${
         n?`, sobre ${n} equipos de torneo`:""}. Cuáles dos lideran no se puede saber: no hay datos de eso.</div></div>`;
   }

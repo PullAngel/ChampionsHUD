@@ -98,6 +98,8 @@ function loadEngine() {
     this.coresAmong = coresAmong;
     this.foeBringOrder = foeBringOrder;
     this.whyBring = whyBring;
+    this.probableMoves = probableMoves;
+    this.mvName = mvName;
     this.setMetaRaw = function (v) { META = v; };
     this.getMETA = function () { return META; };
     this.getSPD = function () { return SPD; };
@@ -1778,6 +1780,39 @@ check("rolesFoe() detecta Tailwind desde meta.json, que lo guarda en inglés", (
     const roles = [...E.rolesFoe({ dex: 547, abil: null })];
     assert(roles.includes("tailwind"), `Whimsicott debería tener el rol tailwind, salió: ${roles.join(",")}`);
   });
+});
+
+// Bug real encontrado el 2026-08-06 armando probableMoves(): meta.json guarda
+// los movimientos en INGLÉS pero MV está keyeado en ESPAÑOL — mismo patrón que
+// ROLE_MV_EN (sprint 2.9). foeMovePool() filtraba con `MV[x]` directo contra el
+// nombre en inglés, así que su rama "meta" NUNCA se activaba: sin movimientos
+// vistos, cualquier rival caía derecho a "posible" (todo el learnset) sin
+// ningún aviso — justo el tipo de degradación silenciosa que el proyecto
+// prohíbe. Corregido usando findMove(), que ya resuelve inglés↔español.
+check("foeMovePool() SÍ usa los movimientos de meta.json cuando no hay ninguno visto todavía", () => {
+  conMetaReal(() => {
+    const f = E.mkFoe(547, 0.9); // Whimsicott, meta real con Tailwind entre sus movimientos
+    const pool = E.foeMovePool(f);
+    assertEqual(pool.src, "meta", "sin movimientos vistos, tiene que usar los de meta.json, no caer a 'posible'");
+    assert(pool.moves.length > 0, "la rama 'meta' tiene que traer movimientos reales, no quedar vacía");
+  });
+});
+
+check("probableMoves() cita el uso real de movimientos de meta.json, más usado primero", () => {
+  conMetaReal(() => {
+    const mv = E.probableMoves(547, 4); // Whimsicott
+    assert(mv, "Whimsicott tiene datos reales de movimientos en el meta.json instalado");
+    assert(mv.length > 0 && mv.length <= 4);
+    for (let i = 1; i < mv.length; i++) {
+      assert(mv[i - 1].pct >= mv[i].pct, "tiene que venir ordenado de mayor a menor uso");
+    }
+    assert(mv.every((m) => E.mvName(m.k)), "cada entrada tiene que resolver a un nombre de movimiento real, no un string crudo");
+  });
+});
+
+check("probableMoves() devuelve null sin inventar un top-4 cuando la especie no tiene datos de meta", () => {
+  E.setMeta(9, {}); // Blastoise sin campo moves
+  assertEqual(E.probableMoves(9, 4), null);
 });
 
 check("ninguna nota de predict() da una orden — describe la posición (decisions.md #21)", () => {

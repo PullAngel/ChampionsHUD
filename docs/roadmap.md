@@ -293,6 +293,14 @@ Con la Fase 2 cerrada, el trabajo de esta fecha no encaja en un sprint numerado 
 3. **Números de stats pegados** ("1550" en vez de HP 155 + inversión 0): `numerosDeFila()` separa los tokens usando los 5 casos reales de la captura de Angel como referencia.
 4. **Captura del equipo rival confunde especies** (Aegislash↔Floette, Mimikyu↔Milotic, con 98% de confianza reportada) — se difirió en su momento por ser Kotlin; **resuelto en la revisión final de OCR del 2026-08-06**, ver más abajo.
 
+### "Probable que traiga" con movimientos probables (2026-08-06)
+
+Angel pidió que el panel "Probable que traiga" (Previa) muestre también los movimientos que más suele traer cada rival, "para tomar mejores decisiones teniendo la pestaña de previa abierta, en el team preview" — mismo dato que ya cita "Repartos habituales" en Rival (`metaOf(dex).moves`, uso real medido), puesto donde ayuda a decidir sin cambiar de pestaña. `probableMoves(dex,n)`, hecha.
+
+**Bug real preexistente, encontrado armándola:** `foeMovePool()` (usada por `topThreats()` y la matriz de daño) filtraba los movimientos de `meta.json` con `MV[x]` directo — pero `meta.json` guarda los nombres en **inglés** y `MV` está keyeado en **español** (mismo patrón que `ROLE_MV_EN`, sprint 2.9, `roadmap.md` arriba). El filtro nunca matcheaba nada: la rama `"meta"` de `foeMovePool()` estaba **muerta desde que existe** — cualquier rival sin movimientos vistos todavía caía derecho a `"posible"` (todo el learnset, la fuente menos precisa) en vez de a los movimientos realmente más usados, sin ningún aviso de que la rama intermedia no se estaba usando. Corregido con `findMove()`, que ya resuelve inglés↔español (la misma herramienta que usa toda la captura de OCR). Esto mejora silenciosamente la precisión de "Lo que más te puede doler" y la matriz de daño para cualquier rival aún no observado en combate — no solo la feature nueva que lo destapó.
+
+**Tests:** 3 nuevos (190 en total) — `foeMovePool()` usa la rama `"meta"` de verdad con datos reales de Whimsicott (que trae Tailwind al tope); `probableMoves()` ordena por uso real y resuelve cada nombre; degrada a `null` sin inventar un top-4 cuando la especie no tiene datos. Verificado en navegador real: con Whimsicott y sus 4 movimientos de meta inyectados, la fila muestra `"Tailwind 97% · Moonblast 91% · Protect 88%"` como segunda línea bajo la evidencia de con quién suele ir.
+
 ### Revisión final de OCR (2026-08-06) — los tres caminos auditados con medición
 
 Angel pidió una última pasada sobre los tres caminos de captura. Se auditaron contra los datos reales (`sprite_index.json` de 209 especies / 718 entradas) en vez de por lectura, simulando `identify()` en Node para poder medir.
