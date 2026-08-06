@@ -3572,6 +3572,15 @@ function quickPickChips(side,current){
   const foes=B.team.filter(f=>f.dex&&S(f.dex)).map(f=>chip(f.dex,"")).join("");
   return `<div class="qprow">${mine}</div><div class="qprow">${foes}</div>`;
 }
+/** Slider táctil para un SP de CALC — mismo widget visual que ya usa
+    "Reparto de puntos" en TUYO (`.sp`/`.bar`/`.bg`/`.fl`), reusado en vez de
+    la lista `sel()` numérica que obligaba a abrir una hoja de 33 opciones
+    para mover un solo número (docs/calc.md §3/§5: "se toca, no se tipea").
+    `key` es el campo de `window.__c` que actualiza (`aSP`/`dSP`/`dHP`). */
+const calcSlider=(label,key,val)=>`<div class="sp"><b>${esc(label)}</b>
+  <div class="bar"><div class="bg"><div class="fl" style="width:${val/SP_MAX*100}%"></div></div>
+    <input type="range" min="0" max="${SP_MAX}" step="1" value="${val}" data-cev="${key}"></div>
+  <u>${val}</u></div>`;
 function vCalc(){
   const c=window.__c||(window.__c={atk:MY[0]?.dex||DEXN[0],def:B.team[B.foe[0]]?.dex||DEXN[0],move:"Terremoto",
     aSP:32,dSP:0,dHP:0,aNat:1.1,dNat:1,crit:0,cur:100,aItemOv:null,dItemOv:null,aAbOv:null,dAbOv:null,aStaOv:null});
@@ -3592,9 +3601,8 @@ function vCalc(){
       ${quickPickChips("a",c.atk)}
       <div style="margin-top:4px">${sel(DEXN,c.atk,x=>S(x).n,v=>{c.atk=+v;c.aItemOv=null;c.aAbOv=null;c.aStaOv=null},"Otro Pokémon")}</div>
       <div style="margin-top:3px">${sel(dmgPool(c.atk),c.move,mvName,v=>c.move=v,"Movimiento",decoMove)}</div>
-      <div class="f2" style="margin-top:3px">
-        ${sel([...Array(33).keys()],c.aSP,x=>x+" SP",v=>c.aSP=+v,"SP ofensivo")}
-        ${sel([1.1,1,0.9],c.aNat,x=>x==1.1?"Sube":x==1?"Neutra":"Baja",v=>c.aNat=+v,"Alineación")}</div>
+      ${calcSlider("SP","aSP",c.aSP)}
+      <div style="margin-top:3px">${sel([1.1,1,0.9],c.aNat,x=>x==1.1?"Sube":x==1?"Neutra":"Baja",v=>c.aNat=+v,"Alineación")}</div>
       <div class="cap" style="margin-top:4px">Objeto${auto(aMatch,c.aItemOv)}</div>
       ${sel(ITEMS_A(),aItem,itName,v=>c.aItemOv=v,"Objeto")}
       <div class="cap" style="margin-top:4px">Habilidad${auto(aMatch,c.aAbOv)}</div>
@@ -3604,9 +3612,8 @@ function vCalc(){
     <div class="card f"><span class="hd">Defensor</span>
       ${quickPickChips("d",c.def)}
       <div style="margin-top:4px">${sel(DEXN,c.def,x=>S(x).n,v=>{c.def=+v;c.dItemOv=null;c.dAbOv=null},"Otro Pokémon")}</div>
-      <div class="f2" style="margin-top:3px">
-        ${sel([...Array(33).keys()],c.dHP,x=>"PS "+x,v=>c.dHP=+v,"SP en PS")}
-        ${sel([...Array(33).keys()],c.dSP,x=>"Def "+x,v=>c.dSP=+v,"SP defensivo")}</div>
+      ${calcSlider("PS","dHP",c.dHP)}
+      ${calcSlider("Def","dSP",c.dSP)}
       <div style="margin-top:3px">${sel([1.1,1,0.9],c.dNat,x=>x==1.1?"Sube":x==1?"Neutra":"Baja",v=>c.dNat=+v,"Alineación")}</div>
       <div class="cap" style="margin-top:4px">Objeto${auto(dMatch,c.dItemOv)}</div>
       ${sel(ITEMS_A(),dItem,itName,v=>c.dItemOv=v,"Objeto")}
@@ -3615,7 +3622,8 @@ function vCalc(){
   <div class="card d"><span class="hd">Resultado</span>
     ${hpBar("calc","PS del defensor",c.cur)}
     ${rowFx(nm(c.atk)+" → "+nm(c.def),mvName(c.move),verdict(r,cur),r,cur)}
-    <div class="pills" style="margin-top:5px"><button class="p" data-c2="crit" data-on="${c.crit?1:0}">Crítico</button></div></div>`;
+    <div class="pills" style="margin-top:5px"><button class="p" data-c2="crit" data-on="${c.crit?1:0}">Crítico</button></div>
+    ${B.doubles&&mv(c.move)?.sp?`<div class="msg" style="margin-top:5px">Formato Dobles (Ajustes) y este movimiento pega a los dos rivales: el daño ya viene con el ×0.75 de repartirlo.</div>`:""}</div>`;
 }
 
 function vSet(){
@@ -3773,17 +3781,28 @@ function wire(){
         box.querySelector(".knob").style.left=v+"%";
         const w=box.closest(".hpbox");w.querySelector(".hplab u").textContent=v+"%";
         w.className="hpbox "+(v<=25?"crit":v<=50?"low":"")}
-      if(spb){spb.querySelector(".fl").style.width=(v/SP_MAX*100)+"%";
+      // CALC (data-cev) reusa el mismo widget visual (.sp/.bar/.bg/.fl) que
+      // "Reparto de puntos" en TUYO (data-sp) — mismo `.closest(".bar")`, así
+      // que hay que distinguirlos explícitamente. Sin esto, mover un slider
+      // de CALC pisaba el reparto real del Pokémon en pantalla (B.mpick).
+      if(spb&&inp.dataset.sp!==undefined){
+        spb.querySelector(".fl").style.width=(v/SP_MAX*100)+"%";
         MY[B.mpick].sp[+inp.dataset.sp]=v;
         const q=document.querySelector("#spLeft");
         if(q)q.textContent="quedan "+(SP_POOL-MY[B.mpick].sp.reduce((a,b)=>a+b,0));
         spb.parentElement.querySelector("u").innerHTML=
-          v+' <s style="display:inline;text-decoration:none;color:var(--pick)">'+myStat(MY[B.mpick],+inp.dataset.sp)+"</s>"}
+          v+' <s style="display:inline;text-decoration:none;color:var(--pick)">'+myStat(MY[B.mpick],+inp.dataset.sp)+"</s>"
+      }else if(spb&&inp.dataset.cev){
+        spb.querySelector(".fl").style.width=(v/SP_MAX*100)+"%";
+        window.__c[inp.dataset.cev]=v;
+        spb.parentElement.querySelector("u").textContent=v;
+      }
     };
     inp.onchange=()=>{buzz(1);
       if(inp.dataset.hp){const k=inp.dataset.hp;
         if(k==="calc")window.__c.cur=+inp.value;else B.hp[k]=+inp.value;save();render()}
-      if(inp.dataset.sp){saveMy();render()}};
+      if(inp.dataset.sp){saveMy();render()}
+      if(inp.dataset.cev)render()};
   });
 
   const g=$("#oGo");if(g)g.onclick=()=>{keep();buzz(1);
