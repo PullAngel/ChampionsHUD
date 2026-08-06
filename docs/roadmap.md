@@ -385,6 +385,18 @@ Angel pidió una segunda forma de ver "Quién pega primero", conmutable con la a
 
 **Criterio de salida:** el motor puede ejecutarse y probarse sin ningún dependencia de Android.
 
+### Estado real, medido el 2026-08-06 (antes de arrancar la fase)
+
+Se auditó el código antes de empezar a escribir, y resulta que **el criterio de salida ya está cumplido de hecho**, aunque no por el camino que la fase asumía:
+
+- **El motor ya corre y se prueba sin Android.** `tests/run.js` ejecuta 200+ casos del motor en un sandbox de Node, sin ningún stub de Android. Eso *es* el criterio de salida, y viene funcionando desde la Fase 0 (ítem 6).
+- **El motor referencia el puente Android en 8 lugares, todos de entrada/salida** (`loadDex`, `saveBattle`, `loadTeam`, `saveTeam`, `loadMeta`, `loadBattle`, `keepOpen`, `haptic`) — ninguno es lógica de dominio, y todos están detrás de la guarda `has` (`typeof Android!=="undefined"`), que es exactamente lo que permite que corra fuera del WebView.
+- **Cero referencias a licencias, planes o publicidad** en todo el script, motor y vistas.
+
+**Hecho en esta pasada:** los dos chequeos de arriba dejaron de ser verificaciones manuales que había que acordarse de repetir y pasaron a ser **tests permanentes** (`separación Motor / Cliente (Fase 3)` en `tests/run.js`). El segundo punto de la fase pedía literalmente "verificando que ningún módulo de dominio las referencia" — ahora eso se verifica solo en cada corrida. Ambos tests se probaron **inyectando la violación a propósito** (una variable `premium` en el motor) y confirmando que fallan con el mensaje correcto: un test que no puede fallar no sirve de nada (misma lección que el sprint 2.8 con el test de números de Pokédex).
+
+**Lo que queda de la fase, y por qué no se hizo ahora:** la separación es *de comportamiento* (corre sin Android) pero no *de estructura* — el dominio todavía nombra `Android.*` directamente en vez de pasar por un adaptador con nombre propio. Formalizarlo sería embudar esas 8 llamadas por un único objeto de IO inyectable. Es un refactor acotado y de bajo riesgo, pero toca persistencia, y la decisión #18 (archivo único, deliberado) condiciona cómo se hace — conviene hacerlo con Angel disponible para probar en dispositivo, no a ciegas, porque un error ahí no lo agarra ningún test (todos los tests corren justamente con `has===false`).
+
 ## Fase 4 — Memoria y análisis post-combate
 
 - Resumen post-partida construido sobre el event log: qué acertó y qué falló el modelo, qué información se reveló de más.

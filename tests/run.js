@@ -2636,6 +2636,57 @@ check("un solo umbral de confianza en toda la interfaz — no vuelven los tres v
     `quedaron comparaciones de confianza con un número suelto en vez de CONF_MIN: ${sueltos.join(", ")}`);
 });
 
+// ── Fase 3: separación Motor / Cliente (roadmap.md) ──
+// El segundo punto de la Fase 3 dice "dejar reservadas las interfaces de
+// entitlements (decisión #5) y de publicidad (#4) en la capa de Presentación,
+// VERIFICANDO que ningún módulo de dominio las referencia". Eso era un chequeo
+// manual que había que acordarse de hacer; acá queda como garantía ejecutable.
+// `CLAUDE.md` lo lista como principio no negociable: "Dominio sin lógica de
+// licencia ni de publicidad. El Motor no evalúa flags de plan ni de
+// monetización, nunca."
+console.log("\nseparación Motor / Cliente (Fase 3):");
+
+check("el motor no menciona licencias, planes ni publicidad — ni siquiera de pasada", () => {
+  const html = fs.readFileSync(HUD_PATH, "utf-8");
+  const start = html.indexOf("<script>") + "<script>".length;
+  const end = html.indexOf("</script>", start);
+  const script = html.slice(start, end);
+  // Se buscan las palabras que delatarían lógica de monetización metida en el
+  // dominio. Si alguna aparece de verdad y es un falso positivo (una variable
+  // que casualmente se llama así), el fix correcto es renombrarla — no relajar
+  // este test: el punto es que el dominio no hable ese idioma en absoluto.
+  const prohibidas = /\b(entitlement|paywall|billing|suscripci[oó]n|premium)\b/i;
+  const m = prohibidas.exec(script);
+  assert(!m, `el dominio menciona "${m && m[0]}" — decisión #4/#5 y CLAUDE.md lo prohíben: ` +
+    `esa lógica vive en Presentación, el Motor nunca evalúa flags de plan ni de monetización`);
+});
+
+check("el motor solo usa el puente Android para IO, y siempre detrás de la guarda `has`", () => {
+  const html = fs.readFileSync(HUD_PATH, "utf-8");
+  const start = html.indexOf("<script>") + "<script>".length;
+  const motor = html.slice(start, html.indexOf("function vPre(){", start));
+  // Criterio de salida de la Fase 3: "el motor puede ejecutarse y probarse sin
+  // ninguna dependencia de Android". Se cumple de hecho — esta misma suite lo
+  // corre 200+ veces en Node sin Android — y lo que lo hace posible es que
+  // TODA llamada al puente esté detrás de `has` (`typeof Android!=="undefined"`).
+  // Si alguien agrega una llamada sin guardar, el motor deja de correr fuera
+  // del WebView y esta suite entera se cae; este test lo dice antes y explica
+  // por qué, en vez de fallar con un ReferenceError suelto.
+  assert(/const has=typeof Android!=="undefined"/.test(motor),
+    "la guarda `has` es lo que mantiene al motor ejecutable sin Android — no se puede sacar");
+  const llamadas = [...new Set((motor.match(/\bAndroid\.[a-zA-Z]+/g) || []))];
+  // Todas las que hay hoy son de entrada/salida (persistir, cargar, vibrar),
+  // ninguna de lógica de dominio. Si aparece una nueva, que sea una decisión
+  // consciente y no un descuido: este test la muestra.
+  const esperadas = ["Android.loadDex", "Android.haptic", "Android.keepOpen", "Android.saveBattle",
+    "Android.loadTeam", "Android.saveTeam", "Android.loadMeta", "Android.loadBattle"];
+  const nuevas = llamadas.filter((l) => !esperadas.includes(l));
+  assert(nuevas.length === 0,
+    `llamadas nuevas al puente Android dentro del motor: ${nuevas.join(", ")}. ` +
+    `Si son de IO, agregalas a la lista de este test. Si son lógica de dominio, ` +
+    `no van acá (roadmap.md Fase 3, decisión #10)`);
+});
+
 console.log("\nsintaxis del script completo:");
 check("hud.html no tiene errores de sintaxis en NINGUNA parte del script (no solo antes de vPre())", () => {
   const html = fs.readFileSync(HUD_PATH, "utf-8");
