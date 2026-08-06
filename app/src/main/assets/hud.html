@@ -1859,11 +1859,22 @@ function findSpecies(name){
     "5 Spell Tag" (número de tarjeta pegado a la línea) — todos casos reales
     de capturas de Angel. Se prueba recién como último recurso, si nada más
     matcheó: ningún movimiento, objeto, habilidad ni especie real empieza con
-    un carácter suelto seguido de espacio. */
+    un carácter suelto seguido de espacio.
+    Ampliado 2026-08-06 con capturas nuevas de Angel: el ícono no siempre se
+    lee como letra/dígito — "$ Thunder", "& Aqua Jet", "© Sp. Def" son ML Kit
+    leyendo el dibujo del ícono como un símbolo. `statIndexOf()` ya tolera
+    esto porque normaliza TODO carácter no alfanumérico antes de comparar;
+    `findMove()`/`findItem()` no tienen ese paso, así que dependían de este
+    prefijo — y como solo aceptaba A-Za-z0-9, "$ Thunder" nunca resolvía a
+    Thunderbolt. Ahora acepta cualquier 1–2 caracteres no-espacio. */
 const stripIconPrefix=s=>{
-  // Hasta 2 caracteres: el ícono solo daba 1 ("O Protect"), pero el número
-  // de tarjeta pegado al ícono da 2 ("W2 Sludge Bomb", caso real de Angel).
-  const m=/^[A-Za-z0-9]{1,2}\s+(\S.*)$/.exec((s||"").trim());
+  const m=/^\S{1,2}\s+(\S.*)$/.exec((s||"").trim());
+  return m?m[1]:null;
+};
+/** Mismo problema, del otro lado: "Attack &", "Sp. Atk &" con el ícono
+    pegado DESPUÉS de la palabra. Simétrico a stripIconPrefix. */
+const stripIconSuffix=s=>{
+  const m=/^(\S.*\S|\S)\s+\S{1,2}$/.exec((s||"").trim());
   return m?m[1]:null;
 };
 /** Las claves de MEGA son nombres en español ("Blastoisita", "Gengarita"),
@@ -1885,6 +1896,9 @@ function ocrVariants(name,extra){
   const out=[],push=v=>{v=String(v||"").trim();if(v&&!out.includes(v))out.push(v)};
   push(name);
   push(stripIconPrefix(name));
+  push(stripIconSuffix(name));
+  const pre=stripIconPrefix(name);
+  if(pre)push(stripIconSuffix(pre));
   if(extra)for(const v of out.slice())push(extra(v));
   return out;
 }
@@ -2016,7 +2030,7 @@ function parseTeamText(text){
     99% de las ERRÓNEAS por debajo de 0.136. 0.50 cae en el medio del hueco —
     en la simulación no marca ninguna correcta y detecta todas las erróneas. */
 const CONF_MIN=0.50;
-let OCR_PHASE=0, OCR_DRAFT=[null,null];
+let OCR_PHASE=0, OCR_DRAFT=[null,null], OCR_ICONS=[];
 /** Dónde guarda la captura: "new" crea un equipo, "active" pisa el activo.
     Persistido porque es una preferencia de uso, no un estado del combate:
     quien reescanea para corregir una lectura fallida quiere "active" varias
@@ -2146,12 +2160,17 @@ function splitColumns(items,minGap){
     arriba a abajo, derecha = hasta 4 movimientos. Si no hay dos columnas
     distinguibles se cae al comportamiento secuencial anterior, que para una
     tarjeta sin movimientos legibles sigue siendo lo mejor disponible. */
+/** Posición (x,y) de la línea de especie, además del texto — la usa
+    finishOwnScan() para buscar si SpriteMatcher encontró un ícono ahí mismo,
+    cuando el texto no resuelve a nada (ver readOwnTeamIcons() en
+    SpriteMatcher.kt). Nunca se usa para otra cosa: el resto del parseo sigue
+    trabajando solo con texto. */
 function parseMovesCard(lines){
   // >1 carácter Y al menos una letra: saca ruido típico de OCR (el numerito
   // de orden "1"-"6" de la tarjeta, símbolos de género/tipo sueltos que a
   // veces se leen como texto) sin arriesgarse a sacar un nombre real.
   const clean=(lines||[]).filter(l=>l.t&&l.t.trim().length>1&&/[a-zA-Z]/.test(l.t));
-  const byY=a=>a.slice().sort((x,y)=>x.y-y.y).map(l=>l.t);
+  const byY=a=>a.slice().sort((x,y)=>x.y-y.y);
   // El hueco entre columnas tiene que ser grande de verdad. Sin este piso,
   // una indentación chica (el ícono del ítem corre su línea unos píxeles)
   // se tomaba como separación de columnas y partía la columna izquierda al
@@ -2161,12 +2180,14 @@ function parseMovesCard(lines){
   const cols=splitColumns(clean,alto*2.5);
   if(cols&&cols.left.length&&cols.right.length){
     const L=byY(cols.left), R=byY(cols.right);
-    return {dexName:L[0]||null, abilName:L[1]||null, itemName:L[2]||null,
-      moveNames:R.slice(0,4)};
+    return {dexName:L[0]?.t||null, dexPos:L[0]?{x:L[0].x,y:L[0].y}:null,
+      abilName:L[1]?.t||null, itemName:L[2]?.t||null,
+      moveNames:R.slice(0,4).map(l=>l.t)};
   }
   const seq=byY(clean);
-  return {dexName:seq[0]||null, abilName:seq[1]||null, itemName:seq[2]||null,
-    moveNames:seq.slice(3,7)};
+  return {dexName:seq[0]?.t||null, dexPos:seq[0]?{x:seq[0].x,y:seq[0].y}:null,
+    abilName:seq[1]?.t||null, itemName:seq[2]?.t||null,
+    moveNames:seq.slice(3,7).map(l=>l.t)};
 }
 
 /** Fase 2 (Stats): separa las líneas con números en dos sub-columnas por X
@@ -2229,6 +2250,24 @@ function statIndexOf(text){
   return st?statIndexRaw(st):-1;
 }
 const lastNum=t=>{const m=String(t||"").match(/\d+/g);return m&&m.length?+m[m.length-1]:null};
+/** El último número de la fila es la inversión — EXCEPTO cuando es el ÚNICO
+    número de la fila. Bug real de capturas de Angel (2026-08-06): cuando la
+    inversión es 0 el juego a veces no dibuja nada (ni barra ni número), y lo
+    único que ML Kit lee es el stat ya calculado ("Sp. Atk 84" en vez de
+    "Sp. Atk 84 0"). lastNum() tomaba ese único número como si fuera la
+    inversión — 84 no es una inversión válida (máximo SP_MAX=32), así que la
+    validación final rechazaba la tarjeta ENTERA por un solo stat.
+    La regla: si hay un solo número Y ese número no puede ser una inversión
+    (>SP_MAX), es el stat calculado con inversión 0 — no es una suposición,
+    es la única lectura que respeta el límite real del juego. Con dos números
+    o más, o con un único número que sí podría ser una inversión válida
+    (ambiguo), se sigue igual que antes. */
+const statNum=t=>{
+  const m=String(t||"").match(/\d+/g);
+  if(!m||!m.length)return null;
+  if(m.length===1){const v=+m[0];return v>SP_MAX?0:v}
+  return +m[m.length-1];
+};
 
 /** Fase 2 (Stats). Se ancla en las ETIQUETAS de cada stat, no en la posición.
     La versión anterior era puramente posicional (dos sub-columnas × tres
@@ -2318,6 +2357,15 @@ function parseStatsCard(lines){
   if(!L.length)return null;
   const con=sp=>({sp,...naturalezaDeTarjeta(L)});
   const sp=[null,null,null,null,null,null];
+  // Cuenta cuántos de los 6 stats se resolvieron por la regla del número
+  // único (statNum() interpretando "84" como stat-calculado-sin-inversión).
+  // Si UNO o dos caen ahí mientras el resto trae su par completo, es el caso
+  // real (la barra de un stat con inversión 0 no se dibuja). Si los SEIS
+  // caen ahí, no es que los 6 tengan casualmente inversión 0 — es que el OCR
+  // no leyó ningún número de inversión, y aceptar la tarjeta sería fabricar
+  // un reparto todo-ceros que no vimos de verdad (fallo ruidoso, nunca
+  // silencioso). Ese caso degrada al método 2/3 en vez de aceptarse acá.
+  let sinPar=0;
   for(const ln of L){
     const i=statIndexOf(ln.t);
     if(i<0||sp[i]!==null)continue;
@@ -2336,10 +2384,12 @@ function parseStatsCard(lines){
       .sort((a,b)=>(a.x||0)-(b.x||0));
     const propios=[];
     for(const o of row){if(statIndexOf(o.t)>=0)break;propios.push(o)}
-    const v=lastNum([ln.t,...propios.map(o=>o.t)].join(" "));
-    if(v!==null)sp[i]=v;
+    const texto=[ln.t,...propios.map(o=>o.t)].join(" ");
+    const cantidad=(texto.match(/\d+/g)||[]).length;
+    const v=statNum(texto);
+    if(v!==null){sp[i]=v; if(cantidad===1&&v===0)sinPar++}
   }
-  if(sp.every(n=>n!==null&&n>=0&&n<=SP_MAX))return con(sp);
+  if(sinPar<5&&sp.every(n=>n!==null&&n>=0&&n<=SP_MAX))return con(sp);
 
   const num=L.filter(l=>/\d/.test(l.t));
   if(num.length<6)return null;
@@ -2372,13 +2422,22 @@ function parseStatsCard(lines){
   // distintas salían 6 medias filas en vez de 3. splitRows no depende de eso.
   const cols=splitColumns(num);
   if(!cols||cols.left.length<3||cols.right.length<3)return null;
+  let sinPar3=0;
   const tresDe=lado=>{
     const bandas=splitRows(lado,3);
     if(!bandas||bandas.some(b=>!b.length))return null;
-    return bandas.map(b=>lastNum(b.slice().sort((a,c)=>(a.x||0)-(c.x||0)).map(l=>l.t).join(" ")));
+    return bandas.map(b=>{
+      const t=b.slice().sort((a,c)=>(a.x||0)-(c.x||0)).map(l=>l.t).join(" ");
+      const v=statNum(t);
+      // Mismo resguardo que el método 1: un número único que statNum()
+      // reinterpretó como "0 sin dibujar" es plausible una vez, no en toda
+      // la tarjeta (ver comentario grande más arriba).
+      if(v===0&&(t.match(/\d+/g)||[]).length===1)sinPar3++;
+      return v;
+    });
   };
   const izq=tresDe(cols.left), der=tresDe(cols.right);
-  if(!izq||!der)return null;
+  if(!izq||!der||sinPar3>=5)return null;
   const pos=[...izq,...der];
   return pos.every(n=>n!==null&&n>=0&&n<=SP_MAX)?con(pos):null;
 }
@@ -2418,6 +2477,27 @@ function speciesFromTraits(abilName,moveNames){
   }
   return cand.length===1?cand[0]:null;
 }
+/** Tercer método para deducir la especie, junto al texto y al mote (pedido
+    de Angel, 2026-08-06): el sprite que SpriteMatcher.readOwnTeamIcons()
+    identificó cerca de la posición donde se leyó el nombre de la tarjeta.
+    `icons` es la lista cruda que manda Kotlin — cada una con su propia
+    posición, sin saber a qué tarjeta pertenece (esa lógica es de acá, no de
+    Kotlin). Se busca la más cercana a `pos` dentro de una tolerancia (media
+    altura de línea): un ícono lejano no es de esta tarjeta, aunque sea el
+    más cercano de la lista. Devuelve null sin inventar si no hay ninguno
+    suficientemente cerca o si `conf` no alcanza — mismo umbral CONF_MIN que
+    ya usa team preview para no fabricar una certeza que no hay. */
+function speciesFromIcon(pos,icons,lineH){
+  if(!pos||!icons||!icons.length)return null;
+  const tol=Math.max(20,(lineH||18)*0.7);
+  let best=null,bestD=Infinity;
+  for(const ic of icons){
+    if(!ic||!ic.dex||(ic.conf||0)<CONF_MIN)continue;
+    const d=Math.hypot((ic.x||0)-pos.x,(ic.y||0)-pos.y);
+    if(d<bestD){bestD=d;best=ic}
+  }
+  return (best&&bestD<=tol&&S(best.dex))?best.dex:null;
+}
 function finishOwnScan(){
   const moves=OCR_DRAFT[0]||[], stats=OCR_DRAFT[1]||[];
   // Los slots que ya había, para no perderlos si una tarjeta no se pudo leer.
@@ -2428,10 +2508,17 @@ function finishOwnScan(){
     const mv=moves[i]||{}, st=stats[i];
     // Si el nombre no resuelve puede ser un mote: se deduce por habilidad +
     // ataques antes de darla por perdida (ver speciesFromTraits()).
-    const porMote=!(mv.dexName&&findSpecies(mv.dexName))
-      ?speciesFromTraits(mv.abilName,mv.moveNames):null;
-    const dex=(mv.dexName?findSpecies(mv.dexName):null)||porMote;
+    const porTexto=mv.dexName?findSpecies(mv.dexName):null;
+    const porMote=!porTexto?speciesFromTraits(mv.abilName,mv.moveNames):null;
+    // Tercer intento — sprite (2026-08-06): solo si el texto Y el mote fallaron
+    // los dos. Nunca pisa una lectura de texto que ya funcionó, mismo criterio
+    // que el mote: la deducción más barata gana si alcanza, la más cara (y con
+    // más margen de error, dado que la geometría del recorte es una estimación
+    // sin calibrar contra un dispositivo real) solo entra cuando hace falta.
+    const porSprite=(!porTexto&&!porMote)?speciesFromIcon(mv.dexPos,OCR_ICONS,14):null;
+    const dex=porTexto||porMote||porSprite;
     if(porMote)mote.push(`Tarjeta ${i+1}: "${mv.dexName||"?"}" es un mote — deduje ${nm(porMote)} por su habilidad y sus ataques.`);
+    if(porSprite)mote.push(`Tarjeta ${i+1}: no reconocí el texto — deduje ${nm(porSprite)} por su sprite.`);
     if(!dex){
       errors.push(`Tarjeta ${i+1}: no reconozco la especie "${mv.dexName||"?"}".`);
       // El equipo SIEMPRE queda con 6 slots. Antes se salteaba la tarjeta
@@ -2801,7 +2888,7 @@ function vPre(){
       // "Qué pasaría si": prueba, no cambia el ítem/estado real de nadie.
       // Pañuelo solo tiene sentido del lado rival — el propio ya está en `x.v`.
       const wc=`<div class="wc">
-        ${x.me?"":`<button class="wtog" data-wsc="${idx}" data-on="${t.scarf?1:0}">PE</button>`}
+        ${x.me?"":`<button class="wtog" data-wsc="${idx}" data-on="${t.scarf?1:0}">Scarf</button>`}
         <button class="wtog" data-wtw="${side}:${idx}" data-on="${t.tw?1:0}">TW</button>
         <div class="wstep">
           <button data-wst="${side}:${idx}:-1">▾</button><span>${t.stage>0?"+":""}${t.stage}</span>
@@ -3593,6 +3680,11 @@ window.onOwnScan=function(json){
   const cards=clusterCards(d.lines,d.w,d.h);
   if(OCR_PHASE===0){
     OCR_DRAFT[0]=cards.map(parseMovesCard);
+    // Sprites por línea (SpriteMatcher.readOwnTeamIcons, ver el comentario
+    // grande ahí) — solo interesan en esta pasada, es donde vive el nombre de
+    // la especie. Un dispositivo sin este campo (versión vieja del APK antes
+    // de recompilar) simplemente da OCR_ICONS=[] y todo sigue como antes.
+    OCR_ICONS=d.icons||[];
     OCR_PHASE=1; render();
     // Diagnóstico del paso 1: muestra los campos YA PARSEADOS por tarjeta,
     // no las líneas crudas. Así se ve de una si cada texto cayó en el campo

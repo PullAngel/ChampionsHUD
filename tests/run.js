@@ -114,7 +114,9 @@ function loadEngine() {
     this.predict = predict;
     this.previewMatrix = previewMatrix;
     this.numerosDeFila = numerosDeFila;
+    this.statNum = statNum;
     this.speciesFromTraits = speciesFromTraits;
+    this.speciesFromIcon = speciesFromIcon;
     this.getABIL = function () { return ABIL; };
     this.confTag = confTag;
     this.CONF = CONF;
@@ -168,6 +170,8 @@ function loadEngine() {
     this.whatIfFoe = whatIfFoe;
     this.resetSpdWhatIf = resetSpdWhatIf;
     this.getSpdWhatIf = function () { return SPD_WHATIF; };
+    this.stripIconSuffix = stripIconSuffix;
+    this.ocrVariants = ocrVariants;
   `;
 
   const sandbox = {
@@ -1547,6 +1551,26 @@ check("stripIconPrefix() no altera nombres reales de una sola palabra", () => {
   assertEqual(E.stripIconPrefix("Choice Scarf"), null, "ya empieza con una palabra real, no con una letra suelta");
 });
 
+// Bug real encontrado en la revisión final de OCR (2026-08-06): capturas nuevas
+// de Angel mostraron íconos leídos como SÍMBOLO, no letra/dígito — "$ Thunder",
+// "& Aqua Jet", "© Sp. Def". stripIconPrefix() solo aceptaba A-Za-z0-9 al
+// principio, así que ninguno de estos resolvía a un movimiento real (statIndexOf
+// no sufría esto porque ya normaliza todo símbolo antes de comparar).
+check("stripIconPrefix() ahora saca también un ícono leído como símbolo, no solo letra/dígito", () => {
+  assertEqual(E.stripIconPrefix("$ Thunder"), "Thunder", "el símbolo de moneda es un ícono mal leído, no parte del nombre");
+  assertEqual(E.stripIconPrefix("& Aqua Jet"), "Aqua Jet");
+  assertEqual(E.stripIconPrefix("© Sp. Def"), "Sp. Def");
+});
+check("stripIconSuffix() saca el ícono cuando queda pegado DESPUÉS de la palabra", () => {
+  assertEqual(E.stripIconSuffix("Attack &"), "Attack");
+  assertEqual(E.stripIconSuffix("Sp. Atk &"), "Sp. Atk");
+  assertEqual(E.stripIconSuffix("Protect"), null, "sin espacio, no hay nada que sacar");
+});
+check("findMove() resuelve movimientos con el ícono leído como símbolo, prefijo o sufijo", () => {
+  assert(E.findMove("$ Thunder"), "\"$ Thunder\" (captura real de Angel) tiene que resolver a algún movimiento");
+  assert(E.findMove("& Aqua Jet"), "\"& Aqua Jet\" (captura real de Angel) tiene que resolver a Aqua Jet");
+});
+
 check("closestMatch() no matchea cualquier cosa con nombres cortos", () => {
   const entries = [{ key: "cut", label: "Cut" }, { key: "rest", label: "Rest" }];
   assertEqual(E.closestMatch("Xyz", entries), null, "3 letras totalmente distintas no debería matchear");
@@ -1902,6 +1926,49 @@ check("numerosDeFila() deja crudo lo que no puede separar, sin inventar una inve
   assertEqual(E.numerosDeFila("99999").join(","), "99999");
 });
 
+// Bug real de capturas nuevas de Angel (2026-08-06): cuando la inversión de un
+// stat es 0, el juego a veces no dibuja ni la barra ni el número — ML Kit
+// entonces solo lee el stat YA CALCULADO ("Sp. Atk 84" en vez de "84 0").
+// statNum() tomaba ese único número como si fuera la inversión: 84 excede
+// SP_MAX (32), así que la validación final rechazaba la TARJETA ENTERA por un
+// solo stat sin dibujar. Confirmado con dos tarjetas reales de las capturas
+// de Angel (Hot-hot y Aegislash, ambas con un Sp. Atk sin inversión visible).
+check("statNum() interpreta un número único que excede SP_MAX como el stat calculado, inversión 0", () => {
+  assertEqual(E.statNum("84"), 0, "84 no puede ser una inversión (máximo 32) — solo puede ser el stat con inversión no dibujada");
+  assertEqual(E.statNum("20"), 20, "un único número que SÍ podría ser inversión válida se deja como estaba (ambiguo)");
+  assertEqual(E.statNum("127 26"), 26, "con dos números, se sigue tomando el último — sin cambios de comportamiento");
+  assertEqual(E.statNum(""), null);
+});
+
+check("parseStatsCard() NO acepta un reparto todo-ceros cuando los 6 stats son números sueltos", () => {
+  // Si los 6 stats vienen como número único (>SP_MAX), no es que los 6 tengan
+  // casualmente inversión 0 — es que el OCR no leyó NINGUNA inversión, y
+  // aceptar la tarjeta fabricaría un reparto que nunca se vio de verdad.
+  // Mismo fixture que el test de arriba, para dejar clara la frontera: 1 de 6
+  // sin par se acepta (caso real), los 6 sin par se rechazan (degenerado).
+  const lines = [
+    { t: "HP 202", x: 250, y: 300, w: 100, h: 18 },
+    { t: "Sp. Atk 105", x: 700, y: 300, w: 100, h: 18 },
+    { t: "Attack 128", x: 250, y: 326, w: 100, h: 18 },
+    { t: "Sp. Def 111", x: 700, y: 326, w: 100, h: 18 },
+    { t: "Defense 110", x: 250, y: 352, w: 100, h: 18 },
+    { t: "Speed 121", x: 700, y: 352, w: 100, h: 18 },
+  ];
+  assertEqual(E.parseStatsCard(lines), null);
+});
+
+check("parseStatsCard() reconstruye el reparto real de Hot-hot (Sp. Atk sin inversión dibujada)", () => {
+  const L = (t, x, y) => ({ t, x, y, w: t.length * 8, h: 14 });
+  const lines = [
+    L("HP", 10, 10), L("163-10", 90, 10), L("Sp. Atk", 250, 10), L("84", 330, 10),
+    L("Attack", 10, 40), L("127 26", 90, 40), L("Sp. Def", 250, 40), L("98 9", 330, 40),
+    L("Defense", 10, 70), L("91-0", 90, 70), L("Speed", 250, 70), L("183-21", 330, 70),
+  ];
+  const r = E.parseStatsCard(lines);
+  assert(r, "no debería descartar la tarjeta entera por un solo stat sin inversión dibujada");
+  assertEqual(r.sp.join(","), "10,26,0,0,9,21");
+});
+
 // ── motes: deducir la especie por habilidad + ataques (bug real, 2026-08-05) ──
 // A los Pokémon se les puede poner apodo y la pantalla "Moves & More" muestra
 // el apodo, no la especie: el Rotom de Angel se llama "Wachin". El sprite está
@@ -1945,6 +2012,65 @@ check("speciesFromTraits() devuelve null si la habilidad no se reconoce", () => 
   assertEqual(E.speciesFromTraits("Habilidad Inventada", ["Protect"]), null);
   assertEqual(E.speciesFromTraits("", ["Protect"]), null);
   assertEqual(E.speciesFromTraits(null, null), null);
+});
+
+// Angel reportó (2026-08-05/06) que la misma tarjeta de Garchomp a veces se
+// deducía por mote y a veces no, con la MISMA habilidad y los MISMOS
+// movimientos reales. Investigado: no es un bug de speciesFromTraits() — con
+// habilidad exclusiva, movimientos de OTRA tarjeta (columna mezclada) o
+// directamente sin movimientos, sigue identificando bien, porque el cruce por
+// ataques solo AFINA candidatas, nunca las reemplaza si el cruce las deja
+// todas afuera (ver el comentario del código). La causa real era el bug de
+// columnas de clusterCards() (corregido en el commit anterior a este): si esa
+// tarjeta recibía la habilidad de la tarjeta vecina, "ab" quedaba mal desde el
+// principio y la función fallaba en su primer chequeo, antes de llegar a los
+// movimientos. Este test blinda que NO vuelva a romperse por el lado de los
+// movimientos, que es la superficie que sí toca speciesFromTraits().
+// ── tercer método: sprite de SpriteMatcher.readOwnTeamIcons() (2026-08-06) ──
+// Angel pidió que la captura del equipo propio también use reconocimiento por
+// sprite, "junto con los otros métodos ya trabajados" — Kotlin no se puede
+// correr acá, pero la función que DECIDE qué hacer con lo que Kotlin manda es
+// pura JS y sí se puede probar a fondo.
+check("speciesFromIcon() usa el ícono más cercano a la posición del texto, dentro de la tolerancia", () => {
+  const icons = [
+    { x: 500, y: 500, dex: 6, conf: 0.9 },   // lejos, no debería matchear
+    { x: 100, y: 200, dex: 445, conf: 0.85 }, // cerca de pos
+  ];
+  assertEqual(E.speciesFromIcon({ x: 102, y: 203 }, icons, 18), 445);
+});
+check("speciesFromIcon() no inventa si el ícono más cercano está lejos de la tarjeta", () => {
+  const icons = [{ x: 900, y: 900, dex: 445, conf: 0.95 }];
+  assertEqual(E.speciesFromIcon({ x: 100, y: 100 }, icons, 18), null);
+});
+check("speciesFromIcon() no usa un ícono con confianza baja, aunque esté cerca", () => {
+  const icons = [{ x: 101, y: 201, dex: 445, conf: 0.2 }];
+  assertEqual(E.speciesFromIcon({ x: 100, y: 200 }, icons, 18), null,
+    "por debajo de CONF_MIN no alcanza para reemplazar un texto que ya falló");
+});
+check("speciesFromIcon() sin posición, sin íconos o con dex inexistente devuelve null sin explotar", () => {
+  assertEqual(E.speciesFromIcon(null, [{ x: 1, y: 1, dex: 445, conf: 0.9 }], 18), null);
+  assertEqual(E.speciesFromIcon({ x: 1, y: 1 }, [], 18), null);
+  assertEqual(E.speciesFromIcon({ x: 1, y: 1 }, [{ x: 1, y: 1, dex: 999999, conf: 0.9 }], 18), null,
+    "un dex que no existe en el dex cargado no debería colarse");
+});
+
+check("speciesFromTraits() con habilidad única sigue identificando aunque los movimientos sean de otra tarjeta", () => {
+  const ABIL = E.getABIL();
+  const cuenta = {};
+  for (const k of Object.keys(ABIL)) {
+    const d = Number(k);
+    if (d >= 900000 || !E.S(d)) continue;
+    for (const ab of ABIL[d] || []) cuenta[ab] = (cuenta[ab] || 0) + 1;
+  }
+  const unica = Object.keys(cuenta).find((ab) => cuenta[ab] === 1 && ab !== "—");
+  assert(unica, "el dex de prueba tiene que tener al menos una habilidad exclusiva");
+  const esperado = Object.keys(ABIL).map(Number)
+    .find((d) => d < 900000 && E.S(d) && (ABIL[d] || []).includes(unica));
+  const nombre = E.abilName(unica);
+  assertEqual(E.speciesFromTraits(nombre, ["Movimiento Inventado 1", "Movimiento Inventado 2"]), esperado,
+    "movimientos que no matchean ningún learnset no deberían tirar abajo una habilidad exclusiva");
+  assertEqual(E.speciesFromTraits(nombre, []), esperado,
+    "cero movimientos leídos (columna vacía) tampoco debería tirarla abajo");
 });
 
 // ── cómo se comunica la confianza (decisión #24) ──

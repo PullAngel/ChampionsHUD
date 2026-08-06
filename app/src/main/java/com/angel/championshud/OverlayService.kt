@@ -450,7 +450,7 @@ class OverlayService : Service() {
                     val json = when {
                         bmp == null -> org.json.JSONObject()
                             .put("error", err ?: "No se pudo leer la pantalla.").toString()
-                        else -> runCatching { teamOcr.readText(bmp) }
+                        else -> runCatching { readOwnTeamWithIcons(bmp) }
                             .getOrElse { e ->
                                 org.json.JSONObject().put("error",
                                     "Falló el reconocimiento de texto: ${e.javaClass.simpleName}").toString()
@@ -465,6 +465,28 @@ class OverlayService : Service() {
                 }
             }
         }, 120)
+    }
+
+    /**
+     * Texto (TeamOCR) + sprite de cada línea (SpriteMatcher.readOwnTeamIcons,
+     * ver el comentario grande ahí) en UN solo bitmap, antes de reciclarlo —
+     * por eso no puede vivir en doScanOwnTeam() como dos pasos sueltos, el
+     * bitmap se recicla apenas termina de usarse.
+     * Si el reconocimiento de sprites falla por lo que sea, el texto solo
+     * sigue andando igual que antes — el campo "icons" queda vacío, nunca
+     * tira abajo la captura entera por un problema del lado del sprite.
+     */
+    private fun readOwnTeamWithIcons(bmp: android.graphics.Bitmap): String {
+        val textJson = org.json.JSONObject(teamOcr.readText(bmp))
+        val lines = textJson.optJSONArray("lines") ?: org.json.JSONArray()
+        val hints = ArrayList<SpriteMatcher.Hint>(lines.length())
+        for (i in 0 until lines.length()) {
+            val l = lines.getJSONObject(i)
+            hints.add(SpriteMatcher.Hint(l.optInt("x"), l.optInt("y"), l.optInt("w"), l.optInt("h")))
+        }
+        val icons = runCatching { org.json.JSONObject(matcher.readOwnTeamIcons(bmp, hints)).optJSONArray("icons") }
+            .getOrNull() ?: org.json.JSONArray()
+        return textJson.put("icons", icons).toString()
     }
 
     private fun emit(fn: String, json: String) {

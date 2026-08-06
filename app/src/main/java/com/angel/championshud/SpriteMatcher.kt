@@ -114,6 +114,126 @@ class SpriteMatcher(context: Context) {
 
     // ══════════════════ entrada publica ══════════════════
 
+    /**
+     * ── RECONOCIMIENTO POR SPRITE EN "MOVES & MORE" (agregado 2026-08-06) ──
+     *
+     * Angel pidio, con capturas reales de texto mal leido ("Snieboss" en vez
+     * de la especie real, "Garchiador" que a veces se deducia por mote y a
+     * veces no): "no usas sprites para reconocer los pokes en el View
+     * Details? deberias, junto con los otros metodos ya trabajados". Cada
+     * tarjeta de "Moves & More" tiene el sprite pequeño pegado a la
+     * izquierda del nombre — la misma clase de señal que ya usa
+     * `readTeamPreview()` para el rival, pero acá el texto SÍ suele leerse
+     * (es la propia pantalla, sin la degradacion de leer sobre el campo de
+     * batalla), asi que el sprite no reemplaza al texto: lo CONFIRMA cuando
+     * el texto fallo (mote, especie no reconocida) y lo IGNORA cuando el
+     * texto ya resolvio bien — mismo criterio que `speciesFromTraits()` del
+     * lado de hud.html: nunca pisar una lectura que ya funciono.
+     *
+     * `hints` son las líneas de texto que TeamOCR ya devolvió (no hace falta
+     * volver a correr ML Kit) — de cada una se recorta un cuadrado INMEDIATO
+     * A LA IZQUIERDA, del mismo alto que la línea. Este offset es una
+     * estimación razonada a partir de las capturas que mandó Angel (el
+     * ícono se ve del mismo alto que el texto, pegado a su borde izquierdo),
+     * NO una medición en píxeles reales — no se pudo calibrar sin correr
+     * esto en un dispositivo de verdad. Si el offset está mal, `identify()`
+     * va a devolver una confianza baja (la validación de cordura del recorte
+     * ya filtra la mayoría de los recortes basura) y el lado JS simplemente
+     * no va a tener con qué reforzar esa línea — degrada a "solo texto",
+     * nunca empeora lo que ya había.
+     *
+     * Devuelve un JSON `{"icons":[{"x":.., "y":.., "dex":.., "conf":..}, ...]}`
+     * — una entrada por línea de texto con un ícono plausible a su
+     * izquierda, para que hud.html decida (por posición) a qué tarjeta
+     * corresponde cada una, igual que ya hace con las líneas de ML Kit.
+     */
+    class Hint(@JvmField val x: Int, @JvmField val y: Int, @JvmField val w: Int, @JvmField val h: Int)
+
+    fun readOwnTeamIcons(shot: Bitmap, hints: List<Hint>): String {
+        val out = JSONArray()
+        indexError?.let { return JSONObject().put("icons", out).toString() }
+        val bw = shot.width; val bh = shot.height
+        for (hint in hints) {
+            if (hint.h < 8) continue
+            val size = hint.h
+            // El ícono va INMEDIATO a la izquierda del texto, mismo alto que la
+            // línea — ver el razonamiento arriba.
+            val x0 = hint.x - size
+            val y0 = hint.y
+            if (x0 < 0 || y0 < 0 || x0 + size > bw || y0 + size > bh) continue
+            val m = runCatching { identifyIcon(shot, x0, y0, size) }.getOrNull() ?: continue
+            out.put(JSONObject()
+                .put("x", hint.x).put("y", hint.y)
+                .put("dex", m.dex).put("form", m.form).put("shiny", m.shiny)
+                .put("conf", m.conf))
+        }
+        return JSONObject().put("icons", out).toString()
+    }
+
+    /** Identifica un recorte cuadrado suelto (no una tarjeta con franja de
+        referencia como readCard()): el fondo se estima con el ANILLO exterior
+        del propio recorte, asumiendo que el ícono no llega a tocar el borde
+        — razonable si el cuadrado es generoso respecto al ícono real. */
+    private fun identifyIcon(shot: Bitmap, x0: Int, y0: Int, size: Int): Match? {
+        val px = IntArray(size * size)
+        runCatching { shot.getPixels(px, 0, size, x0, y0, size, size) }.onFailure { return null }
+
+        val ring = ArrayList<Int>(size * 4)
+        for (i in 0 until size) {
+            ring.add(px[i]); ring.add(px[(size - 1) * size + i])
+            ring.add(px[i * size]); ring.add(px[i * size + size - 1])
+        }
+        var br = 0; var bg = 0; var bb = 0
+        for (p in ring) { br += p shr 16 and 0xFF; bg += p shr 8 and 0xFF; bb += p and 0xFF }
+        br /= ring.size; bg /= ring.size; bb /= ring.size
+
+        val mask = BooleanArray(size * size)
+        for (i in px.indices) {
+            val p = px[i]
+            val d = max(abs((p shr 16 and 0xFF) - br),
+                    max(abs((p shr 8 and 0xFF) - bg), abs((p and 0xFF) - bb)))
+            mask[i] = d > 55
+        }
+
+        var cMin = size; var cMax = -1; var rMin = size; var rMax = -1
+        for (r in 0 until size) for (c in 0 until size) if (mask[r * size + c]) {
+            if (c < cMin) cMin = c; if (c > cMax) cMax = c
+            if (r < rMin) rMin = r; if (r > rMax) rMax = r
+        }
+        if (cMax < 0) return null
+        val bwBox = cMax - cMin + 1; val bhBox = rMax - rMin + 1
+        val fill = (0 until size * size).count { mask[it] }.toFloat() / (size * size)
+        if (fill < MIN_FILL || fill > MAX_FILL) return null
+        val ar = bwBox.toFloat() / max(1, bhBox)
+        if (ar < MIN_AR || ar > MAX_AR) return null
+
+        val sil = FloatArray(grid * grid)
+        for (gy in 0 until grid) for (gx in 0 until grid) {
+            val y0b = rMin + gy * bhBox / grid; val y1b = rMin + (gy + 1) * bhBox / grid
+            val x0b = cMin + gx * bwBox / grid; val x1b = cMin + (gx + 1) * bwBox / grid
+            var on = 0; var tot = 0
+            for (r in y0b until max(y1b, y0b + 1)) for (c in x0b until max(x1b, x0b + 1)) {
+                if (r in 0 until size && c in 0 until size) { tot++; if (mask[r * size + c]) on++ }
+            }
+            sil[gy * grid + gx] = if (tot > 0) on.toFloat() / tot else 0f
+        }
+        val col = FloatArray(cgrid * cgrid * 3)
+        for (gy in 0 until cgrid) for (gx in 0 until cgrid) {
+            val y0b = rMin + gy * bhBox / cgrid; val y1b = rMin + (gy + 1) * bhBox / cgrid
+            val x0b = cMin + gx * bwBox / cgrid; val x1b = cMin + (gx + 1) * bwBox / cgrid
+            var n = 0; var rr = 0f; var gg = 0f; var bb2 = 0f
+            for (r in y0b until max(y1b, y0b + 1)) for (c in x0b until max(x1b, x0b + 1)) {
+                if (r in 0 until size && c in 0 until size && mask[r * size + c]) {
+                    val p = px[r * size + c]
+                    rr += p shr 16 and 0xFF; gg += p shr 8 and 0xFF; bb2 += p and 0xFF; n++
+                }
+            }
+            val i = (gy * cgrid + gx) * 3
+            if (n > 0) { col[i] = rr / n / 255f; col[i + 1] = gg / n / 255f; col[i + 2] = bb2 / n / 255f }
+        }
+        return identify(sil, col, bwBox.toFloat() / max(1, bhBox))
+    }
+
     fun readTeamPreview(shot: Bitmap): String {
         indexError?.let { return JSONObject().put("error", it).toString() }
 
