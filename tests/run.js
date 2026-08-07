@@ -85,6 +85,8 @@ function loadEngine() {
     this.setOcrTarget = function (v) { OCR_TARGET = v; };
     this.statIndexOf = statIndexOf;
     this.natMul = natMul;
+    this.hpOf = hpOf;
+    this.stOf = stOf;
     this.mv = mv;
     this.ABIL_DESC = ABIL_DESC;
     this.ABIL_I18N_keys = function () { return Object.keys(ABIL_I18N); };
@@ -2657,6 +2659,39 @@ check("un solo umbral de confianza en toda la interfaz — no vuelven los tres v
 // carga dex.json en su propio sandbox, que es la condición real de la app.
 // (Ese 45% sí explica cuánto se pierde cuando dex.json falta: la app ya avisa
 // con DATA-02, y ahora está cuantificado.)
+// ── la fórmula de stats, contra la pantalla real del juego ──
+// `audit.md` afirma que "el motor de daño implementa una fórmula verificada
+// contra la pantalla de stats del juego", pero esa verificación nunca quedó
+// como test: era una comprobación manual de una sesión vieja. Acá queda fija,
+// y con datos de las capturas REALES que mandó Angel el 2026-08-06 (pantalla
+// "Stats" de View Details, dos equipos distintos) — no valores inventados.
+//
+// Esto es lo más cerca de "ground truth" que tiene el proyecto: si alguien
+// toca hpOf/stOf/natMul, o si Champions cambia la fórmula en un parche, doce
+// comparaciones contra números que el juego mostró de verdad lo van a decir.
+console.log("\nfórmula de stats contra la pantalla real del juego:");
+
+// [base, EV, natura, esperado] por stat. natura: 1.1 sube, 0.9 baja, 1 neutra
+// (las flechas de color que el juego dibuja y el OCR no puede leer, §5.13).
+const CAPTURAS_REALES = [
+  ["Grimmsnarl", [95, 120, 65, 95, 75, 60], [
+    [32, 1, 202], [0, 1, 140], [16, 1, 101], [0, 0.9, 103], [18, 1.1, 124], [0, 1, 80],
+  ]],
+  ["Aegislash", [60, 50, 140, 50, 140, 60], [
+    [12, 1, 147], [30, 1, 100], [0, 1, 160], [0, 0.9, 63], [2, 1, 162], [22, 1.1, 112],
+  ]],
+];
+for (const [nombre, base, filas] of CAPTURAS_REALES) {
+  check(`stats de ${nombre} coinciden con la captura real del juego, los 6`, () => {
+    const STN = ["PS", "Atq", "Def", "AtqEsp", "DefEsp", "Vel"];
+    filas.forEach(([ev, nat, esperado], i) => {
+      const got = i === 0 ? E.hpOf(base[0], ev) : E.stOf(base[i], ev, nat);
+      assertEqual(got, esperado,
+        `${nombre} ${STN[i]} (base ${base[i]}, ${ev} SP, natura ×${nat})`);
+    });
+  });
+}
+
 console.log("\ncontrato meta.json ↔ motor (audit.md §7 punto 0.b):");
 
 check("todo nombre que meta.json entrega, el motor lo sabe resolver (con dex.json cargado)", () => {

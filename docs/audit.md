@@ -161,7 +161,7 @@ Los hallazgos 5.2 y 5.3 (ya resueltos) compartían la misma forma: el sistema se
 
 ## 9. Preguntas frecuentes sobre el estado del código
 
-**¿Qué hace bien la aplicación hoy?** El reconocimiento de sprites es genuinamente sólido y validado contra evidencia real. La captura de pantalla resuelve correctamente una restricción real del sistema operativo. El motor de daño implementa una fórmula verificada contra la pantalla de stats del juego. La persistencia es prolija.
+**¿Qué hace bien la aplicación hoy?** La captura de pantalla resuelve correctamente una restricción real del sistema operativo. **La fórmula de stats está verificada contra la pantalla real del juego, y desde el 2026-08-06 esa verificación es un test permanente** (12 comparaciones exactas — los 6 stats de Grimmsnarl y de Aegislash, tomados de capturas de Angel — que fallan si alguien toca `hpOf`/`stOf`/`natMul` o si Champions cambia la fórmula en un parche). La persistencia es prolija. El reconocimiento de sprites tiene una base sólida (§4) pero **no la etapa de recorte**, que es la que falla en uso real — ver §5.14.
 
 **¿Qué componentes son más difíciles de mantener?** `hud.html` completo, por tamaño y por compartir un único scope global sin tipos. En particular, la relación `meta.json`/tablas canónicas, y la coexistencia de tablas embebidas en español con `dex.json` en inglés tratadas como intercambiables cuando no lo son.
 
