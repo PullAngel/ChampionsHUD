@@ -2644,6 +2644,54 @@ check("un solo umbral de confianza en toda la interfaz — no vuelven los tres v
 // `CLAUDE.md` lo lista como principio no negociable: "Dominio sin lógica de
 // licencia ni de publicidad. El Motor no evalúa flags de plan ni de
 // monetización, nunca."
+// ── contrato meta.json ↔ motor (audit.md §7 punto 0.b) ──
+// El patrón inglés/español ya causó TRES bugs (ROLE_MV_EN sprint 2.9;
+// foeMovePool() y compatibleSets() el 2026-08-06). audit.md dice que la
+// mitigación real es "un contrato tipado en el borde, no vigilancia manual".
+// Esto es ese contrato: se verifica que TODO nombre que meta.json entrega
+// (movimientos, sets, ítems, habilidades) el motor lo sepa resolver.
+//
+// OJO con el sandbox: sin dex.json, `MV` es solo la tabla embebida y el 45%
+// de los movimientos de meta.json no resuelve — medido. Eso NO es un bug del
+// contrato, es que falta la mitad de los datos del juego; por eso este test
+// carga dex.json en su propio sandbox, que es la condición real de la app.
+// (Ese 45% sí explica cuánto se pierde cuando dex.json falta: la app ya avisa
+// con DATA-02, y ahora está cuantificado.)
+console.log("\ncontrato meta.json ↔ motor (audit.md §7 punto 0.b):");
+
+check("todo nombre que meta.json entrega, el motor lo sabe resolver (con dex.json cargado)", () => {
+  const dexPath = path.join(ROOT, "app/src/main/assets/dex.json");
+  const metaPath = path.join(ROOT, "app/src/main/assets/meta.json");
+  if (!fs.existsSync(dexPath) || !fs.existsSync(metaPath)) return; // sin datos no hay nada que contrastar
+  const html = fs.readFileSync(HUD_PATH, "utf-8");
+  const start = html.indexOf("<script>") + "<script>".length;
+  const src = html.slice(start, html.indexOf("function vPre(){")) +
+    `\nthis.findMove=findMove; this.findItem=findItem; this.findAbility=findAbility; this.loadDex=loadDex;`;
+  const dexRaw = fs.readFileSync(dexPath, "utf-8");
+  const box = {
+    localStorage: { _d: {}, getItem(k) { return this._d[k] ?? null; }, setItem(k, v) { this._d[k] = String(v); } },
+    console, Android: { loadDex: () => dexRaw },
+  };
+  vm.createContext(box);
+  vm.runInContext(src, box, { filename: "hud.html" });
+  assert(box.loadDex(), "dex.json tiene que poder cargarse para medir el contrato de verdad");
+
+  const sp = (() => { const m = JSON.parse(fs.readFileSync(metaPath, "utf-8")); return m.species || m; })();
+  const fallos = [];
+  for (const dex of Object.keys(sp)) {
+    const s = sp[dex];
+    for (const [m] of (s.moves || [])) if (!box.findMove(m)) fallos.push(`moves ${dex}:"${m}"`);
+    for (const set of (s.sets || [])) for (const m of (set.moves || [])) if (!box.findMove(m)) fallos.push(`sets ${dex}:"${m}"`);
+    for (const [i] of (s.items || [])) if (!box.findItem(i)) fallos.push(`items ${dex}:"${i}"`);
+    for (const [a] of (s.abilities || [])) if (!box.findAbility(a)) fallos.push(`abilities ${dex}:"${a}"`);
+  }
+  const muestra = [...new Set(fallos)].slice(0, 8);
+  assert(fallos.length === 0,
+    `${fallos.length} nombres de meta.json que el motor no puede resolver. ` +
+    `Cualquier código que los consuma los va a descartar en silencio — el bug que ya apareció ` +
+    `tres veces. Ejemplos: ${muestra.join(", ")}`);
+});
+
 console.log("\nseparación Motor / Cliente (Fase 3):");
 
 check("el motor no menciona licencias, planes ni publicidad — ni siquiera de pasada", () => {
