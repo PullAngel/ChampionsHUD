@@ -12,3 +12,13 @@ local.properties
 .idea/*.iml
 *.iml
 .idea/
+
+# Salidas de los generadores de datos, en la raíz del repo. El dato canónico
+# que usa la app es `app/src/main/assets/meta.json`, y ESE sí está versionado;
+# estos dos son el paso intermedio antes de copiarlo a assets/:
+#   build_meta.py    → meta.json      (flujo documentado: cp meta.json .../assets/)
+#   build_meta_v2.py → meta_v2.json   (a propósito aparte, para comparar sin pisar nada)
+# Sin esto aparecen como "untracked" en cada git status y hay que esquivarlos
+# a mano en cada commit.
+/meta.json
+/meta_v2.json
