@@ -2461,24 +2461,50 @@ check("DEX_FIX migra un guardado viejo en vez de dejar el slot apuntando a una e
   assert(E.S(E.fixDex(910)) !== null, "después de migrar, la especie tiene que existir de verdad en SPD");
 });
 
+/** Corre un script de Python probando los intérpretes disponibles.
+    Tira solo si NINGUNO funciona — y en ese caso reporta el error del último
+    que llegó a ejecutar algo (no el "no existe" del primero, que no dice nada).
+
+    Por qué no basta con `break` al primer fallo, que era lo que hacía antes:
+    en la máquina de Angel `python3` EXISTE pero es otro intérprete, sin las
+    dependencias que `build_meta.py` importa — falla con ImportError, no con
+    ENOENT. La versión vieja trataba eso como "el script está roto" y ni
+    probaba `python`, que sí anda. Un test que falla por el intérprete
+    equivocado es peor que no tenerlo: manda a buscar un bug que no existe. */
+function correrPython(script, etiqueta) {
+  const pythons = ["python3", "python"];
+  const fallos = [];
+  for (const py of pythons) {
+    try {
+      execFileSync(py, [script], { cwd: ROOT, stdio: "pipe" });
+      return; // uno funcionó: alcanza
+    } catch (e) {
+      if (e.code === "ENOENT") { fallos.push(`${py}: no está en PATH`); continue; }
+      fallos.push(`${py}:\n${String(e.stderr || e.stdout || e.message).trim()}`);
+    }
+  }
+  throw new Error(`${etiqueta} no pasó con ningún intérprete de Python.\n${fallos.join("\n---\n")}`);
+}
+
 // ── validador de datos (roadmap Fase 0, ítem 5) ──
 console.log("\nvalidador de datos (validate_data.py):");
 check("validate_data.py corre limpio contra el estado actual del repo", () => {
-  const pythons = ["python3", "python"];
-  let ran = false, lastErr;
-  for (const py of pythons) {
-    try {
-      execFileSync(py, [path.join(ROOT, "validate_data.py")], { cwd: ROOT, stdio: "pipe" });
-      ran = true;
-      break;
-    } catch (e) {
-      lastErr = e;
-      if (e.code === "ENOENT") continue; // ese intérprete no existe, probar el siguiente
-      throw new Error(`validate_data.py encontró inconsistencias:\n${e.stdout}`);
-    }
-  }
-  if (!ran) throw new Error(`no se encontró python3 ni python en PATH (${lastErr && lastErr.message})`);
+  correrPython(path.join(ROOT, "validate_data.py"), "validate_data.py");
 });
+
+// ── tests de los generadores de datos (Python) ──
+// Encontrado el 2026-08-06: `tests/test_build_meta.py` (22 casos) y
+// `tests/test_build_meta_v2.py` (14) existen desde la Fase 2, pasan, están
+// citados en roadmap.md... y NADIE los corría. `run.js` solo invocaba
+// `validate_data.py`, así que 36 casos de cobertura sobre los generadores
+// eran una red de seguridad que nadie tiraba: podían haberse roto hace
+// semanas sin que ninguna corrida lo dijera.
+// Se enganchan acá para que "correr los tests" signifique una sola cosa.
+for (const archivo of ["test_build_meta.py", "test_build_meta_v2.py"]) {
+  const ruta = path.join(__dirname, archivo);
+  if (!fs.existsSync(ruta)) continue;
+  check(`${archivo} pasa (generadores de datos)`, () => correrPython(ruta, archivo));
+}
 
 // ── sintaxis del script COMPLETO (bug real, 2026-08-04) ──
 // loadEngine() solo extrae hasta `function vPre(){` — un error de sintaxis
