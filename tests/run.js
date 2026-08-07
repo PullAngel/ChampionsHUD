@@ -2694,6 +2694,24 @@ check("todo nombre que meta.json entrega, el motor lo sabe resolver (con dex.jso
 
 console.log("\nseparación Motor / Cliente (Fase 3):");
 
+// audit.md §5.6 estuvo diciendo "CONFIRMADO VIGENTE" durante meses sobre una
+// dependencia que la Fase 0 ya había removido — contradicción encontrada el
+// 2026-08-06 leyendo build.gradle.kts. Este test evita las dos formas de que
+// vuelva a pasar: que la dependencia se reintroduzca sin usarse, o que alguien
+// la use de verdad y el documento quede desactualizado al revés.
+check("ninguna dependencia de coroutines declarada sin un solo import que la use", () => {
+  const gradle = path.join(ROOT, "app/build.gradle.kts");
+  if (!fs.existsSync(gradle)) return;
+  const declarada = /kotlinx-coroutines/.test(fs.readFileSync(gradle, "utf-8"));
+  const dir = path.join(ROOT, "app/src/main/java/com/angel/championshud");
+  const usada = fs.existsSync(dir) && fs.readdirSync(dir)
+    .filter((f) => f.endsWith(".kt"))
+    .some((f) => /import\s+kotlinx\.coroutines/.test(fs.readFileSync(path.join(dir, f), "utf-8")));
+  assert(!(declarada && !usada),
+    "kotlinx-coroutines está declarada en build.gradle.kts pero ningún .kt la importa — " +
+    "peso muerto en el APK (audit.md §5.6, ya removida una vez)");
+});
+
 check("el motor no menciona licencias, planes ni publicidad — ni siquiera de pasada", () => {
   const html = fs.readFileSync(HUD_PATH, "utf-8");
   const start = html.indexOf("<script>") + "<script>".length;
