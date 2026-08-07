@@ -293,6 +293,18 @@ Con la Fase 2 cerrada, el trabajo de esta fecha no encaja en un sprint numerado 
 3. **Números de stats pegados** ("1550" en vez de HP 155 + inversión 0): `numerosDeFila()` separa los tokens usando los 5 casos reales de la captura de Angel como referencia.
 4. **Captura del equipo rival confunde especies** (Aegislash↔Floette, Mimikyu↔Milotic, con 98% de confianza reportada) — se difirió en su momento por ser Kotlin; **resuelto en la revisión final de OCR del 2026-08-06**, ver más abajo.
 
+### Endurecimiento de la red de tests (2026-08-06, sesión autónoma)
+
+Con Angel sin poder probar en dispositivo, se trabajó solo en lo verificable sin él: cerrar deuda de `audit.md` §7 y tapar agujeros en la propia red de seguridad. Nada de esto cambia comportamiento en la app — todo es documentación, tests, o correcciones de contradicciones.
+
+- **36 casos de Python que nadie corría.** `tests/test_build_meta.py` (22) y `test_build_meta_v2.py` (14) existían desde la Fase 2, pasaban, estaban citados acá... y ninguna corrida los ejecutaba. Enganchados a `run.js`: ahora `node tests/run.js` es la única orden que hace falta. Al engancharlos apareció un bug real en el runner de Python (`python3` existe en la máquina de Angel pero sin las dependencias; el bucle abortaba en el primer fallo sin probar `python`) — corregido con `correrPython()`, que prueba todos y solo falla si ninguno anda.
+- **Contrato `meta.json` ↔ motor ejecutable** (§7 punto 0.b): verifica que todo nombre que `meta.json` entrega —movimientos, sets, ítems, habilidades— el motor lo sepa resolver. Medido limpio: 0 fallos sobre 1279 / 1563 / 564 / 307.
+- **La fórmula de stats, fijada contra la pantalla real del juego**: 12 comparaciones exactas con las capturas de Angel (Grimmsnarl y Aegislash, los 6 stats cada uno, incluyendo los que llevan naturaleza y redondean). `audit.md` decía que estaba "verificada contra el juego" pero eso era una comprobación manual de una sesión vieja, no reproducible.
+- **Dos guardas de arquitectura** (Fase 3): el motor no menciona licencias/planes/publicidad, y solo usa el puente Android para IO detrás de la guarda `has`.
+- **Contradicciones corregidas**: el encabezado de Fase 1 decía "(fase actual)" 77 líneas antes de decir "CERRADA"; `README.md` estaba dos fases atrasado con 65 tests contra 201 reales; `audit.md` §5.6 marcaba "VIGENTE" una dependencia que la Fase 0 ya había removido; `audit.md` §6 llamaba "genuinamente sólido" al reconocimiento de sprites cuyo recorte es justamente el que falla.
+
+**Todos los tests nuevos se probaron rompiéndolos a propósito** (inyectando una variable `premium`, un nombre de movimiento inválido, un `+5`→`+6` en la fórmula, una dependencia sin usar, un test Python que falla) y restaurando después con `git diff` en cero. Es la lección del sprint 2.8: un test que no puede fallar pasa en verde con el bug adentro.
+
 ### CALC: análisis + primer incremento táctil (2026-08-06)
 
 Angel pidió repensar CALC con nivel de detalle de la calculadora de Showdown pero pensada para toques, con curva de aprendizaje más amable, precargada con el equipo propio y el rival ya escaneado — pidió explícitamente analizar primero, documentar, y recién después programar. Análisis completo (auditoría de fortalezas/debilidades de Showdown, principio de diseño, qué queda pendiente) en [`docs/calc.md`](./calc.md).
