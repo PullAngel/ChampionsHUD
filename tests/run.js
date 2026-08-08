@@ -126,6 +126,8 @@ function loadEngine() {
     this.previewMatrix = previewMatrix;
     this.numerosDeFila = numerosDeFila;
     this.statNum = statNum;
+    this.statPair = statPair;
+    this.natureFromStats = natureFromStats;
     this.speciesFromTraits = speciesFromTraits;
     this.speciesFromIcon = speciesFromIcon;
     this.getABIL = function () { return ABIL; };
@@ -2695,6 +2697,100 @@ check("un solo umbral de confianza en toda la interfaz — no vuelven los tres v
 // Esto es lo más cerca de "ground truth" que tiene el proyecto: si alguien
 // toca hpOf/stOf/natMul, o si Champions cambia la fórmula en un parche, doce
 // comparaciones contra números que el juego mostró de verdad lo van a decir.
+// ── deducir la naturaleza sin ver las flechas (2026-08-06) ──
+// audit.md §5.13 daba por sentado que esto exigia analisis de imagen en
+// Kotlin. No hace falta: con el stat ya calculado (que el juego muestra), la
+// inversión (que el OCR lee) y la base (dex.json), el multiplicador es la
+// única incógnita y solo puede ser ×1.1/×1/×0.9.
+console.log("\nnaturaleza deducida por aritmética (audit.md §5.13):");
+
+check("natureFromStats() acierta la naturaleza de las capturas REALES de Angel", () => {
+  // Grimmsnarl (dex 861): sube DefEsp (4), baja AtqEsp (3) — verificado a mano
+  // contra la captura antes de escribir el código.
+  const B = E.getB();
+  E.setB(E.NEW());
+  const casos = [
+    // dex, base, inversiones, valores mostrados, up esperado, dn esperado
+    [861, [95, 120, 65, 95, 75, 60], [32, 0, 16, 0, 18, 0], [202, 140, 101, 103, 124, 80], 4, 3],
+    [681, [60, 50, 140, 50, 140, 60], [12, 30, 0, 0, 2, 22], [147, 100, 160, 63, 162, 112], 5, 3],
+  ];
+  for (const [dex, base, sp, val, up, dn] of casos) {
+    if (!E.S(dex)) {
+      // La especie no está en el dex mínimo del sandbox: se inyecta para poder
+      // probar la función, que es lo que interesa acá.
+      E.getSPD()[dex] = ["Prueba", ...base, "NOR"];
+    }
+    const r = E.natureFromStats(dex, sp, val);
+    assert(r.ok, `debería poder deducirla, dio: ${r.motivo}`);
+    assertEqual(r.up, up, `stat que sube (dex ${dex})`);
+    assertEqual(r.dn, dn, `stat que baja (dex ${dex})`);
+  }
+});
+
+check("natureFromStats() reconoce una naturaleza neutra en vez de inventar un ±10%", () => {
+  const dex = 990861;
+  E.getSPD()[dex] = ["NeutraPrueba", 95, 120, 65, 95, 75, 60, "NOR"];
+  // Todos los valores calculados con ×1 exacto.
+  const sp = [0, 0, 0, 0, 0, 0];
+  const val = [0, 1, 2, 3, 4, 5].map((i) => (i === 0 ? E.hpOf(E.S(dex).s[0], 0) : E.stOf(E.S(dex).s[i], 0, 1)));
+  const r = E.natureFromStats(dex, sp, val);
+  assert(r.ok, `debería resolver, dio: ${r.motivo}`);
+  assertEqual(r.up, 0);
+  assertEqual(r.dn, 0);
+  assertEqual(r.motivo, "neutra");
+});
+
+check("natureFromStats() falla RUIDOSAMENTE si un número no cuadra, en vez de media naturaleza", () => {
+  const dex = 990862;
+  E.getSPD()[dex] = ["RotaPrueba", 95, 120, 65, 95, 75, 60, "NOR"];
+  const sp = [0, 0, 0, 0, 0, 0];
+  const val = [0, 1, 2, 3, 4, 5].map((i) => (i === 0 ? E.hpOf(E.S(dex).s[0], 0) : E.stOf(E.S(dex).s[i], 0, 1)));
+  val[2] = val[2] + 7; // un valor que no sale de ningún multiplicador válido
+  const r = E.natureFromStats(dex, sp, val);
+  assertEqual(r.ok, false, "no puede dar por buena una tarjeta con un número imposible");
+  assert(/Def/.test(r.motivo), `el motivo debería nombrar la stat culpable, dio: ${r.motivo}`);
+});
+
+check("natureFromStats() rechaza dos stats subidas — ninguna naturaleza real hace eso", () => {
+  const dex = 990863;
+  E.getSPD()[dex] = ["DobleSube", 95, 120, 65, 95, 75, 60, "NOR"];
+  const sp = [0, 0, 0, 0, 0, 0];
+  const val = [0, 1, 2, 3, 4, 5].map((i) => (i === 0 ? E.hpOf(E.S(dex).s[0], 0) : E.stOf(E.S(dex).s[i], 0, 1)));
+  val[1] = E.stOf(E.S(dex).s[1], 0, 1.1);
+  val[2] = E.stOf(E.S(dex).s[2], 0, 1.1);
+  const r = E.natureFromStats(dex, sp, val);
+  assertEqual(r.ok, false);
+  assert(/inconsistente/.test(r.motivo), `dio: ${r.motivo}`);
+});
+
+check("natureFromStats() no explota con datos faltantes", () => {
+  assertEqual(E.natureFromStats(999999, [0, 0, 0, 0, 0, 0], [1, 1, 1, 1, 1, 1]).ok, false);
+  assertEqual(E.natureFromStats(861, null, null).ok, false);
+  assertEqual(E.natureFromStats(861, [0, 0, 0, 0, 0, 0], null).ok, false);
+});
+
+check("statPair() devuelve el stat calculado Y la inversión de una fila", () => {
+  assertEqual(JSON.stringify(E.statPair("HP 202 32")), JSON.stringify({ val: 202, ev: 32 }));
+  assertEqual(JSON.stringify(E.statPair("1550")), JSON.stringify({ val: 155, ev: 0 }),
+    "los tokens pegados se separan igual que antes");
+  assertEqual(JSON.stringify(E.statPair("Sp. Atk 84")), JSON.stringify({ val: 84, ev: 0 }),
+    "número único que excede SP_MAX: es el stat con inversión no dibujada");
+  assertEqual(JSON.stringify(E.statPair("")), JSON.stringify({ val: null, ev: null }));
+});
+
+check("parseStatsCard() ahora devuelve también los stats calculados, no solo las inversiones", () => {
+  const L = (t, x, y) => ({ t, x, y, w: t.length * 8, h: 14 });
+  const lines = [
+    L("HP", 10, 10), L("202 32", 90, 10), L("Sp. Atk", 250, 10), L("103 0", 330, 10),
+    L("Attack", 10, 40), L("140 0", 90, 40), L("Sp. Def", 250, 40), L("124 18", 330, 40),
+    L("Defense", 10, 70), L("101 16", 90, 70), L("Speed", 250, 70), L("80 0", 330, 70),
+  ];
+  const r = E.parseStatsCard(lines);
+  assert(r, "debería leer la tarjeta");
+  assertEqual(r.sp.join(","), "32,0,16,0,18,0", "las inversiones siguen igual que antes");
+  assertEqual(r.val.join(","), "202,140,101,103,124,80", "y ahora también los valores mostrados");
+});
+
 console.log("\nfórmula de stats contra la pantalla real del juego:");
 
 // [base, EV, natura, esperado] por stat. natura: 1.1 sube, 0.9 baja, 1 neutra

@@ -2368,6 +2368,52 @@ const FLECHA_UP=/[▲△↑⬆⇧]/, FLECHA_DN=/[▼▽↓⬇⇩]/;
     AtqEsp/DefEsp/Vel), o sea el mismo orden que el array `sp`.
     Devuelve {up:0,dn:0} si no hay nada que interpretar — que es el caso
     esperado mientras la detección dependa de texto. */
+/** ── DEDUCIR LA NATURALEZA SIN VER LAS FLECHAS (2026-08-06) ──
+    `audit.md` §5.13 daba por sentado que esto exigía análisis de color y
+    forma sobre el bitmap, en Kotlin. No hace falta: la naturaleza es
+    **aritméticamente deducible** de datos que el OCR ya lee.
+
+    El juego muestra, por stat, el valor YA CALCULADO y la inversión. La base
+    sale de `dex.json`. Con eso, la única incógnita es el multiplicador, y
+    solo puede ser ×1.1, ×1 o ×0.9 — así que se prueban los tres y gana el
+    que reproduce el número exacto que el juego mostró.
+
+    **Por qué no es ambiguo:** ×1.1 solo empataría con ×1 si el valor previo
+    a multiplicar fuera menor a 10 (porque `floor(v*1.1)===v` exige
+    `v*0.1<1`). El mínimo real en `dex.json` es 35. Medido sobre las 134
+    bases distintas × las 33 inversiones posibles: **0 casos ambiguos de
+    4422**.
+
+    Devuelve `{up,dn,ok,motivo}`. Es estricto a propósito: una naturaleza
+    real sube exactamente una stat y baja exactamente otra distinta (o es
+    neutra y no toca ninguna). Cualquier otra combinación significa que algún
+    número se leyó mal — y ahí devuelve `ok:false` con el motivo, en vez de
+    entregar media naturaleza que sesgaría todos los cálculos en silencio
+    (`vision.md`, fallo ruidoso). PS nunca lleva naturaleza, no se evalúa. */
+function natureFromStats(dex,sp,val){
+  const S_=S(dex);
+  if(!S_||!Array.isArray(sp)||!Array.isArray(val))return {up:0,dn:0,ok:false,motivo:"faltan datos"};
+  const subenBajan=[];
+  for(let i=1;i<=5;i++){
+    const base=S_.s[i], ev=sp[i], mostrado=val[i];
+    if(base==null||ev==null||mostrado==null)
+      return {up:0,dn:0,ok:false,motivo:`falta el valor de ${STN[i]}`};
+    const n=stOf(base,ev,1), u=stOf(base,ev,1.1), d=stOf(base,ev,0.9);
+    if(mostrado===n)subenBajan.push(0);
+    else if(mostrado===u)subenBajan.push(1);
+    else if(mostrado===d)subenBajan.push(-1);
+    // Ninguno de los tres da el número mostrado: la inversión o el valor se
+    // leyeron mal. No se puede deducir nada de esta tarjeta.
+    else return {up:0,dn:0,ok:false,
+      motivo:`${STN[i]} muestra ${mostrado}, pero con ${ev} SP daría ${d}/${n}/${u}`};
+  }
+  const ups=subenBajan.map((v,i)=>v===1?i+1:0).filter(Boolean);
+  const dns=subenBajan.map((v,i)=>v===-1?i+1:0).filter(Boolean);
+  if(!ups.length&&!dns.length)return {up:0,dn:0,ok:true,motivo:"neutra"};
+  if(ups.length===1&&dns.length===1)return {up:ups[0],dn:dns[0],ok:true,motivo:"deducida"};
+  return {up:0,dn:0,ok:false,
+    motivo:`inconsistente: ${ups.length} suben y ${dns.length} bajan`};
+}
 function naturalezaDeTarjeta(L){
   const marca=l=>String(l.t).replace(/\d+/g,"").trim();
   const conFlecha=L.filter(l=>{const r=marca(l);return r&&(FLECHA_UP.test(r)||FLECHA_DN.test(r))});
@@ -2426,11 +2472,29 @@ function numerosDeFila(txt){
   }
   return out;
 }
+/** De una fila de la tarjeta de Stats saca las DOS cosas que trae: el stat ya
+    calculado y la inversión. Hasta el 2026-08-06 solo se guardaba la
+    inversión y el valor calculado se tiraba — pero ese valor es justamente lo
+    que permite deducir la naturaleza sin mirar las flechas de color (ver
+    `natureFromStats()`), así que ahora se conserva.
+    Misma regla de desempate que `statNum()` para el caso de un número único:
+    si excede SP_MAX no puede ser una inversión, así que es el stat con
+    inversión 0 (la barra que el juego no dibuja cuando vale 0). */
+function statPair(txt){
+  const n=numerosDeFila(txt);
+  if(!n.length)return {val:null,ev:null};
+  if(n.length===1)return n[0]>SP_MAX?{val:n[0],ev:0}:{val:null,ev:n[0]};
+  return {val:n[n.length-2],ev:n[n.length-1]};
+}
 function parseStatsCard(lines){
   const L=(lines||[]).filter(l=>l&&l.t);
   if(!L.length)return null;
-  const con=sp=>({sp,...naturalezaDeTarjeta(L)});
+  // `val` = los 6 stats YA CALCULADOS tal como los muestra el juego. Se agrega
+  // sin tocar `sp` (las inversiones) para no cambiar nada de lo que ya
+  // funcionaba: quien no lo necesite lo ignora.
+  const con=(sp,val)=>({sp,val:val||null,...naturalezaDeTarjeta(L)});
   const sp=[null,null,null,null,null,null];
+  const val=[null,null,null,null,null,null];
   // Cuenta cuántos de los 6 stats se resolvieron por la regla del número
   // único (statNum() interpretando "84" como stat-calculado-sin-inversión).
   // Si UNO o dos caen ahí mientras el resto trae su par completo, es el caso
@@ -2460,10 +2524,11 @@ function parseStatsCard(lines){
     for(const o of row){if(statIndexOf(o.t)>=0)break;propios.push(o)}
     const texto=[ln.t,...propios.map(o=>o.t)].join(" ");
     const cantidad=(texto.match(/\d+/g)||[]).length;
-    const v=statNum(texto);
-    if(v!==null){sp[i]=v; if(cantidad===1&&v===0)sinPar++}
+    const par=statPair(texto);
+    const v=par.ev;
+    if(v!==null){sp[i]=v; val[i]=par.val; if(cantidad===1&&v===0)sinPar++}
   }
-  if(sinPar<5&&sp.every(n=>n!==null&&n>=0&&n<=SP_MAX))return con(sp);
+  if(sinPar<5&&sp.every(n=>n!==null&&n>=0&&n<=SP_MAX))return con(sp,val);
 
   const num=L.filter(l=>/\d/.test(l.t));
   if(num.length<6)return null;
@@ -2480,12 +2545,16 @@ function parseStatsCard(lines){
   if(filas&&filas.length===3&&filas.every(f=>f.length)){
     const porFila=filas.map(f=>{
       const n=numerosDeFila(f.slice().sort((a,b)=>(a.x||0)-(b.x||0)).map(l=>l.t).join(" "));
-      return n.length===4?[n[1],n[3]]:null;
+      // [stat izq, inversión izq, stat der, inversión der]: los stats
+      // calculados son el 1º y el 3º, y sirven para deducir la naturaleza.
+      return n.length===4?{ev:[n[1],n[3]],val:[n[0],n[2]]}:null;
     });
     if(porFila.every(Boolean)){
-      const sp2=[porFila[0][0],porFila[1][0],porFila[2][0],
-                 porFila[0][1],porFila[1][1],porFila[2][1]];
-      if(sp2.every(n=>n>=0&&n<=SP_MAX))return con(sp2);
+      const sp2=[porFila[0].ev[0],porFila[1].ev[0],porFila[2].ev[0],
+                 porFila[0].ev[1],porFila[1].ev[1],porFila[2].ev[1]];
+      const val2=[porFila[0].val[0],porFila[1].val[0],porFila[2].val[0],
+                  porFila[0].val[1],porFila[1].val[1],porFila[2].val[1]];
+      if(sp2.every(n=>n>=0&&n<=SP_MAX))return con(sp2,val2);
     }
   }
 
@@ -2502,18 +2571,19 @@ function parseStatsCard(lines){
     if(!bandas||bandas.some(b=>!b.length))return null;
     return bandas.map(b=>{
       const t=b.slice().sort((a,c)=>(a.x||0)-(c.x||0)).map(l=>l.t).join(" ");
-      const v=statNum(t);
-      // Mismo resguardo que el método 1: un número único que statNum()
-      // reinterpretó como "0 sin dibujar" es plausible una vez, no en toda
-      // la tarjeta (ver comentario grande más arriba).
-      if(v===0&&(t.match(/\d+/g)||[]).length===1)sinPar3++;
-      return v;
+      const par=statPair(t);
+      // Mismo resguardo que el método 1: un número único que se reinterpretó
+      // como "0 sin dibujar" es plausible una vez, no en toda la tarjeta
+      // (ver comentario grande más arriba).
+      if(par.ev===0&&(t.match(/\d+/g)||[]).length===1)sinPar3++;
+      return par;
     });
   };
   const izq=tresDe(cols.left), der=tresDe(cols.right);
   if(!izq||!der||sinPar3>=5)return null;
-  const pos=[...izq,...der];
-  return pos.every(n=>n!==null&&n>=0&&n<=SP_MAX)?con(pos):null;
+  const pos=[...izq,...der].map(p=>p.ev);
+  const posVal=[...izq,...der].map(p=>p.val);
+  return pos.every(n=>n!==null&&n>=0&&n<=SP_MAX)?con(pos,posVal):null;
 }
 
 /** Mergea las dos fases por posición de card (asume la misma grilla de 6 en
@@ -2576,7 +2646,7 @@ function finishOwnScan(){
   const moves=OCR_DRAFT[0]||[], stats=OCR_DRAFT[1]||[];
   // Los slots que ya había, para no perderlos si una tarjeta no se pudo leer.
   const prev=(activeTeam()&&activeTeam().team)||[];
-  const errors=[],team=[],sinNaturaleza=[],mote=[];
+  const errors=[],team=[],sinNaturaleza=[],mote=[],natCalculada=[],natNeutra=[];
   let leidos=0;
   for(let i=0;i<6;i++){
     const mv=moves[i]||{}, st=stats[i];
@@ -2616,12 +2686,25 @@ function finishOwnScan(){
     });
     if(st){
       s.sp=st.sp;
-      // La naturaleza el juego la muestra con flechas de color, no con
-      // texto. Si no se pudo determinar queda sin definir (neutra, ×1) en
-      // vez de heredar el default del slot: inventarla sesgaría en silencio
-      // todos los cálculos de daño y velocidad.
-      s.up=st.up||0; s.dn=st.dn||0;
-      if(!st.up||!st.dn)sinNaturaleza.push(label);
+      // La naturaleza el juego la muestra con flechas de color, no con texto.
+      // Orden de intentos, del más confiable al menos:
+      //   1. flechas, si ML Kit llegó a emitir un carácter (raro, casi nunca)
+      //   2. ARITMÉTICA: se deduce del stat calculado + la inversión + la base
+      //      (natureFromStats(), 2026-08-06 — no necesita ver las flechas)
+      //   3. sin determinar: queda neutra (×1) y el resumen lo dice. Nunca se
+      //      hereda el default del slot: inventarla sesgaría en silencio todos
+      //      los cálculos de daño y velocidad.
+      let up=st.up||0, dn=st.dn||0, comoSalio=up&&dn?"flechas":null;
+      if(!(up&&dn)){
+        const nat=natureFromStats(dex,st.sp,st.val);
+        if(nat.ok&&nat.up&&nat.dn){up=nat.up;dn=nat.dn;comoSalio="cálculo"}
+        else if(nat.ok)comoSalio="neutra";
+        else if(st.val)errors.push(`${label}: no pude deducir la naturaleza (${nat.motivo}).`);
+      }
+      s.up=up; s.dn=dn;
+      if(comoSalio==="cálculo")natCalculada.push(`${label}: sube ${STN[up]}, baja ${STN[dn]}`);
+      else if(comoSalio==="neutra")natNeutra.push(label);
+      else if(!(up&&dn))sinNaturaleza.push(label);
     }else errors.push(`${label}: no pude leer el reparto de stats — corregilo a mano.`);
     if(!canMega(s))s.mega=false;
     team.push(s);
@@ -2650,11 +2733,17 @@ function finishOwnScan(){
       ?`Cargué ${leidos} de 6, con avisos:<br>${errors.map(esc).join("<br>")}`
       :`Cargué los ${leidos} sin problemas.`} Revisá y corregí en TUYO si hace falta.</div>
     ${mote.length?`<div class="msg" style="margin-top:5px">${mote.map(esc).join("<br>")}</div>`:""}
+    ${natCalculada.length?`<div class="msg" style="margin-top:5px">
+      <b>Naturaleza deducida</b> ${confTag("deducido")} — sale de la cuenta entre el valor que
+      muestra el juego y su inversión, no de las flechas de color:<br>${
+      natCalculada.map(esc).join("<br>")}</div>`:""}
+    ${natNeutra.length?`<div class="msg" style="margin-top:5px">
+      <b>Naturaleza neutra</b> ${confTag("deducido")} en ${esc(natNeutra.join(", "))}: los seis
+      valores dan exacto sin ningún ±10%.</div>`:""}
     ${sinNaturaleza.length?`<div class="msg w" style="margin-top:5px">
-      <b>Naturaleza sin determinar</b> en ${esc(sinNaturaleza.join(", "))}. El juego la marca
-      con flechas de color, no con texto, así que la captura no la puede leer todavía: quedaron
-      en neutra (sin ±10%). Ponela a mano en MÍO → <em>Sube</em> / <em>Baja</em> — cambia daño
-      y velocidad, conviene hacerlo antes de calcular nada.</div>`:""}</div>`;
+      <b>Naturaleza sin determinar</b> en ${esc(sinNaturaleza.join(", "))}: quedaron en neutra
+      (sin ±10%). Ponela a mano en TUYO → <em>Sube</em> / <em>Baja</em> — cambia daño y
+      velocidad, conviene hacerlo antes de calcular nada.</div>`:""}</div>`;
 }
 
 /* ═════ VISTAS ═════ */

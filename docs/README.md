@@ -34,7 +34,7 @@ Entre medio, el trabajo no está siguiendo la numeración de fases: desde el cie
 
 **Cómo se corren los tests: `node tests/run.js`, y nada más.** Esa única orden ejecuta los 209 casos de JS, `validate_data.py`, y los 36 casos de Python de los generadores (`tests/test_build_meta*.py`) — estos últimos existían desde la Fase 2 y **nadie los estaba corriendo** hasta el 2026-08-06. Si se agrega un archivo de tests nuevo, engancharlo ahí: una red de seguridad que hay que acordarse de tirar a mano no es una red.
 
-`validate_data.py` y `tests/run.js` protegen contra que los bugs resueltos se reintroduzcan en silencio. La deuda técnica viva está priorizada en [`audit.md`](./audit.md) §7 — la de mayor impacto sobre la calidad del cálculo sigue siendo que **la naturaleza no se puede capturar** (es gráfica, no texto: hay que ponerla a mano después de cada captura).
+`validate_data.py` y `tests/run.js` protegen contra que los bugs resueltos se reintroduzcan en silencio. La deuda técnica viva está priorizada en [`audit.md`](./audit.md) §7. La que era #1 —**la naturaleza no se podía capturar**— se resolvió el 2026-08-06 deduciéndola por aritmética en vez de por análisis de imagen (§5.13). Hoy la de mayor impacto es **el recorte del sprite en team preview**, que necesita capturas reales y un ciclo de compilación de Kotlin.
 
 ## Convención de idioma
 

@@ -293,6 +293,23 @@ Con la Fase 2 cerrada, el trabajo de esta fecha no encaja en un sprint numerado 
 3. **Números de stats pegados** ("1550" en vez de HP 155 + inversión 0): `numerosDeFila()` separa los tokens usando los 5 casos reales de la captura de Angel como referencia.
 4. **Captura del equipo rival confunde especies** (Aegislash↔Floette, Mimikyu↔Milotic, con 98% de confianza reportada) — se difirió en su momento por ser Kotlin; **resuelto en la revisión final de OCR del 2026-08-06**, ver más abajo.
 
+### Super sprint: la naturaleza se deduce, no se mira (2026-08-06)
+
+**Cierra el ítem #1 de la deuda técnica de `audit.md` §7** — el que el propio documento describía como "lo de mayor impacto sobre la calidad del cálculo", y que llevaba desde el 2026-08-03 marcado como irresoluble sin un ciclo de compilación de Kotlin que no existe en este entorno.
+
+**El supuesto que estaba mal.** `audit.md` §5.13 razonaba así: el juego marca la naturaleza con flechas de color, ML Kit lee texto y no formas, *ergo* hay que analizar el bitmap en Kotlin. El diagnóstico era correcto pero la conclusión se saltó un paso: nunca se preguntó si el dato era **recuperable por otra vía**. Lo es. El juego muestra, por stat, el valor **ya calculado** y la **inversión** — los dos los lee el OCR desde siempre. Con la base de `dex.json`, el multiplicador de naturaleza es la única incógnita y solo puede ser ×1.1, ×1 o ×0.9.
+
+**Medido antes de escribir código** (la fase 1 del sprint fue verificar la viabilidad, no asumirla): ×1.1 solo empataría con ×1 si el valor previo a multiplicar fuera menor a 10; el mínimo real en `dex.json` es 35. Sobre las 134 bases distintas × las 33 inversiones posibles: **0 ambiguas de 4422**. Y acierta las dos capturas reales de Angel antes de tocar nada.
+
+**Qué se construyó:**
+- `statPair()` — `parseStatsCard()` descartaba el valor calculado y se quedaba solo con la inversión; ahora conserva los dos. Se agregó como campo nuevo (`val`) sin tocar `sp`, para no cambiar nada de lo que ya funcionaba. Los tres métodos de parseo (etiquetas, forma de fila, sub-columnas) lo devuelven.
+- `natureFromStats(dex, sp, val)` — prueba los tres multiplicadores por stat y exige el resultado que una naturaleza real produce: exactamente una sube y exactamente otra distinta baja, o ninguna (neutra). Cualquier otra cosa —dos que suben, un valor que no sale de ningún multiplicador— devuelve `ok:false` **con el motivo**, y la naturaleza queda sin definir. Nunca media naturaleza: eso sesgaría todo el daño y toda la velocidad en silencio.
+- Cadena de intentos en `finishOwnScan()`: flechas (si ML Kit llega a emitirlas, casi nunca) → **aritmética** → sin determinar. El resumen ahora distingue tres cosas que antes eran una: *deducida* (con qué sube y qué baja), *neutra confirmada*, y *sin determinar*. Las dos primeras llevan la marca `◐ deducido` del sistema de confianza (decisión #24) — no es un hecho observado, es una inferencia, y se dice.
+
+**Verificación:** 7 tests nuevos (216 en total), incluidos los dos casos reales de Angel como ground truth, el caso neutro, y tres de fallo ruidoso (número imposible, dos stats subidas, datos faltantes). Verificado además end-to-end en navegador real: el reparto entra, la naturaleza queda guardada en el slot (`up=4, dn=3` para Grimmsnarl) y el resumen la explica.
+
+**Lo que esto cambia en el uso:** después de cada captura había que abrir TUYO y poner a mano la naturaleza de los 6 Pokémon, o aceptar que todos los cálculos salieran sesgados. Ya no.
+
 ### Endurecimiento de la red de tests (2026-08-06, sesión autónoma)
 
 Con Angel sin poder probar en dispositivo, se trabajó solo en lo verificable sin él: cerrar deuda de `audit.md` §7 y tapar agujeros en la propia red de seguridad. Nada de esto cambia comportamiento en la app — todo es documentación, tests, o correcciones de contradicciones.
