@@ -128,6 +128,7 @@ function loadEngine() {
     this.statNum = statNum;
     this.statPair = statPair;
     this.natureFromStats = natureFromStats;
+    this.natureName = natureName;
     this.speciesFromTraits = speciesFromTraits;
     this.speciesFromIcon = speciesFromIcon;
     this.getABIL = function () { return ABIL; };
@@ -2767,6 +2768,45 @@ check("natureFromStats() no explota con datos faltantes", () => {
   assertEqual(E.natureFromStats(999999, [0, 0, 0, 0, 0, 0], [1, 1, 1, 1, 1, 1]).ok, false);
   assertEqual(E.natureFromStats(861, null, null).ok, false);
   assertEqual(E.natureFromStats(861, [0, 0, 0, 0, 0, 0], null).ok, false);
+});
+
+// La tabla NATURES está escrita a mano (es una constante del juego), así que
+// se cruza contra los nombres REALES que trae meta.json: 19 de las 25
+// aparecen ahí con su statUp/statDown medidos de torneos. Si alguna está mal
+// transcrita, este test la nombra — el dato confirma la tabla, no la memoria.
+check("la tabla de naturalezas coincide con los nombres reales de meta.json", () => {
+  const metaPath = path.join(ROOT, "app/src/main/assets/meta.json");
+  if (!fs.existsSync(metaPath)) return;
+  const m = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+  const sp = m.species || m;
+  // meta.json nombra las stats como el juego; acá son índices de STN.
+  const IDX = { "Attack": 1, "Defense": 2, "Sp. Atk": 3, "Sp. Def": 4, "Speed": 5 };
+  const vistas = new Map();
+  for (const k of Object.keys(sp)) {
+    for (const n of (sp[k].topNatures || [])) {
+      if (!n || !n.name || vistas.has(n.name)) continue;
+      vistas.set(n.name, [IDX[n.statUp] || 0, IDX[n.statDown] || 0]);
+    }
+  }
+  assert(vistas.size >= 10, `meta.json debería traer varias naturalezas, trajo ${vistas.size}`);
+  const fallos = [];
+  for (const [nombre, [up, dn]] of vistas) {
+    const got = E.natureName(up, dn);
+    // Las neutras (statUp/statDown nulos) todas mapean a "neutra" — el nombre
+    // concreto (Serious/Hardy/Docile…) no cambia ningún cálculo.
+    const esperado = (up === 0 && dn === 0) ? "neutra" : nombre;
+    if (got !== esperado) fallos.push(`${nombre} (sube ${up}, baja ${dn}) → la tabla dice "${got}"`);
+  }
+  assert(fallos.length === 0, `no coinciden con meta.json:\n  ${fallos.join("\n  ")}`);
+});
+
+check("natureName() nombra las naturalezas de las capturas reales de Angel", () => {
+  // Grimmsnarl: sube DefEsp(4), baja AtqEsp(3) → Careful
+  assertEqual(E.natureName(4, 3), "Careful");
+  // Aegislash: sube Vel(5), baja AtqEsp(3) → Jolly
+  assertEqual(E.natureName(5, 3), "Jolly");
+  assertEqual(E.natureName(0, 0), "neutra");
+  assertEqual(E.natureName(1, 1), null, "subir y bajar la misma stat no es una naturaleza real");
 });
 
 check("statPair() devuelve el stat calculado Y la inversión de una fila", () => {

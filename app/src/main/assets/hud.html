@@ -2368,6 +2368,19 @@ const FLECHA_UP=/[▲△↑⬆⇧]/, FLECHA_DN=/[▼▽↓⬇⇩]/;
     AtqEsp/DefEsp/Vel), o sea el mismo orden que el array `sp`.
     Devuelve {up:0,dn:0} si no hay nada que interpretar — que es el caso
     esperado mientras la detección dependa de texto. */
+/** El nombre de la naturaleza que sube `up` y baja `dn`, para poder decir
+    "Careful" en vez de "sube DefEsp, baja AtqEsp" — que es como piensa un
+    jugador de VGC, y como lo nombra `meta.json` en sus `topNatures`.
+    **Se deriva de la tabla `NATURES` que ya existía** (la usa
+    `parseTeamText()` desde la decisión #15), no de una copia nueva: dos
+    tablas de lo mismo terminan divergiendo, que es el patrón de bug más
+    repetido de este proyecto. Un test la cruza contra los nombres reales de
+    `meta.json` para confirmar que la transcripción es correcta. */
+const natureName=(up,dn)=>{
+  if(!up&&!dn)return "neutra";
+  const k=Object.keys(NATURES).find(n=>NATURES[n][0]===up&&NATURES[n][1]===dn);
+  return k?k[0].toUpperCase()+k.slice(1):null;
+};
 /** ── DEDUCIR LA NATURALEZA SIN VER LAS FLECHAS (2026-08-06) ──
     `audit.md` §5.13 daba por sentado que esto exigía análisis de color y
     forma sobre el bitmap, en Kotlin. No hace falta: la naturaleza es
@@ -2702,7 +2715,10 @@ function finishOwnScan(){
         else if(st.val)errors.push(`${label}: no pude deducir la naturaleza (${nat.motivo}).`);
       }
       s.up=up; s.dn=dn;
-      if(comoSalio==="cálculo")natCalculada.push(`${label}: sube ${STN[up]}, baja ${STN[dn]}`);
+      if(comoSalio==="cálculo"){
+        const nn=natureName(up,dn);
+        natCalculada.push(`${label}: ${nn?nn+" — ":""}sube ${STN[up]}, baja ${STN[dn]}`);
+      }
       else if(comoSalio==="neutra")natNeutra.push(label);
       else if(!(up&&dn))sinNaturaleza.push(label);
     }else errors.push(`${label}: no pude leer el reparto de stats — corregilo a mano.`);
