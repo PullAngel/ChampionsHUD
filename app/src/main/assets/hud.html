@@ -1462,27 +1462,30 @@ const eventsOfFoe=i=>logOf().filter(e=>e.foe===i);
 function describeEvent(e){
   if(!e||!e.kind)return "—";
   const mv=k=>esc(mvName(k)), it=k=>esc(itName(k)), ab=k=>esc(abilName(k));
+  const pre=e.carried?"(partida anterior) ":"";
+  let txt;
   switch(e.kind){
-    case "teamPreview":     return `Team preview: ${(e.team||[]).length} leídos`;
-    case "brought":         return "Confirmado en la partida";
-    case "broughtCleared":  return "Desmarcado de la partida";
-    case "moveSeen":        return `Usó ${mv(e.move)}`;
-    case "moveCleared":     return `Se desmarcó ${mv(e.move)}`;
-    case "itemRevealed":    return `Objeto revelado: ${it(e.item)}`;
-    case "itemCleared":     return `Se quitó el objeto ${it(e.item)}`;
-    case "abilityRevealed": return `Habilidad revelada: ${ab(e.ability)}`;
-    case "abilityCleared":  return `Se quitó la habilidad ${ab(e.ability)}`;
-    case "order":           return `Se movió ${e.faster?"antes":"después"} que ${
-                              esc(nm(e.vs&&e.vs.dex))} (velocidad ${e.vs&&e.vs.eff})`;
-    case "damage":          return e.ok
+    case "teamPreview":     txt=`Team preview: ${(e.team||[]).length} leídos`;break;
+    case "brought":         txt="Confirmado en la partida";break;
+    case "broughtCleared":  txt="Desmarcado de la partida";break;
+    case "moveSeen":        txt=`Usó ${mv(e.move)}`;break;
+    case "moveCleared":     txt=`Se desmarcó ${mv(e.move)}`;break;
+    case "itemRevealed":    txt=`Objeto revelado: ${it(e.item)}`;break;
+    case "itemCleared":     txt=`Se quitó el objeto ${it(e.item)}`;break;
+    case "abilityRevealed": txt=`Habilidad revelada: ${ab(e.ability)}`;break;
+    case "abilityCleared":  txt=`Se quitó la habilidad ${ab(e.ability)}`;break;
+    case "order":           txt=`Se movió ${e.faster?"antes":"después"} que ${
+                              esc(nm(e.vs&&e.vs.dex))} (velocidad ${e.vs&&e.vs.eff})`;break;
+    case "damage":          txt=e.ok
                               ? `${mv(e.move)} le hizo ${e.pct}% — quedan ${e.n} repartos posibles`
-                              : `${mv(e.move)} le hizo ${e.pct}% — ningún reparto normal da ese número`;
-    case "ko":              return "Debilitado";
-    case "revived":         return "Marcado como no debilitado";
-    case "abilityNoTrigger":return `Bajó el Ataque con ${ab(e.trigger)} — descarta las habilidades que lo bloquean`;
-    case "speciesCorrected":return `Especie corregida a mano (era ${esc(nm(e.was))})`;
-    default:                return esc(e.kind);
+                              : `${mv(e.move)} le hizo ${e.pct}% — ningún reparto normal da ese número`;break;
+    case "ko":              txt="Debilitado";break;
+    case "revived":         txt="Marcado como no debilitado";break;
+    case "abilityNoTrigger":txt=`Bajó el Ataque con ${ab(e.trigger)} — descarta las habilidades que lo bloquean`;break;
+    case "speciesCorrected":txt=`Especie corregida a mano (era ${esc(nm(e.was))})`;break;
+    default:                txt=esc(e.kind);
   }
+  return pre+txt;
 }
 /* ── Hipótesis derivadas del log (Fase 2, sprint 2.2) ──
    `inference.md` §3: cada dimensión se deriva del event log en el momento
@@ -1556,6 +1559,43 @@ function bulkHypothesis(i){
   const l=dmgs[dmgs.length-1];
   return l.ok?{level:"deduced",hp:l.hp,df:l.df,n:l.n,byEvent:l.id}
              :{level:"contradiction",move:l.move,pct:l.pct,byEvent:l.id};
+}
+/** Fase 4 (inference.md §9): en un Bo3 el rival vuelve con el mismo
+    plantel — el team preview no cambia entre juegos — así que lo
+    CONFIRMADO en un juego sigue siendo cierto en el siguiente. Lo
+    meramente deducido NO se arrastra: un Pañuelo Elección deducido por
+    piso de velocidad (observeOrder(), más arriba) puede no repetirse en
+    el próximo juego, así que se descarta a propósito — por eso se usa
+    itemHypothesis()/abilityHypothesis() (ya distinguen "confirmado por
+    revelación" de "deducido") y no los campos mutables f.item/f.itemSure
+    directo, que también quedan en `true` por esa deducción.
+    Hay que llamarla ANTES de reemplazar B: lee itemHypothesis()/
+    abilityHypothesis()/eventsOfFoe() del combate que está terminando.
+    Muta `newTeam` en el lugar con los mismos campos que ya alimentan el
+    resto del HUD (mismo patrón dual de lectura+mutación del sprint 2.2:
+    la mutación es lo que de verdad maneja `vFoe()`, el log es la cita
+    inspeccionable de por qué). Devuelve los eventos para sembrar en el
+    log nuevo, marcados `carried:true` para que `describeEvent()` avise
+    de dónde salieron. */
+function carryToNextGame(oldTeam,newTeam){
+  const events=[];
+  oldTeam.forEach((of,i)=>{
+    const nf=newTeam[i];if(!nf)return;
+    const ih=itemHypothesis(i);
+    if(ih.level==="confirmed"){
+      nf.item=ih.value;nf.itemSure=true;
+      events.push({kind:"itemRevealed",foe:i,dex:nf.dex,item:ih.value,carried:true})}
+    const ah=abilityHypothesis(i);
+    if(ah.level==="confirmed"){
+      nf.abil=ah.value;
+      events.push({kind:"abilityRevealed",foe:i,dex:nf.dex,ability:ah.value,carried:true})}
+    (of.moves||[]).forEach(mvv=>{
+      nf.moves.push(mvv);
+      events.push({kind:"moveSeen",foe:i,dex:nf.dex,move:mvv,carried:true})});
+    eventsOfFoe(i).filter(e=>e.kind==="abilityNoTrigger").forEach(e=>
+      events.push({kind:"abilityNoTrigger",foe:i,dex:nf.dex,trigger:e.trigger,carried:true}));
+  });
+  return events;
 }
 /* ── Cómo se muestra la confianza (decisión #24) ──
    Un solo vocabulario para todo el HUD. Antes cada tarjeta inventaba el suyo
@@ -3798,7 +3838,7 @@ function vSet(){
       volver a T1. <b>◱</b> colapsa el HUD a lo esencial. <b>⇱</b> lo deja fijo para que
       no se cierre solo a los 16 segundos. <b>↻</b> escanea al rival en la vista previa.</div>
     <button class="btn g" id="rs" style="margin-top:8px">Combate nuevo</button>
-    <div class="msg" style="margin-top:5px">Borra turnos, revelados, estados y campo. Tu equipo no se toca.</div></div>
+    <div class="msg" style="margin-top:5px">Borra turnos, estados y campo. Lo que hayas CONFIRMADO del rival (objeto, habilidad, movimientos vistos) se lleva al juego nuevo — lo deducido o estimado no. Tu equipo no se toca.</div></div>
   <div class="card"><span class="hd">Datos del juego</span>
     <div class="row"><b>Pokémon</b><u class="${DEX?"cf":"k"}">${DEX
       ?Object.keys(DEX.species).length+" especies":"faltan"}</u></div>
@@ -4045,7 +4085,12 @@ function wire(){
     has?Android.updateMeta(u):$("#mOut").textContent="Solo dentro de la app."};
   const rt=$("#rt");if(rt)rt.onclick=()=>{keep();buzz(1);resetTurns()};
   const rs=$("#rs");if(rs)rs.onclick=()=>{keep();buzz(1);
-    const t=B.team;B=NEW();B.team=t.map(f=>mkFoe(f.dex,f.confidence,f.shiny));syncFoe();
+    const t=B.team,newTeam=t.map(f=>mkFoe(f.dex,f.confidence,f.shiny));
+    // Combate nuevo, mismo rival (Bo3, inference.md §9): antes de pisar B
+    // se rescata lo confirmado del juego que termina.
+    const carried=carryToNextGame(t,newTeam);
+    B=NEW();B.team=newTeam;syncFoe();
+    carried.forEach(ev=>logEvent(ev.kind,ev));
     resetSpdWhatIf();
     if(has)try{Android.clearBattle()}catch(e){} save();render()};
 }

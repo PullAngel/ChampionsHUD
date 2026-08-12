@@ -431,10 +431,26 @@ Se auditó el código antes de empezar a escribir, y resulta que **el criterio d
 ## Fase 4 — Memoria y análisis post-combate
 
 - Resumen post-partida construido sobre el event log: qué acertó y qué falló el modelo, qué información se reveló de más.
-- Modo serie (Bo3) con persistencia de creencias confirmadas entre juegos (decisión #9). **El event log del Sprint 2.1 lo deja casi listo:** al empezar el juego 2 se inyectan como eventos iniciales las hipótesis `confirmed` del juego 1; lo que solo estaba "vivo" no se arrastra, porque el rival puede traer otros 4. Esa distinción — arrastrar hechos, no suposiciones — es exactamente lo que el modelo de tres niveles permite expresar y el estado mutable de hoy no (`inference.md` §9).
+- Modo serie (Bo3) con persistencia de creencias confirmadas entre juegos (decisión #9). **Primera mitad hecha, ver abajo.**
 - Soporte para Open Team Sheets como un tipo de evento más (regla R6 en `inference.md` §5: colapsa hipótesis a certeza desde el inicio del combate) — sin requerir ningún cambio en el motor de inferencia.
 
 **Criterio de salida:** un jugador puede repasar una serie completa y entender qué patrones propios está repitiendo.
+
+### Bo3: lo confirmado se arrastra al juego siguiente — hecho, 2026-08-11
+
+**Por qué esto no era una feature nueva que inventar, sino cerrar un hueco ya diseñado.** `inference.md` §9 ya especificaba la arquitectura completa desde el Sprint 2.1: al empezar el juego 2 de un Bo3, lo `confirmed` del juego 1 se inyecta como eventos iniciales del log nuevo; lo meramente `alive`/deducido no se arrastra, porque el rival puede traer otros 4. Lo que faltaba era conectar ese diseño a un botón que ya existía y ya asumía ese caso de uso sin decirlo: **"Combate nuevo"** (`#rs`) es el único punto de la app que resetea el combate **sin** volver a escanear team preview — conserva `B.team` (especie/confianza/variocolor del rival) tal cual, que solo tiene sentido si el rival es el mismo (un Bo3). Confirmar esto en el código, no asumirlo, fue el primer paso: `window.onScan()` (una lectura nueva de team preview) sí vacía el log entero a propósito, con el comentario explícito de que reinterpretar evidencia vieja contra un equipo distinto sería peor que no tenerla — o sea, la distinción "mismo rival vs. rival nuevo" ya estaba resuelta en otro lugar del código, solo faltaba usarla acá.
+
+**Qué se construyó:** `carryToNextGame(oldTeam, newTeam)`, antes de `vPre()`. Por cada rival, usa `itemHypothesis()`/`abilityHypothesis()` (ya distinguen "confirmado por revelación" de "deducido", sprint 2.2) para decidir qué arrastra — **nunca** los campos mutables `f.item`/`f.itemSure` directo, porque esos también quedan en `true` cuando el ítem es una deducción por piso de velocidad (`observeOrder()`), no una revelación real. Arrastra: objeto confirmado, habilidad confirmada, todos los movimientos vistos (son hechos directos, no hipótesis — siempre se llevan), y los descartes de habilidad por Intimidación sin gatillo (R4, sprint 2.5). Muta los nuevos `f.item`/`f.abil`/`f.moves` (lo que de verdad alimenta `vFoe()`, mismo patrón dual del sprint 2.2) y además siembra el log nuevo con los eventos correspondientes, marcados `carried:true`.
+
+**`describeEvent()`** antepone *"(partida anterior) "* a cualquier evento con `carried:true`, sin tocar el texto normal — para que "Qué observamos" en RIVAL distinga de un vistazo lo que se sabe desde el juego anterior de lo que se vio recién en este.
+
+**Texto del botón actualizado** para no mentir sobre lo que borra: decía "Borra turnos, revelados, estados y campo"; ahora dice que lo CONFIRMADO se arrastra y lo deducido/estimado no.
+
+**Deliberadamente fuera de esta pasada — necesita a Angel, no es ambigüedad que convenga resolver a ciegas:** el resumen post-partida completo ("qué acertó y qué falló el modelo") y una vista para repasar una serie entera son la otra mitad del criterio de salida de esta fase y son, en sí mismos, una conversación de producto (qué se muestra, cuándo, con qué nivel de detalle) — no una pieza con arquitectura ya cerrada como esta. `carryToNextGame()` se hizo ahora porque el diseño ya estaba 100% especificado en `inference.md` §9 y el único trabajo era conectarlo — no porque haya dejado de aplicar la regla de "ante ambigüedad de producto, preguntarle a Angel antes de asumir" (`CLAUDE.md`).
+
+**Tests:** 5 nuevos (223 en total) — un objeto confirmado por revelación se arrastra (campo mutable Y evento sembrado, marcado `carried`); uno deducido por piso de velocidad NO se arrastra; habilidad + movimientos + descarte de Intimidación, los tres a la vez; sin nada confirmado, no arrastra nada; `describeEvent()` antepone el prefijo sin alterar el texto normal. Probados rompiéndolos a propósito (relajar la condición `level==="confirmed"` a cualquier `level` truthy): los dos tests que debían fallar, fallaron con el mensaje correcto — restaurado y verificado con `git diff --stat` en cero antes de commitear.
+
+**Sin verificar en dispositivo real:** la lógica está probada en el sandbox de Node, pero el flujo completo (tocar "Combate nuevo" a mitad de un Bo3 real y confirmar que Peek muestra el objeto/habilidad ya sabidos con el aviso "(partida anterior)") todavía no pasó por el juego real — mismo límite que el resto de esta sesión, sin acceso a un dispositivo.
 
 ## Fase 5 en adelante — Ver `future.md`
 

@@ -147,6 +147,7 @@ function loadEngine() {
     this.abilityHypothesis = abilityHypothesis;
     this.speedHypothesis = speedHypothesis;
     this.bulkHypothesis = bulkHypothesis;
+    this.carryToNextGame = carryToNextGame;
     this.whyText = whyText;
     this.undoEvent = undoEvent;
     this.visibleEvents = visibleEvents;
@@ -1116,6 +1117,78 @@ check("undoEvent(): no borra un ítem que sigue confirmado aunque se deshaga la 
   assertEqual(foe.item, "Pañuelo Elección", "sigue confirmado, independiente de la deducción deshecha");
   assertEqual(E.itemHypothesis(0).level, "confirmed");
   assertEqual(E.itemHypothesis(0).byEvent, revealEv.id);
+});
+
+check("carryToNextGame() (Fase 4, Bo3): un objeto CONFIRMADO por revelación se arrastra al juego nuevo", () => {
+  const B = E.getB(); B.log = []; B.turn = 1; B.pick = 0;
+  const foe = E.mkFoe(9, 0.9);
+  B.team = [foe];
+  foe.item = "Colbur Berry"; foe.itemSure = true;
+  E.logEvent("itemRevealed", { foe: 0, dex: foe.dex, item: "Colbur Berry" });
+
+  const nuevo = E.mkFoe(9, 0.9);
+  const events = E.carryToNextGame([foe], [nuevo]);
+
+  assertEqual(nuevo.item, "Colbur Berry", "el campo mutable que usa vFoe() queda seteado, no solo el log");
+  assert(nuevo.itemSure, "queda marcado como visto, no como deducido");
+  const ev = events.find(e => e.kind === "itemRevealed");
+  assert(ev, "se devuelve un evento itemRevealed para sembrar en el log nuevo");
+  assert(ev.carried, "marcado carried:true para que describeEvent() avise de dónde salió");
+});
+
+check("carryToNextGame() (Fase 4, Bo3): un objeto DEDUCIDO por piso de velocidad NO se arrastra", () => {
+  const B = E.getB(); B.log = []; B.turn = 1; B.pick = 0;
+  const foe = E.mkFoe(9, 0.9);
+  B.team = [foe];
+  simOrder(B, foe, 0, 999, true); // fuerza la deducción de Pañuelo Elección, sin revelación real
+  assertEqual(E.itemHypothesis(0).level, "deduced", "precondición: el ítem de este foe es solo deducido");
+
+  const nuevo = E.mkFoe(9, 0.9);
+  const events = E.carryToNextGame([foe], [nuevo]);
+
+  assertEqual(nuevo.item, null, "una deducción de este juego no tiene por qué repetirse en el próximo");
+  assert(!events.some(e => e.kind === "itemRevealed"), "no se siembra un itemRevealed a partir de algo solo deducido");
+});
+
+check("carryToNextGame() (Fase 4, Bo3): una habilidad confirmada, todos los movimientos vistos, y los descartes de Intimidación se arrastran", () => {
+  const B = E.getB(); B.log = []; B.turn = 1; B.pick = 0;
+  const foe = E.mkFoe(9, 0.9);
+  B.team = [foe];
+  foe.abil = "sturdy";
+  E.logEvent("abilityRevealed", { foe: 0, dex: foe.dex, ability: "sturdy" });
+  foe.moves = ["Terremoto", "Roca Afilada"];
+  E.logEvent("abilityNoTrigger", { foe: 0, dex: foe.dex, trigger: "intimidate" });
+
+  const nuevo = E.mkFoe(9, 0.9);
+  const events = E.carryToNextGame([foe], [nuevo]);
+
+  assertEqual(nuevo.abil, "sturdy");
+  assertEqual(nuevo.moves.slice().sort().join(","), ["Terremoto", "Roca Afilada"].sort().join(","));
+  assert(events.some(e => e.kind === "abilityNoTrigger" && e.trigger === "intimidate"),
+    "el descarte por Intimidación (R4) también se re-siembra, no solo objeto/habilidad/movimientos");
+  assert(events.every(e => e.carried), "todo lo que arrastra carryToNextGame() viene marcado carried:true");
+});
+
+check("carryToNextGame() (Fase 4, Bo3): sin nada confirmado, no arrastra nada", () => {
+  const B = E.getB(); B.log = []; B.turn = 1; B.pick = 0;
+  const foe = E.mkFoe(9, 0.9);
+  B.team = [foe];
+
+  const nuevo = E.mkFoe(9, 0.9);
+  const events = E.carryToNextGame([foe], [nuevo]);
+
+  assertEqual(events.length, 0);
+  assertEqual(nuevo.item, null);
+  assertEqual(nuevo.abil, null);
+  assertEqual(nuevo.moves.length, 0);
+});
+
+check("describeEvent() (Fase 4, Bo3): un evento carried avisa que viene de la partida anterior", () => {
+  const sinCarry = E.describeEvent({ kind: "itemRevealed", item: "Colbur Berry" });
+  const conCarry = E.describeEvent({ kind: "itemRevealed", item: "Colbur Berry", carried: true });
+  assert(conCarry.startsWith("(partida anterior) "), "el prefijo tiene que anteponerse, no reemplazar el texto normal");
+  assertEqual(conCarry, "(partida anterior) " + sinCarry, "el texto normal del evento se conserva igual, solo con el prefijo delante");
+  assert(!sinCarry.startsWith("(partida anterior)"), "un evento normal, sin marca, no lleva el prefijo");
 });
 
 check("speedHypothesis(): cita TODOS los eventos que acotaron el rango, no solo el último", () => {
