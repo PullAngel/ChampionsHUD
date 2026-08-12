@@ -426,7 +426,17 @@ Se auditó el código antes de empezar a escribir, y resulta que **el criterio d
 
 **Hecho en esta pasada:** los dos chequeos de arriba dejaron de ser verificaciones manuales que había que acordarse de repetir y pasaron a ser **tests permanentes** (`separación Motor / Cliente (Fase 3)` en `tests/run.js`). El segundo punto de la fase pedía literalmente "verificando que ningún módulo de dominio las referencia" — ahora eso se verifica solo en cada corrida. Ambos tests se probaron **inyectando la violación a propósito** (una variable `premium` en el motor) y confirmando que fallan con el mensaje correcto: un test que no puede fallar no sirve de nada (misma lección que el sprint 2.8 con el test de números de Pokédex).
 
-**Lo que queda de la fase, y por qué no se hizo ahora:** la separación es *de comportamiento* (corre sin Android) pero no *de estructura* — el dominio todavía nombra `Android.*` directamente en vez de pasar por un adaptador con nombre propio. Formalizarlo sería embudar esas 8 llamadas por un único objeto de IO inyectable. Es un refactor acotado y de bajo riesgo, pero toca persistencia, y la decisión #18 (archivo único, deliberado) condiciona cómo se hace — conviene hacerlo con Angel disponible para probar en dispositivo, no a ciegas, porque un error ahí no lo agarra ningún test (todos los tests corren justamente con `has===false`).
+**Lo que quedaba de la fase, y por qué no se había hecho antes:** la separación era *de comportamiento* (corre sin Android) pero no *de estructura* — el dominio nombraba `Android.*` directamente en 8 lugares en vez de pasar por un adaptador con nombre propio. Se había dejado pendiente porque tocaba persistencia y convenía verificar en dispositivo antes de tocarlo a ciegas, ya que ningún test corre con `has===true`.
+
+### Adaptador `IO` — hecho, 2026-08-11 (decisión #26)
+
+Angel planteó una intención a futuro — un fork de diseño del producto, mismo Motor con una Presentación nueva desde cero (`decisions.md` #26, `architecture.md` §7.4) — que motivó terminar esta pieza ahora: cuantos menos lugares del Motor mencionen `Android` directo, más barato es el día que un cliente nuevo necesite otro backend de persistencia.
+
+**El refactor es de comportamiento idéntico, por construcción — no arriesga lo que el punto anterior señalaba como riesgoso.** Las 8 llamadas (`loadDex`, `haptic`, `keepOpen`, `saveBattle`, `loadTeam`, `saveTeam`, `loadMeta`, `loadBattle`) se agruparon en `const IO={...}`, cada método haciendo exactamente el mismo `try/catch` que ya hacía la llamada suelta que reemplaza — mismo `has` como guarda externa, mismo silencio ante error. No es una reescritura de la lógica de persistencia, es renombrar el punto de entrada. El riesgo real que señalaba el párrafo de arriba (un error en la llamada real a `Android.*` que ningún test agarra porque todos corren con `has===false`) sigue exactamente igual de mitigado o no mitigado que antes — este refactor no lo toca ni lo empeora, porque el cuerpo de cada llamada es un copy/paste literal.
+
+**Test nuevo y permanente:** además del test ya existente de Fase 3 (las 8 llamadas están detrás de `has`), uno nuevo confirma que las 8 viven **todas** dentro del bloque `IO` y ninguna suelta por fuera — probado inyectando una llamada `Android.haptic()` fuera del bloque a propósito, confirmando que el test la detecta, y restaurando (`git diff --stat` en cero antes de commitear).
+
+**Sigue pendiente, sin cambios respecto a lo que ya decía este párrafo:** verificar en dispositivo real que el refactor no rompió nada del lado de Kotlin — mismo límite de siempre, sin acceso a un dispositivo en esta sesión.
 
 ## Fase 4 — Memoria y análisis post-combate
 

@@ -3023,6 +3023,31 @@ check("el motor solo usa el puente Android para IO, y siempre detrás de la guar
     `no van acá (roadmap.md Fase 3, decisión #10)`);
 });
 
+check("las 8 llamadas a Android.* del motor viven TODAS adentro de `IO` — nada suelto por fuera (decisión #26)", () => {
+  const html = fs.readFileSync(HUD_PATH, "utf-8");
+  const start = html.indexOf("<script>") + "<script>".length;
+  const motor = html.slice(start, html.indexOf("function vPre(){", start));
+  // Que las 8 llamadas existan detrás de `has` (test de arriba) no alcanza
+  // para que forkear el motor a un cliente nuevo sea "tocar un solo
+  // objeto": si una llamada estuviera repetida suelta en otro lado del
+  // motor, un fork tendría que buscarla a mano en vez de reimplementar
+  // `IO` una sola vez. Este test aísla el bloque `const IO={...};` y
+  // confirma que ES el único lugar del motor que menciona `Android`.
+  const ioStart = motor.indexOf("const IO={");
+  assert(ioStart >= 0, "el adaptador `IO` tiene que existir con ese nombre exacto — es el punto de reemplazo documentado en architecture.md §7.4");
+  const ioEnd = motor.indexOf("};", ioStart) + 2;
+  const ioBlock = motor.slice(ioStart, ioEnd);
+  const fueraDeIO = motor.slice(0, ioStart) + motor.slice(ioEnd);
+  // Llamada real (`Android.algo`), no una mención en prosa dentro de un
+  // comentario ("el puente de Android.") — de ahí exigir una letra después
+  // del punto, igual que el regex de llamadas del test de arriba.
+  assert(!/\bAndroid\.[a-zA-Z]+/.test(fueraDeIO),
+    "hay una llamada a Android.* en el motor por FUERA del bloque `IO` — " +
+    "un fork tendría que tocar más de un lugar para cambiar de plataforma");
+  const dentro = (ioBlock.match(/\bAndroid\.[a-zA-Z]+/g) || []).length;
+  assertEqual(dentro, 8, "las 8 llamadas conocidas tienen que estar todas dentro de `IO`, ninguna afuera");
+});
+
 console.log("\nsintaxis del script completo:");
 check("hud.html no tiene errores de sintaxis en NINGUNA parte del script (no solo antes de vPre())", () => {
   const html = fs.readFileSync(HUD_PATH, "utf-8");

@@ -1087,7 +1087,7 @@ function applyMegaAbilities(d){
 }
 function loadDex(){
   if(!has)return false;
-  let raw=""; try{raw=Android.loadDex()}catch(e){return false}
+  const raw=IO.loadDex();
   if(!raw||raw.length<100)return false;
   let d; try{d=JSON.parse(raw)}catch(e){return false}
   if(!d.species||!d.moves)return false;
@@ -1765,12 +1765,32 @@ function syncActiveMine(){
 let B=NEW(), MY=[slot(445),slot(983),slot(727),slot(547),slot(591),slot(1000)];
 let META={species:{},source:"?",regulation:"?"};
 const has=typeof Android!=="undefined";
+/** Fase 3 / preparación para un fork de diseño futuro (decisions.md #26,
+    architecture.md §7.4): el resto del motor nunca llama a `Android.*`
+    directo — las 8 llamadas de IO real (persistir, cargar, vibrar) viven
+    acá, agrupadas, detrás de la misma guarda `has` de siempre. Un cliente
+    nuevo que reuse este motor (otra plataforma, o un fork de Presentación
+    con diseño propio, pensado desde cero) solo tiene que reimplementar
+    este objeto con su propio backend de persistencia — nada del resto del
+    motor cambia una línea. Mismo comportamiento de siempre en cada método:
+    degrada en silencio si el puente no responde, tal como ya hacía cada
+    llamada suelta antes de agruparse acá. */
+const IO={
+  loadDex:()=>{try{return Android.loadDex()}catch(e){return ""}},
+  haptic:k=>{try{Android.haptic(k)}catch(e){}},
+  keepOpen:()=>{try{Android.keepOpen()}catch(e){}},
+  saveBattle:json=>{try{Android.saveBattle(json)}catch(e){}},
+  loadTeam:()=>{try{return Android.loadTeam()}catch(e){return null}},
+  saveTeam:json=>{try{Android.saveTeam(json)}catch(e){}},
+  loadMeta:()=>{try{return Android.loadMeta()}catch(e){return null}},
+  loadBattle:()=>{try{return Android.loadBattle()}catch(e){return null}},
+};
 const $=s=>document.querySelector(s);
-const buzz=k=>{if(has){try{Android.haptic(k)}catch(e){}}else if(navigator.vibrate)navigator.vibrate(k?18:8)};
-const keep=()=>{if(has)try{Android.keepOpen()}catch(e){}};
+const buzz=k=>{if(has)IO.haptic(k);else if(navigator.vibrate)navigator.vibrate(k?18:8)};
+const keep=()=>{if(has)IO.keepOpen()};
 let sT=null,tT=null;
 const save=()=>{if(!has)return;clearTimeout(sT);
-  sT=setTimeout(()=>{try{Android.saveBattle(JSON.stringify(B))}catch(e){}},400)};
+  sT=setTimeout(()=>IO.saveBattle(JSON.stringify(B)),400)};
 /* Equipos guardados: v1 era un solo equipo pelado ({v:1,team:MY}); v2 es una
    lista con nombre y cuál está activo. MY sigue siendo la MISMA referencia
    que activeTeam().team — mutarla (los selectores de la Fase 0 ya lo hacen)
@@ -1795,7 +1815,7 @@ const DEX_FIX={910:983};
 const fixDex=d=>DEX_FIX[d]??d;
 function loadTeams(){
   let raw=null;
-  if(has)try{raw=JSON.parse(Android.loadTeam())}catch(e){}
+  if(has)try{raw=JSON.parse(IO.loadTeam())}catch(e){}
   if(raw&&raw.v===2&&Array.isArray(raw.teams)&&raw.teams.length){
     TEAMS=raw.teams; ACTIVE_ID=raw.activeId??TEAMS[0].id;
   }else if(raw&&raw.v===1&&raw.team?.length){
@@ -1808,18 +1828,18 @@ function loadTeams(){
   MY=activeTeam().team;
 }
 const saveMy=()=>{if(!has)return;clearTimeout(tT);
-  tT=setTimeout(()=>{try{Android.saveTeam(JSON.stringify({v:2,teams:TEAMS,activeId:ACTIVE_ID}))}catch(e){}},400)};
+  tT=setTimeout(()=>IO.saveTeam(JSON.stringify({v:2,teams:TEAMS,activeId:ACTIVE_ID})),400)};
 
 function boot(){
   loadTeams();
   if(has){
     if(loadDex()){ DEXN=Object.keys(SPD).map(Number).filter(d=>d<900000)
       .sort((a,b)=>S(a).n.localeCompare(S(b).n)); }
-    try{META=JSON.parse(Android.loadMeta())||META}catch(e){}
+    try{META=JSON.parse(IO.loadMeta())||META}catch(e){}
     // v4 (sin event log) se acepta y se migra sola: Object.assign deja el
     // log vacío de NEW() si el guardado no lo trae. Un combate v4 en curso
     // no se pierde por estrenar el log.
-    try{const r=JSON.parse(Android.loadBattle());
+    try{const r=JSON.parse(IO.loadBattle());
       if(r&&(r.v===4||r.v===5)){B=Object.assign(NEW(),r);B.v=5;
         if(!Array.isArray(B.log))B.log=[]}}catch(e){}
   }
