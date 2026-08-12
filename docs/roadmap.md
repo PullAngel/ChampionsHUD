@@ -415,9 +415,24 @@ Cierre de `audit.md` §7 punto 8. `calc()` tenía `if(dAb==="sturdy"&&e>1)post*=
 
 **Modelado como un tope, no como un multiplicador** — es la forma correcta de representar la mecánica: cuando `dAb==="sturdy"` y el defensor está al 100% de PS (`o.dHp`), cada tirada de daño se capea con `Math.min(dmg, maxHP-1)` antes de devolverla. El resto de `calc()`/`verdict()` no necesitó cambios — un `verdict()` con ese tope nunca cuenta un KO, exactamente el comportamiento real.
 
-**No incluido, y por qué no es una falta:** las otras dos entradas del mismo punto de deuda (`Barrera Férrea`, `Sartén Vudú`, dos habilidades exclusivas de Champions sin nombre en inglés publicado en ninguna fuente real) siguen sin resolver — no por falta de trabajo, sino porque no hay dato verificable contra el cual resolverlas sin adivinar.
+**No incluido, y por qué no es una falta:** las otras dos entradas del mismo punto de deuda (`Barrera Férrea`, `Sartén Vudú`) siguen sin resolver — no por falta de trabajo, sino porque no hay dato verificable contra el cual resolverlas sin adivinar.
 
 **Tests:** 4 nuevos (228 en total) — a PS llenos, ningún resultado del golpe llega al máximo de PS; sin estar a PS llenos, Robustez no cambia nada; ya no reduce daño un 25% en un golpe súper efectivo (el bug viejo); `verdict()` nunca cuenta un KO en ese escenario. Probados rompiéndolos a propósito (forzar `sturdyFull=false` siempre): los dos que debían fallar, fallaron con el mensaje correcto — restaurado y verificado con `git diff --stat` en cero antes de commitear.
+
+**Hallazgo adicional, revisando estos dos casos:** ni `Barrera Férrea` ni `Sartén Vudú` aparecen en ningún otro lugar del código ni de los datos (`dex.json`, `meta.json`) más que en las dos líneas de `calc()` que las comparan — confirmado por búsqueda de texto completa. Como toda habilidad real que un Pokémon puede tener sale de `ABIL[dex]` (slugs canónicos en inglés desde `dex.json`, migración de la decisión de audit.md §5.2) y nunca de un literal en español, **estas dos comparaciones son código muerto: ninguna combinación de datos reales puede volverlas verdaderas.** No es una falla nueva — es la misma migración de slugs que ya resolvió el resto de la habilidad-en-español, dejando estas dos huérfanas porque nunca se identificó a qué habilidad real correspondían. Quedan documentadas acá para que quien las reconozca (por el efecto, ya que el código no guarda a qué especie pertenecían) pueda decir el nombre real en inglés — recién ahí vale la pena decidir si se restauran bajo el slug correcto o se borran como dead code.
+
+### CALC: "Duplicar cálculo" — hecho, 2026-08-11
+
+Cierre de `calc.md` §5, el único punto que quedaba pendiente de ese análisis. Angel definió el alcance cuando se le preguntó dónde vive el historial: *"que se guarde temporalmente, no como los teams. Que no desaparezca al cambiar de la calculadora, pero que no se guarde por siempre"*.
+
+Botón **Duplicar** junto al Resultado de CALC congela el cálculo actual — atacante, defensor, movimiento y el veredicto ya resuelto (autocompletado de objeto/habilidad/estado incluido) — como una fila en una tarjeta nueva, "Comparar", debajo del Resultado. Cada fila tiene su ✕ para borrarse sola. `CALC_HISTORY` es un array en memoria, deliberadamente fuera de `B`/`MY` y nunca tocado por `save()` — sobrevive cambiar de pestaña dentro de la misma sesión de la app, se pierde al recargarla, mismo patrón que `SPD_WHATIF` (decisión #25).
+
+**`calcResolve(c)` (nuevo, antes de `vPre()`):** la cadena de autocompletado (objeto/habilidad/estado, resolución de campo, `calc()`) vivía solo adentro de `vCalc()`. Se factorizó para que "Duplicar" congele **exactamente** el mismo número que está en pantalla en vez de recalcularlo por su cuenta — sin esto, un cambio futuro a esa cadena podría desincronizar silenciosamente el resultado mostrado del resultado guardado.
+
+**Es una foto, no una configuración editable.** El snapshot guarda el texto ya calculado (nombre, movimiento, veredicto), no los campos de `window.__c` — no hay, en esta primera versión, un "cargar de nuevo para seguir editando" un cálculo duplicado. Es la versión más chica que resuelve el pedido original ("comparar variantes sin perder el cálculo anterior"); cargar-para-editar queda para si hace falta después de usarlo.
+
+**Tests:** 3 nuevos (231 en total) — `calcResolve()` reproduce el mismo resultado que ya mostraba `vCalc()` (autocompletado incluido); `calcSnapshot()` congela nombre/movimiento/veredicto, no la configuración; dos duplicados seguidos tienen ids distintos (se pueden borrar por separado). Probado rompiendo el id a propósito (fijarlo en vez de generarlo): el test lo detectó, restaurado. Verificado además renderizando `vCalc()` completo en un sandbox de Node con DOM simulado y una fila de historial real cargada — HTML balanceado, botón y tarjeta de comparación presentes.
+**Sin verificar en dispositivo real:** mismo límite de siempre — el render se confirmó en Node, no contra el WebView real ni la tipografía del panel.
 
 ## Fase 3 — Formalizar la separación Motor / Cliente
 

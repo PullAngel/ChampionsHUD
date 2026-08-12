@@ -102,6 +102,7 @@ function loadEngine() {
     this.whyBring = whyBring;
     this.probableMoves = probableMoves;
     this.mvName = mvName;
+    this.nm = nm;
     this.setMetaRaw = function (v) { META = v; };
     this.getMETA = function () { return META; };
     this.getSPD = function () { return SPD; };
@@ -115,6 +116,8 @@ function loadEngine() {
     this.calcTeamMatch = calcTeamMatch;
     this.calcActiveStatus = calcActiveStatus;
     this.calcFieldCtx = calcFieldCtx;
+    this.calcResolve = calcResolve;
+    this.calcSnapshot = calcSnapshot;
     this.calcFieldLabel = calcFieldLabel;
     this.applyMegaAbilities = applyMegaAbilities;
     this.abilsOf = abilsOf;
@@ -2532,6 +2535,52 @@ check("calcActiveStatus() devuelve null para un Pokémon que no está activo (en
   B.mine = [0, 1];
   B.act = { m0: { sta: "quemado" }, m1: { sta: "quemado" } };
   assertEqual(E.calcActiveStatus(445), null, "en banca no hay estado que mostrar, aunque los activos tengan uno");
+});
+
+// "Duplicar cálculo" (docs/calc.md §5, pedido de Angel 2026-08-11): Angel
+// especificó "temporal, no como los equipos" — calcResolve()/calcSnapshot()
+// no tocan B/MY/save(), CALC_HISTORY vive aparte (ver vCalc()/wire() en
+// hud.html). Acá se prueba solo la parte pura y testeable: que calcResolve()
+// reproduzca exactamente lo que vCalc() ya mostraba, y que calcSnapshot()
+// congele ese resultado en una forma estable.
+check("calcResolve() reproduce el mismo resultado que ya mostraba vCalc() (autocompletado incluido)", () => {
+  const B = E.getB();
+  const my = E.getMY(); my.length = 0;
+  my.push(E.slot(445)); // Garchomp, item/abil default del slot()
+  B.team = [E.mkFoe(9, 0.9)];
+  const c = { atk: 445, def: 9, move: "Terremoto", aSP: 32, dSP: 0, dHP: 0,
+    aNat: 1.1, dNat: 1, crit: 0, cur: 100, aItemOv: null, dItemOv: null,
+    aAbOv: null, dAbOv: null, aStaOv: null, field: "battle" };
+  const { r, cur, aMatch } = E.calcResolve(c);
+  assert(r !== null, "calcResolve tiene que devolver un resultado con datos válidos");
+  assertEqual(cur, r.maxHP, "cur=100% del maxHP cuando c.cur es 100");
+  assertEqual(aMatch.side, "mine", "tiene que encontrar a Garchomp entre los propios cargados");
+});
+
+check("calcSnapshot() congela nombre/movimiento/veredicto, no la configuración — es una FOTO, no un cálculo vivo", () => {
+  const B = E.getB();
+  B.team = [E.mkFoe(9, 0.9)];
+  const c = { atk: 445, def: 9, move: "Terremoto", aSP: 32, dSP: 0, dHP: 0,
+    aNat: 1.1, dNat: 1, crit: 0, cur: 100, aItemOv: null, dItemOv: null,
+    aAbOv: null, dAbOv: null, aStaOv: null, field: "battle" };
+  const { r, cur } = E.calcResolve(c);
+  const snap = E.calcSnapshot(E.nm(c.atk), E.nm(c.def), E.mvName(c.move), r, cur);
+  assertEqual(snap.atk, "Garchomp");
+  assertEqual(snap.def, "Blastoise");
+  assert(snap.v && typeof snap.v.txt === "string", "trae el veredicto ya calculado (txt/pct/cls), listo para pintarse sin recalcular");
+  assert(typeof snap.id === "number", "necesita un id propio para poder borrar UNA fila sin tocar las demás");
+});
+
+check("calcSnapshot(): dos capturas del mismo cálculo tienen ids distintos (se pueden borrar por separado)", () => {
+  const B = E.getB();
+  B.team = [E.mkFoe(9, 0.9)];
+  const c = { atk: 445, def: 9, move: "Terremoto", aSP: 32, dSP: 0, dHP: 0,
+    aNat: 1.1, dNat: 1, crit: 0, cur: 100, aItemOv: null, dItemOv: null,
+    aAbOv: null, dAbOv: null, aStaOv: null, field: "battle" };
+  const { r, cur } = E.calcResolve(c);
+  const a = E.calcSnapshot("X", "Y", "Z", r, cur);
+  const b = E.calcSnapshot("X", "Y", "Z", r, cur);
+  assert(a.id !== b.id, "dos duplicados seguidos no pueden compartir id");
 });
 
 // ── coherencia de números de Pokédex entre SPD y los datos reales ──

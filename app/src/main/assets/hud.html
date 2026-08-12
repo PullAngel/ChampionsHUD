@@ -1006,6 +1006,19 @@ const verdict=(r,cur)=>{
     cls: ko?"k":"ok",
     pct:`${Math.round(r.R[0]/r.maxHP*100)}–${Math.round(r.R[15]/r.maxHP*100)}% ×${r.e}`, ko};
 };
+/** "Duplicar cálculo" (calc.md §5, pedido de Angel 2026-08-11): una foto
+    congelada de un resultado de CALC, para comparar variantes ("¿con Vida
+    Sana o con Pañuelo?") sin perder el cálculo anterior. Angel especificó
+    "temporal, no como los equipos" — vive en `CALC_HISTORY` (declarado
+    junto a `vCalc()`, nunca en `B`/`MY`, nunca tocado por `save()`), así
+    que sobrevive cambiar de pestaña pero se pierde al recargar la app,
+    igual que `SPD_WHATIF` (decisión #25). Congela el texto ya calculado en
+    vez de guardar la configuración para recalcular después: es una FOTO
+    del resultado en ese momento, no un cálculo vivo que se siga moviendo
+    si cambia el campo mientras se lo compara. */
+function calcSnapshot(atk,def,move,r,cur){
+  return {id:Date.now()+Math.random(), atk, def, move, v:verdict(r,cur)};
+}
 
 /* ═════ INFERENCIA ═════ */
 function spdRange(f){
@@ -3314,6 +3327,26 @@ function calcActiveStatus(dex){
   if(B.team[B.foe[1]]&&B.team[B.foe[1]].dex===dex)return B.act.f1?.sta||null;
   return null;
 }
+/** Resuelve un estado de `window.__c` (CALC) al `{r,cur}` que de verdad se
+    muestra — autocompletado de objeto/habilidad/estado incluido. Un único
+    lugar para esta cadena: `vCalc()` la usa para pintar el resultado, y el
+    botón "Duplicar" (calcSnapshot(), decisión de Angel 2026-08-11: temporal,
+    no como los equipos) la reusa para congelar EXACTAMENTE el mismo número
+    que está en pantalla — sin esto, cada uno recalcularía por su cuenta y un
+    cambio futuro a la cadena de autocompletado los desincronizaría en silencio. */
+function calcResolve(c){
+  const aMatch=calcTeamMatch(c.atk), dMatch=calcTeamMatch(c.def);
+  const aItem=c.aItemOv!==null?c.aItemOv:(aMatch?.item||"—");
+  const dItem=c.dItemOv!==null?c.dItemOv:(dMatch?.item||"—");
+  const aAb=c.aAbOv!==null?c.aAbOv:(aMatch?.abil||abilsOf(c.atk)[0]);
+  const dAb=c.dAbOv!==null?c.dAbOv:(dMatch?.abil||abilsOf(c.def)[0]);
+  const aStaAuto=calcActiveStatus(c.atk);
+  const aStaSel=c.aStaOv!==null?c.aStaOv:(aStaAuto||"—");
+  const aSta=aStaSel==="—"?null:aStaSel;
+  const r=calc({...c,aItem,dItem,aAb,dAb,aSta,...calcFieldCtx(c)});
+  const cur=r?Math.floor(r.maxHP*c.cur/100):0;
+  return {r,cur,aMatch,dMatch,aItem,dItem,aAb,dAb,aStaAuto,aStaSel,aSta};
+}
 function vPre(){
   const so=fullSpeedOrder(), th=topThreats();
   if(!so.length&&!th.length)
@@ -3798,20 +3831,12 @@ const calcSlider=(label,key,val)=>`<div class="sp"><b>${esc(label)}</b>
   <div class="bar"><div class="bg"><div class="fl" style="width:${val/SP_MAX*100}%"></div></div>
     <input type="range" min="0" max="${SP_MAX}" step="1" value="${val}" data-cev="${key}"></div>
   <u>${val}</u></div>`;
+let CALC_HISTORY=[];
 function vCalc(){
   const c=window.__c||(window.__c={atk:MY[0]?.dex||DEXN[0],def:B.team[B.foe[0]]?.dex||DEXN[0],move:"Terremoto",
     aSP:32,dSP:0,dHP:0,aNat:1.1,dNat:1,crit:0,cur:100,aItemOv:null,dItemOv:null,aAbOv:null,dAbOv:null,aStaOv:null,
     field:"battle"});
-  const aMatch=calcTeamMatch(c.atk), dMatch=calcTeamMatch(c.def);
-  const aItem=c.aItemOv!==null?c.aItemOv:(aMatch?.item||"—");
-  const dItem=c.dItemOv!==null?c.dItemOv:(dMatch?.item||"—");
-  const aAb=c.aAbOv!==null?c.aAbOv:(aMatch?.abil||abilsOf(c.atk)[0]);
-  const dAb=c.dAbOv!==null?c.dAbOv:(dMatch?.abil||abilsOf(c.def)[0]);
-  const aStaAuto=calcActiveStatus(c.atk);
-  const aStaSel=c.aStaOv!==null?c.aStaOv:(aStaAuto||"—");
-  const aSta=aStaSel==="—"?null:aStaSel;
-  const r=calc({...c,aItem,dItem,aAb,dAb,aSta,...calcFieldCtx(c)});
-  const cur=r?Math.floor(r.maxHP*c.cur/100):0;
+  const{r,cur,aMatch,dMatch,aItem,dItem,aAb,dAb,aStaAuto,aStaSel}=calcResolve(c);
   const auto=(m,ov)=>m&&ov===null?` <em style="text-transform:none;font-weight:600;opacity:.7">auto: ${esc(m.side==="mine"?"tuyo":"rival")}</em>`:"";
   const autoSta=c.aStaOv===null&&aStaAuto?` <em style="text-transform:none;font-weight:600;opacity:.7">auto: activo ahora</em>`:"";
   return `<div class="cols">
@@ -3840,7 +3865,8 @@ function vCalc(){
   <div class="card d"><span class="hd">Resultado</span>
     ${hpBar("calc","PS del defensor",c.cur)}
     ${rowFx(nm(c.atk)+" → "+nm(c.def),mvName(c.move),verdict(r,cur),r,cur)}
-    <div class="pills" style="margin-top:5px"><button class="p" data-c2="crit" data-on="${c.crit?1:0}">Crítico</button></div>
+    <div class="pills" style="margin-top:5px"><button class="p" data-c2="crit" data-on="${c.crit?1:0}">Crítico</button>
+      <button class="p" id="cDup">Duplicar</button></div>
     <div class="cap" style="margin-top:6px">Efectos de campo</div>
     <div class="pills">
       <button class="p" data-cfield="battle" data-on="${c.field!=="neutral"?1:0}">Los del combate<em>${esc(calcFieldLabel())}</em></button>
@@ -3848,7 +3874,11 @@ function vCalc(){
     <div class="msg" style="margin-top:4px">${c.field==="neutral"
       ?"Cuenta limpia, sin clima ni pantallas — para armar equipo fuera de combate."
       :"Usa el clima, el terreno y las pantallas que marcaste en CAMPO."}</div>
-    ${B.doubles&&mv(c.move)?.sp?`<div class="msg" style="margin-top:5px">Formato Dobles (Ajustes) y este movimiento pega a los dos rivales: el daño ya viene con el ×0.75 de repartirlo.</div>`:""}</div>`;
+    ${B.doubles&&mv(c.move)?.sp?`<div class="msg" style="margin-top:5px">Formato Dobles (Ajustes) y este movimiento pega a los dos rivales: el daño ya viene con el ×0.75 de repartirlo.</div>`:""}</div>
+  ${CALC_HISTORY.length?`<div class="card d"><span class="hd">Comparar<em>se pierde al recargar la app</em></span>${
+    CALC_HISTORY.map(h=>`<div class="row"><b>${esc(h.atk)} → ${esc(h.def)}<s>${esc(h.move)}</s></b>
+      <u class="${h.v.cls}">${h.v.txt}<s>${h.v.pct}</s></u>
+      <button class="p" data-cdel="${h.id}" style="margin-left:4px">✕</button></div>`).join("")}</div>`:""}`;
 }
 
 function vSet(){
@@ -4047,6 +4077,14 @@ function wire(){
 
   on("[data-c2]",e=>window.__c[e.dataset.c2]=window.__c[e.dataset.c2]?0:1);
   on("[data-cfield]",e=>{if(window.__c)window.__c.field=e.dataset.cfield});
+  // "Duplicar" (docs/calc.md §5, pedido de Angel 2026-08-11): congela el
+  // resultado actual como una fila de comparación. CALC_HISTORY es
+  // deliberadamente temporal — nunca pasa por save(), así que sobrevive
+  // cambiar de pestaña pero se pierde al recargar la app.
+  on("#cDup",()=>{const c=window.__c;if(!c)return;
+    const{r,cur}=calcResolve(c);
+    CALC_HISTORY.push(calcSnapshot(nm(c.atk),nm(c.def),mvName(c.move),r,cur))});
+  on("[data-cdel]",e=>{CALC_HISTORY=CALC_HISTORY.filter(h=>h.id!==+e.dataset.cdel)});
   // CALC (docs/calc.md): chip de uno de los 12 de la partida — un toque en
   // vez de tipear en la lista completa. Cambiar de Pokémon resetea el
   // override de objeto/habilidad: el que estaba tipeado a mano era para el
