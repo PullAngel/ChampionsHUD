@@ -409,6 +409,16 @@ Angel pidió una segunda forma de ver "Quién pega primero", conmutable con la a
 
 **Sprint 3.3 — pendiente.** QA en dispositivo real: la estimación de ancho de chip por caracteres no se validó contra la tipografía real del panel (solo contra el navegador de escritorio), y `CONT_W=640` (ancho de referencia para la estimación de písos) es un valor fijo que puede no coincidir con el ancho real del panel agrandado (~60%, sprint de la sesión anterior). Si los chips se superponen en el dispositivo real, ajustar `CONT_W` o el multiplicador de la heurística de ancho — ambos están aislados en `vSpeedDetail()`, sin tocar la lógica de `speedWeights()`.
 
+### Robustez (Sturdy): el cálculo tenía el efecto equivocado — corregido, 2026-08-11
+
+Cierre de `audit.md` §7 punto 8. `calc()` tenía `if(dAb==="sturdy"&&e>1)post*=.75` — una reducción de daño del 25% en golpes súper efectivos. Ese número es real, pero es el de **Filtro/Roca Sólida/Coraza Prisma** (la línea de arriba en el mismo código, `if((dAb==="filter"||dAb==="solidrock"||dAb==="prismarmor")&&e>1)post*=.75`) — Robustez **no reduce daño en absoluto**. Su efecto real (ya documentado, sin usarse, en `ABIL_DESC.sturdy`: *"Prevents being KOed from full HP, leaving 1 HP instead"*) es que a PS llenos, cualquier golpe que dejaría al Pokémon en 0 lo deja en 1.
+
+**Modelado como un tope, no como un multiplicador** — es la forma correcta de representar la mecánica: cuando `dAb==="sturdy"` y el defensor está al 100% de PS (`o.dHp`), cada tirada de daño se capea con `Math.min(dmg, maxHP-1)` antes de devolverla. El resto de `calc()`/`verdict()` no necesitó cambios — un `verdict()` con ese tope nunca cuenta un KO, exactamente el comportamiento real.
+
+**No incluido, y por qué no es una falta:** las otras dos entradas del mismo punto de deuda (`Barrera Férrea`, `Sartén Vudú`, dos habilidades exclusivas de Champions sin nombre en inglés publicado en ninguna fuente real) siguen sin resolver — no por falta de trabajo, sino porque no hay dato verificable contra el cual resolverlas sin adivinar.
+
+**Tests:** 4 nuevos (228 en total) — a PS llenos, ningún resultado del golpe llega al máximo de PS; sin estar a PS llenos, Robustez no cambia nada; ya no reduce daño un 25% en un golpe súper efectivo (el bug viejo); `verdict()` nunca cuenta un KO en ese escenario. Probados rompiéndolos a propósito (forzar `sturdyFull=false` siempre): los dos que debían fallar, fallaron con el mensaje correcto — restaurado y verificado con `git diff --stat` en cero antes de commitear.
+
 ## Fase 3 — Formalizar la separación Motor / Cliente
 
 - Extraer explícitamente el motor de dominio como módulo independiente de Android/Kotlin (decisión #10), sin que esto implique construir todavía un segundo cliente — es preparar el terreno, no anticipar trabajo que no hace falta hoy.

@@ -958,17 +958,27 @@ function calc(o){
   if(o.dAb==="multiscale"&&(o.dHp??100)>=100)post*=.5;
   if(o.dAb==="Barrera Férrea"&&e>1)post*=.75;   // TODO: no se pudo identificar contra datos de Showdown/PokeAPI, ver audit.md §5.2
   if((o.dAb==="filter"||o.dAb==="solidrock"||o.dAb==="prismarmor")&&e>1)post*=.75;
-  if(o.dAb==="sturdy"&&e>1)post*=.75;   // TODO: este efecto no es el de Sturdy real (sobrevivir un OHKO) — parece una confusión de diseño previa, ver audit.md §5.2
   const fly=D.t.includes("FLY");
   if(o.terrain==="eléctrico"&&m.t==="ELE"&&!fly)post*=1.3;
   if(o.terrain==="psíquico"&&m.t==="PSY"&&!fly)post*=1.3;
   if(o.terrain==="hierba"&&m.t==="GRA"&&!fly)post*=1.3;
   if(o.terrain==="hierba"&&m.t==="GRO"&&m.sp)post*=.5;
+  /* audit.md §7 punto 8: el código tenía `if(o.dAb==="sturdy"&&e>1)post*=.75`
+     acá — una reducción de daño del 25% que no es ningún efecto real de
+     Robustez (esa cifra es la de Filtro/Roca Sólida/Coraza Prisma, arriba).
+     Robustez real no reduce daño: a PS llenos, sobrevive con 1 PS cualquier
+     golpe que la dejaría en 0 (ver ABIL_DESC.sturdy). Se modela acá, no
+     arriba con el resto de habilidades del defensor, porque no es un
+     multiplicador sobre el daño — es un tope sobre el resultado final,
+     aplicado después de calcular cada tirada. */
+  const sturdyFull=o.dAb==="sturdy"&&(o.dHp??100)>=100;
   const R=[];
   for(let r=85;r<=100;r++){
     let x=Math.floor(base*pre);x=Math.floor(x*r/100);
     x=Math.floor(x*stab);x=Math.floor(x*e);
-    R.push(Math.max(e>0?1:0,Math.floor(x*post)));
+    let dmg=Math.max(e>0?1:0,Math.floor(x*post));
+    if(sturdyFull)dmg=Math.min(dmg,maxHP-1);
+    R.push(dmg);
   }
   return {R,maxHP,e,move:o.move};
 }

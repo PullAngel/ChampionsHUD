@@ -240,6 +240,45 @@ check("guts anula la penalidad de quemado en daño físico", () => {
   assert(base.R[15] < withGuts.R[15], "con guts el daño quemado debería ser mayor que sin guts");
 });
 
+// audit.md §7 punto 8: calc() tenía `if(dAb==="sturdy"&&e>1)post*=.75` — la
+// reducción de daño de Filtro/Roca Sólida/Coraza Prisma, no un efecto real
+// de Robustez. Robustez real: a PS llenos, sobrevive con 1 PS cualquier
+// golpe que la dejaría en 0 (ver ABIL_DESC.sturdy en hud.html).
+check("sturdy: a PS llenos, ningún resultado del golpe puede llegar a 0 (deja 1 PS)", () => {
+  // aStat/dStat como override directo evita depender de las stats reales de
+  // la especie — el golpe es letal de sobra a propósito, para aislar el tope.
+  const hit = { atk: 445, def: 9, move: "Terremoto", aStat: [0, 999, 0, 0, 0], dStat: [100, 0, 1, 0, 0], dHp: 100 };
+  const sinSturdy = E.calc(hit);
+  assert(sinSturdy.R[15] >= sinSturdy.maxHP, "precondición: el golpe tiene que ser letal de sobra sin Robustez");
+  const conSturdy = E.calc({ ...hit, dAb: "sturdy" });
+  assert(conSturdy.R.every((x) => x < conSturdy.maxHP), "con Robustez a PS llenos, ningún resultado puede llegar al máximo de PS");
+});
+
+check("sturdy: si el defensor NO está a PS llenos, la mecánica real no aplica (no es un multiplicador de daño)", () => {
+  const hit = { atk: 445, def: 9, move: "Terremoto", aStat: [0, 999, 0, 0, 0], dStat: [100, 0, 1, 0, 0], dHp: 50 };
+  const sinSturdy = E.calc(hit);
+  const conSturdy = E.calc({ ...hit, dAb: "sturdy" });
+  assertEqual(conSturdy.R.join(","), sinSturdy.R.join(","), "sin estar a PS llenos, Robustez no debería cambiar el daño calculado");
+});
+
+check("sturdy: ya NO reduce el daño un 25% en golpes súper efectivos (esa era la confusión con Filtro/Roca Sólida)", () => {
+  // Surf (agua, especial) contra Charizard (Fuego/Volador): 2x — golpe súper
+  // efectivo, el caso que activaba el bug viejo (`e>1`), acá a propósito NO
+  // letal (maxHP alto) para no cruzarse con el tope de PS llenos del test de arriba.
+  const hit = { atk: 9, def: 6, move: "Surf", aStat: [0, 0, 0, 50, 0], dStat: [500, 0, 0, 0, 50], dHp: 50 };
+  const sinAb = E.calc(hit);
+  assert(sinAb.e > 1, "precondición: Surf tiene que ser súper efectivo contra Charizard acá");
+  const conSturdy = E.calc({ ...hit, dAb: "sturdy" });
+  assertEqual(conSturdy.R.join(","), sinAb.R.join(","), "Robustez no reduce daño — si esto falla, volvió el multiplicador equivocado");
+});
+
+check("verdict(): con Robustez a PS llenos, un golpe letal nunca cuenta como KO", () => {
+  const hit = { atk: 445, def: 9, move: "Terremoto", aStat: [0, 999, 0, 0, 0], dStat: [100, 0, 1, 0, 0], dAb: "sturdy", dHp: 100 };
+  const r = E.calc(hit);
+  const v = E.verdict(r, r.maxHP);
+  assertEqual(v.ko, 0, "a PS llenos con Robustez, ningún resultado del golpe puede ser un KO");
+});
+
 check("abilName() traduce el mismo slug distinto según LANG", () => {
   assert(typeof E.abilName === "function", "abilName no es una función");
   E.setLang("en");
