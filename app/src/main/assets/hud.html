@@ -949,14 +949,12 @@ function calc(o){
   // atacante
   if(o.aAb==="solarpower"&&!phys&&o.weather==="sol")post*=1.5;
   if(o.aAb==="waterbubble"&&mType==="WAT")post*=2;
-  if(o.aAb==="Sartén Vudú"&&mType==="FIR"&&!phys)post*=1.33;   // TODO: no se pudo identificar contra datos de Showdown/PokeAPI, ver audit.md §5.2
   if(o.aAb==="guts"&&phys&&o.aSta&&o.aSta!=="—")post*=1.5;
   // habilidades de apuro: se activan por debajo de un tercio de PS
   const pinch={torrent:"WAT",blaze:"FIR",overgrow:"GRA",swarm:"BUG"}[o.aAb];
   if(pinch&&mType===pinch&&(o.aHp??100)<=33)post*=1.5;
   // defensor
   if(o.dAb==="multiscale"&&(o.dHp??100)>=100)post*=.5;
-  if(o.dAb==="Barrera Férrea"&&e>1)post*=.75;   // TODO: no se pudo identificar contra datos de Showdown/PokeAPI, ver audit.md §5.2
   if((o.dAb==="filter"||o.dAb==="solidrock"||o.dAb==="prismarmor")&&e>1)post*=.75;
   const fly=D.t.includes("FLY");
   if(o.terrain==="eléctrico"&&m.t==="ELE"&&!fly)post*=1.3;
