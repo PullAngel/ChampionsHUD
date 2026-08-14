@@ -1,274 +1,236 @@
-# Champions HUD
+# Champions HUD - Proyecto personal.
 
-Overlay de batalla para Pokémon Champions en Android. Lee el equipo rival desde
-la vista previa, deduce sus objetos y velocidad a medida que avanza el combate,
-y se sale del camino.
+> Copiloto y coach de un Maestro Pokémon.
 
-Pensado para un Samsung A55 5G con Android 16 / One UI 8.5: `targetSdk 36`,
-`minSdk 29`, WebView con capa por hardware para los 120 Hz del panel, negros
-profundos para el AMOLED, y vibracion via `VibrationEffect.EFFECT_TICK` para que
-se sienta como un control nativo de One UI y no como un zumbido.
+Overlay de batalla en tiempo real para **Pokémon Champions** (VGC) en Android. Lee el equipo rival por visión por computadora, mantiene memoria completa del combate, calcula daño y velocidad exactos, y descarta hipótesis a medida que aparece evidencia — todo esto offline, en el teléfono, sin interrumpir la partida.
 
-## Compilar
+![Champions HUD sobre una batalla real](app/img.png)
 
-1. Abrir la carpeta en Android Studio. Baja el wrapper de Gradle y el SDK solo.
-2. `Build > Build Bundle(s) / APK(s) > Build APK(s)`, o `./gradlew assembleDebug`.
-3. El APK queda en `app/build/outputs/apk/debug/`.
+---
 
-## Antes de que el escaneo sirva
+## Índice
 
-El matcher necesita el índice de sprites, que no viene incluido:
+- [Qué hace](#qué-hace)
+- [Por qué existe](#por-qué-existe)
+- [Arquitectura](#arquitectura)
+- [Visión por computadora y captura persistente](#visión-por-computadora-y-captura-persistente)
+- [De dónde salen los datos](#de-dónde-salen-los-datos)
+- [Disciplina de ingeniería](#disciplina-de-ingeniería)
+- [Principios de producto no negociables](#principios-de-producto-no-negociables)
+- [Estructura del repo](#estructura-del-repo)
+- [Empezar](#empezar)
+- [Cómo contribuir si jugás VGC](#cómo-contribuir-si-jugás-vgc)
+- [Documentación](#documentación)
+- [Qué falta](#qué-falta)
+- [Estado actual y próximos pasos](#estado-actual-y-próximos-pasos)
+- [Créditos y licencia](#créditos-y-licencia)
 
-```
-pip install requests pillow numpy
-python build_sprite_index.py
-cp sprite_index.json app/src/main/assets/
-```
+## Qué hace
 
-Sin ese archivo la app arranca igual y todo lo demás funciona; solo el escaneo
-avisa que falta el índice.
+Una burbuja flota sobre el juego. Tocarla abre un panel de cinco pestañas, pensado para horizontal (Champions se juega siempre así) con navegación en un riel vertical en vez de una barra inferior:
 
-## Cómo se usa
-
-Una burbuja queda flotando sobre el juego. Arrastrala donde no moleste, se pega
-al borde. Tocarla abre el panel del lado donde esté, ocupando como mucho el 46%
-del ancho.
-
-| Control | Qué hace |
+| Pestaña | Qué resuelve |
 |---|---|
-| `▸` | Avanza el turno y baja todos los contadores de campo |
-| `⇱` | Fija el panel: deja de cerrarse solo |
-| `↻` | Escanea la vista previa |
-| `×` | Cierra el panel |
-| mantener la burbuja | Cierra la app |
+| **PREVIA** | Con tu equipo cargado y el rival escaneado en team preview, estima qué 4 va a sacar y en qué orden, y te recomienda tus 4 con leads y back — pesando control de velocidad, clima, megas duplicadas y choques de habilidad. Muestra el razonamiento, no solo el resultado. |
+| **CAMPO** | Qué le hace cada uno de los tuyos a cada uno de ellos, qué te hacen a vos, orden de velocidad y estado del campo con contadores. |
+| **RIVAL** | Por cada Pokémon rival: objeto, habilidad y movimientos más probables según meta real, afinados con lo que se confirmó durante la partida — con su nivel de confianza (Confirmado / Deducido / Estimado). |
+| **CALC** | Calculadora manual con chips de los 12 Pokémon en juego, autocompletado de objeto/habilidad/campo desde lo ya confirmado, y comparación de variantes lado a lado. |
+| **⚙** | Formato, actualización del meta sin recompilar, reinicio de combate. |
 
-El panel se cierra solo a los 16 segundos sin uso, salvo que esté fijado.
+El resto se deduce solo, con evidencia inspeccionable: si marcás que un Pokémon "se movió antes" y la velocidad necesaria supera su máximo teórico, el Pañuelo Elección queda confirmado. El rango de velocidad se va cerrando con cada orden de turno observado. "Confirmar por daño" en RIVAL descarta todos los repartos incompatibles con el % real que le bajaste.
 
-### Diseño horizontal
+Un modo compacto (`◱`) colapsa todo a tres bloques para los últimos segundos del turno: qué tirar, qué te hacen, y el orden de velocidad — con el recomendador explicando *por qué* cada movimiento rinde lo que rinde, sin decir cuál usar.
 
-Champions se juega siempre en horizontal, así que el panel es más ancho que
-alto (unos 382 × 338 px CSS en el A55). La navegación va en un **riel vertical a
-la izquierda** en vez de una barra inferior — el alto es el recurso escaso — y
-las tarjetas se acomodan en dos columnas.
+## Por qué existe
 
-### Las pestañas
+En VGC competitivo, una fracción enorme de las partidas se pierde no por mala estrategia sino por **límites humanos bajo presión de reloj**: no llegás a calcular si tu ataque mata, no te acordás cuántos turnos le quedan a Tailwind, no procesás a tiempo que el rival ya descartó la mitad de sus sets posibles con lo que soltó. Champions HUD no reemplaza el criterio del jugador — reemplaza el trabajo mecánico que le impide usar ese criterio a tiempo.
 
-**PREVIA** — el predictor de team preview. Con tu equipo cargado y el rival
-escaneado, estima qué 4 va a sacar y en qué orden, y te recomienda tus 4 con
-leads y back. No es solo daño: pesa control de velocidad (Tailwind vs Espacio
-Raro), clima propio, megas duplicadas que ocupan un solo cupo, y choques de
-habilidad como Bromista contra tipos siniestro. Y muestra el razonamiento, para
-que puedas discutirlo en vez de obedecerlo.
+La regla de producto más importante, refinada dos veces contra uso real (ver `docs/decisions.md` #1, #19, #21), es que **el copiloto describe la posición, nunca elige la acción**. Permitido: hechos, estimaciones con su evidencia, jerarquizar qué mostrar primero, describir riesgos ("el escenario más peligroso es que lleve Pañuelo"). Prohibido sin excepción: "la opción más segura es Protect", rankear tus propios movimientos, cualquier etiqueta tipo "MEJOR". Cada afirmación de riesgo tiene que poder explicarse con la evidencia que la sostiene — si no se puede inspeccionar, no se muestra.
 
-Es una heurística, no un oráculo: sirve para no pasar por alto un eje obvio con
-el reloj corriendo, no para elegir por vos.
+## Arquitectura
 
-**CAMPO** — lo que necesitás sin tocar nada: qué le hace cada uno de los tuyos a
-cada uno de ellos, qué te hacen a vos, el orden de velocidad y el estado del
-campo con contadores.
+El proyecto son dos mitades acopladas por un puente angosto y deliberado:
 
-**RIVAL** — por cada Pokémon del rival: objetos, movimientos y repartos más
-probables según el meta, más lo que se fue confirmando durante la partida.
+- **Cascarón Android/Kotlin** (~1.700 líneas, 6 archivos): permisos, ventana flotante `FLAG_NOT_FOCUSABLE`, captura de pantalla, visión por computadora, OCR, persistencia en disco. Es el cliente de la plataforma, no el producto.
+- **Motor de dominio** (`hud.html`, JS plano sin dependencias ni módulos — ~4.300 líneas): todo el razonamiento — daño, velocidad, inferencia de sets, predicción de team preview, estado del combate. **No depende de Android en absoluto**: corre y se prueba en un sandbox de Node, sin WebView ni stubs.
 
-**CALC** — calculadora manual para cuando querés forzar valores.
+Esta separación no es aspiracional: es una propiedad verificada por tests permanentes. El motor referencia el puente Android en exactamente 8 lugares — todos I/O (`loadDex`, `saveBattle`, `loadTeam`, `saveTeam`, `loadMeta`, `loadBattle`, `keepOpen`, `haptic`), agrupados en un único objeto `IO`, nunca lógica de dominio, siempre detrás de una guarda (`typeof Android!=="undefined"`). Un test inyecta una llamada `Android.*` suelta fuera de `IO` a propósito y confirma que la suite la detecta. El motor tampoco menciona licencias, planes ni publicidad en ninguna línea — esos conceptos, cuando existan, viven exclusivamente en la capa de Presentación (`docs/architecture.md` §7).
 
-**⚙** — formato, actualización del meta y reinicio del combate.
+La arquitectura lógica del motor, tal como está diseñada en `docs/architecture.md`:
 
-## Lo que deduce solo
+```mermaid
+flowchart TD
+    P["Percepcion\ncaptura de pantalla u entrada manual"] --> EL["Event Log\ninmutable, con origen y timestamp"]
+    EL --> ES["Motor de Estado\nHP, campo, contadores, PP"]
+    EL --> MI["Motor de Inferencia\nsets, items y habilidades aun compatibles"]
+    MD["Meta Data Service\n1838 equipos reales de 40 torneos"] --> MI
+    ES --> MC["Motor de Calculo\ndano y velocidad exactos"]
+    MI --> MC
+    MC --> MIN["Motor de Insights\njerarquiza y describe riesgo, nunca elige"]
+    MIN --> PR["Presentacion\nGlance, Peek, Deep"]
+```
 
-- **Pañuelo Elección**: si marcás "se movió antes" y la velocidad que necesitó
-  supera lo que su base permite, el Pañuelo queda confirmado.
-- **Rango de velocidad**: arranca en el máximo teórico y se va achicando con
-  cada observación de orden.
-- **Resistencia**: en RIVAL, "Confirmar por daño" toma el porcentaje real que le
-  bajaste y descarta todos los repartos defensivos incompatibles.
-- **Movimientos**: los que marcás como vistos reemplazan a los estimados, y el
-  cálculo de amenaza pasa a usar solo esos.
+El flujo es estrictamente unidireccional y el Event Log es la única fuente de verdad: nada se edita retroactivamente, toda corrección entra como un evento nuevo de máxima confianza y todo lo demás se recalcula desde ahí.
 
-### Estados y etapas
+**Honestidad sobre el estado real vs. el diseñado** (algo que el propio proyecto audita explícitamente, ver `docs/architecture.md` §2 y `docs/audit.md`): hoy el Event Log, el Motor de Estado y el Motor de Inferencia todavía no están separados como tres módulos — el estado vive en un objeto mutable y dos reglas de inferencia (`solveBulk()`, `observeOrder()`) escriben su conclusión directo sobre el Pokémon rival. Construir ese sustrato sin reescribir lo que ya funciona es, a propósito, el trabajo activo de la fase actual (`docs/roadmap.md`).
 
-Cada activo tiene su propio estado y sus propias etapas, no un interruptor
-global. En CAMPO elegís el Pokémon y le ponés estado (quemado, paralizado,
-envenenado, dormido, congelado) y etapas de −6 a +6 en las cinco stats.
+`hud.html` se mantiene deliberadamente como un único archivo sin módulos ES — no es deuda técnica por descuido, es una decisión evaluada y documentada (`docs/decisions.md` #18): el WebView carga el HUD por `file://`, donde Chromium aplica restricciones de CORS a `<script type="module">` que probablemente romperían la carga; y el costo de un paso de build (concatenar módulos) se pesó explícitamente contra el beneficio (editar → recargar el WebView → ver el resultado en segundos, sin recompilar) y se decidió no pagarlo mientras la suite de tests siga siendo el contrapeso real.
 
-Entran donde corresponde: la **quemadura** baja solo el daño físico del que la
-tiene, la **parálisis** parte su velocidad al medio en el orden de turno, y las
-etapas se aplican a la stat correcta según si el movimiento es físico o
-especial. En crítico se ignoran las etapas que perjudican al atacante.
+## Visión por computadora y captura persistente
 
-Tailwind, Espacio Raro, clima, campos y pantallas también entran en los cálculos
-de daño y de orden en cuanto los marcás.
+**Reconocimiento de sprites en dos pasadas**, corriendo en el teléfono sin red: primero silueta (invariante a shiny — un recoloreo cambia la luminancia, así que compararlo en escala de grises no habría servido); si dos candidatos empatan en silueta, recién ahí se compara color, que es lo que distingue formas como Shellos o separa un shiny (marcado con `✦`) de su versión normal. El fondo degradado de cada tarjeta se resuelve fila por fila usando el borde izquierdo como referencia, en vez de un color de tolerancia fija.
 
-## Si se cae a mitad de un combate
+**Por qué la captura de pantalla es persistente:** desde Android 14, el permiso de `MediaProjection` habilita crear **un solo** `VirtualDisplay`. La versión anterior lo creaba y destruía en cada escaneo — el primer escaneo andaba, el segundo tiraba `SecurityException`. Ahora el display se crea una vez y vive lo que vive el HUD; cada escaneo solo pide el último fotograma, sin gastar batería entre escaneos porque el productor se frena solo. Detalle que parecía cosmético y no lo era: el HUD se oculta justo antes de capturar, porque en una pantalla estática no llegan fotogramas nuevos y ese ocultamiento es lo que dispara uno fresco.
 
-El estado se guarda en disco en cada cambio. Al reabrir la app vuelve tal cual
-estaba: turno, revelados, campo y equipo. Se descarta solo si pasaron más de
-tres horas, porque un combate viejo confunde más de lo que ayuda.
+**Lectura del equipo propio vía OCR on-device** (ML Kit, variante bundled — el modelo va empaquetado en el APK, no se descarga en el primer uso, consistente con el requisito de offline-first del proyecto). `TeamOCR.kt` deliberadamente solo extrae texto crudo con su posición; interpretar cuál línea es la especie o el ítem vive en `hud.html`, para poder corregir esa lógica editando HTML si el layout real de la pantalla del juego no se comporta como se asumió mirando capturas.
 
-## Actualizar el meta
-
-`assets/meta.json` viene con datos **estimados**, no de uso real — el HUD lo
-avisa en ⚙ hasta que lo reemplaces. Dos formas:
-
-- Regenerarlo con `build_meta.py` y copiarlo a `assets/`.
-- Servirlo por HTTP y pegar la URL en ⚙ → se descarga y reemplaza sin recompilar.
-
-La descarga se valida antes de guardar: si viene rota, el HUD sigue con lo que
-tenía.
-
-## Por qué la captura es persistente
-
-Desde Android 14, un permiso de captura permite crear **un solo** display
-virtual. La versión anterior lo creaba y destruía en cada escaneo: el primero
-andaba y el segundo tiraba `SecurityException`, dejando la proyección muerta.
-
-Ahora el display se crea una vez y vive lo que viva el HUD. Cada escaneo solo
-pide el último fotograma. No gasta batería porque entre escaneos no consumimos
-nada y el productor se frena solo.
-
-Detalle que parecía cosmético y no lo era: el HUD **se oculta** justo antes de
-capturar. En una pantalla estática no llegan fotogramas nuevos, así que ese
-ocultamiento es lo que provoca el cambio que dispara uno fresco.
-
-## Variocolor (shiny)
-
-Bulbagarden publica los sprites variocolor en su propia categoría, así que ahora
-entran al índice como entradas propias y el matcher los identifica igual que a
-cualquier otro. El match va en dos pasadas:
-
-1. **Silueta**, que es identica entre shiny y normal. Si el ganador le saca
-   diferencia clara al segundo, se cierra ahi y el color no se mira nunca.
-2. **Color**, solo entre candidatos que empataron en silueta — las formas que se
-   distinguen unicamente por color, como Shellos o los patrones de Vivillon.
-
-Y el color pasa a ser dato util: silueta impecable con paleta lejos es
-exactamente la firma de un shiny, y el HUD lo marca con `✦` en la pestaña RIVAL.
-
-Pasar todo a escala de grises **no** habria servido: un recoloreo shiny cambia
-tambien la luminancia, asi que el gris no es invariante. La silueta si lo es.
-
-## Tu equipo
-
-En la pestaña **MÍO** cargas los seis: especie, objeto, alineacion (que stat
-sube y cual baja) y los 66 Stat Points repartidos con barras. Al lado de cada
-barra ves el valor final de la stat mientras la movés.
-
-Sin esto el HUD asumia el peor caso para todo. Con el equipo cargado, los daños
-que hacés y recibís salen de tus numeros reales.
-
-Nota: en Champions **no hay IVs** que cargar — todos los Pokemon cuentan como 31
-en las seis stats. Lo unico que define tu reparto son los Stat Points.
-
-## Barras de PS
-
-Las barras de PS del CAMPO se arrastran con el dedo y tienen un tick de
-vibracion por cada punto de porcentaje, mas un click al soltar. La idea es poder
-ajustarlas sin mirar y sin abrir el teclado, en medio del turno.
-
-## Por qué los selectores son propios y no del sistema
-
-La ventana del overlay es `FLAG_NOT_FOCUSABLE` a propósito: si tuviera foco le
-robaría el teclado y el botón atrás al juego. Pero un `<select>` nativo necesita
-foco para abrir su popup, así que simplemente no se abría.
-
-Por eso todos los desplegables están dibujados dentro del panel: al tocarlos se
-despliega una lista a pantalla completa del panel, con las opciones en dos
-columnas. Nada depende del foco de ventana.
+Pensado para un Samsung A55 5G (Android 16 / One UI 8.5): capa por hardware para los 120 Hz del panel, negros profundos para el AMOLED, y `VibrationEffect.EFFECT_TICK` en las barras de PS táctiles para que se sienta como un control nativo de One UI.
 
 ## De dónde salen los datos
 
-Tres archivos en `assets/`, todos generados por scripts y reemplazables sin
-tocar el código:
+Todo lo que el motor usa en combate está local — nada depende de una llamada de red para responder dentro de una partida. Tres archivos en `assets/`, generados por scripts de Python y reemplazables sin tocar código:
 
-| Archivo | Lo genera | Para qué |
+| Archivo | Lo genera | Contenido real hoy |
 |---|---|---|
-| `sprite_index.json` | `build_sprite_index.py` | reconocer al rival en la vista previa |
-| `dex.json` | `build_dex.py` | stats, tipos, habilidades, movimientos y **learnsets** |
-| `meta.json` | `build_meta.py` | porcentajes de uso para estimar al rival |
+| `sprite_index.json` | `build_sprite_index.py` | 718 huellas de sprites (incluye variocolor) desde Bulbagarden Archives — ~972 KB |
+| `dex.json` | `build_dex.py` | 366 especies, 684 movimientos y sus learnsets desde Pokémon Showdown, recortados a lo que existe en Champions — ~508 KB |
+| `meta.json` | `build_meta.py` + `build_meta_v2.py` | Uso real de **1.838 equipos de 40 torneos** de la API pública de Limitless TCG (Reg. M-B), fusionado con reparto de EVs y naturaleza de Champions Battle Data (235/236 especies) — ~288 KB |
 
-`build_dex.py` toma los datos de Pokémon Showdown y los recorta a las especies
-que existen en Champions — que deduce del `sprite_index.json`, o sea de los
-sprites del propio juego. El resultado son unos 400 KB.
+`meta.json` trae metadatos de procedencia en el propio archivo (`source`, `sourceCounts`, `generatedAt`, `partial`) para que el HUD sepa distinguir datos reales de estimados y avisarlo en pantalla en vez de mostrar falsa precisión. Se actualiza sirviéndolo por HTTP y pegando la URL en ⚙ — se valida antes de guardar, y si viene roto el HUD sigue con la versión anterior.
 
-Los learnsets son lo que hace que el selector de movimientos de cada Pokémon
-muestre solo lo que ese Pokémon aprende. Sin `dex.json` la app sigue andando con
-tablas mínimas embebidas, pero ofrece todos los movimientos a todos.
+Sin `dex.json` la app arranca igual con tablas mínimas embebidas; sin `sprite_index.json` todo funciona salvo el escaneo. Ningún dato pierde disponibilidad de golpe — degradación elegante, no un interruptor de todo o nada.
 
-## Los datos del meta
+## Disciplina de ingeniería
 
-`assets/meta.json` guarda, por especie, los porcentajes de uso de objetos,
-movimientos, habilidades y repartos. El HUD los usa para estimar al rival antes
-de que revele nada.
+- **227 tests, cero dependencias externas.** `tests/run.js` extrae el motor de `hud.html` (todo antes de `function vPre(){`) y lo corre en un sandbox de `vm` de Node con un `localStorage` simulado — sin Jest, sin npm install. Cubre el pipeline evento → estado → inferencia → cálculo, la fórmula de stats contra 12 valores reales tomados de capturas del juego, y contratos de datos.
+- **Bugs reales se convierten en tests permanentes, no en parches puntuales.** El bug más repetido del proyecto (encontrado tres veces): `meta.json` guarda movimientos en inglés, la tabla `MV` de `hud.html` está keyeada en español — comparar directo no matcheaba nunca y fallaba en silencio. Ahora hay un test de contrato que verifica que **todo** nombre que entrega `meta.json` — movimientos, sets, ítems, habilidades — el motor lo sabe resolver: medido en **0 fallos sobre 1.279 movimientos, 1.563 movimientos de sets, 564 ítems y 307 habilidades**, y probado inyectando un nombre inválido a propósito para confirmar que el test sí falla cuando corresponde.
+- **"Fallo ruidoso, nunca silencioso"** es un principio de arquitectura, no un eslogan (`docs/decisions.md` #8): nace directamente de bugs reales donde el sistema seguía reportando éxito mientras producía un resultado incorrecto. Ante datos inconsistentes, el HUD lo dice explícitamente en vez de degradar en silencio y mostrar un número plausible pero falso.
+- **Validación de datos en build.** `validate_data.py` corre antes de empaquetar y confirma que `meta.json`, `dex.json`, `sprite_index.json` y las tablas embebidas son mutuamente consistentes.
+- **La fórmula de stats está verificada, no asumida.** Champions no usa IVs — todos los Pokémon cuentan 31 en las seis stats, y `1 SP = +1 punto de stat a nivel 50, sumado antes de la alineación`. Verificado contra la pantalla de stats real del juego con 10 valores de 6 Pokémon distintos (ej. Gholdengo con 32 SP: `floor((153+32)*1.1) = 203`, exacto). Dos de esos Pokémon (Grimmsnarl, Aegislash) son ahora un test permanente que falla si alguien toca la fórmula sin querer.
+- **Auto-auditoría versionada.** El proyecto mantiene su propio archivo de auditoría técnica (`docs/audit.md`), re-ejecutado contra el código real varias veces, que documenta explícitamente qué está resuelto, qué sigue vigente y qué se descartó por evidencia — incluida la vez que un hallazgo de una auditoría anterior ya no reproducía y se cerró en vez de dejarlo como TODO fantasma.
+- **Decisiones de arquitectura registradas, no en la memoria de una sesión de chat.** 26 decisiones numeradas en `docs/decisions.md`, cada una con contexto, la decisión en sí, sus consecuencias aceptadas y su estado — incluyendo matices posteriores que corrigieron una regla demasiado estricta contra uso real, en vez de reescribirla en silencio.
 
-Los que vienen de fábrica son criterio propio, **no datos medidos** — por eso el
-HUD los marca como «estimados» en ⚙. Si conseguís un archivo con datos reales y
-lo servís por HTTP, pegás la URL en ⚙ y se reemplaza sin recompilar. Se valida
-antes de guardar: si viene roto, sigue con el anterior.
+## Principios de producto no negociables
 
-## Modo compacto
+De `docs/vision.md` y `docs/decisions.md`, la base contra la que se evalúa cualquier feature nueva:
 
-El botón `◱` colapsa el HUD a tres bloques: qué tirar, qué te hacen y el orden
-de velocidad. Es para los últimos segundos del turno, cuando no hay tiempo de
-leer nada más.
+- **El copiloto describe, nunca decide.** Ver [Por qué existe](#por-qué-existe).
+- **No duplicar lo que el juego ya muestra.** Contadores de Tailwind, clima o pantallas ya están en pantalla nativa; el HUD solo agrega si aporta algo que el juego no da.
+- **Offline-first real**, no una degradación aceptable: ningún módulo del pipeline de combate depende de una llamada de red para responder dentro de una partida.
+- **Identificadores de dominio en inglés (slugs canónicos), idioma solo en presentación** — nunca comparar por nombre traducido en lógica de dominio. Esta regla existe porque violarla fue la causa raíz de un bug real y grave (ver arriba).
+- **Motor agnóstico de plataforma.** El overlay Android es el primer cliente del motor, no el motor mismo — pensado para que un futuro cliente en otra plataforma consuma la misma lógica sin reescribirla.
+- **Confianza calibrada, nunca falsa precisión.** Cada dato se muestra como hecho confirmado, deducción con evidencia inspeccionable, o estimación de meta — nunca disfrazado de certeza.
 
-Ahí vive el **recomendador**: ordena tus cuatro movimientos y explica cada uno
-en una línea. No es una flecha que obedecés — dice *por qué*, para que aprendas
-a leer la posición. Pesa daño, KO, precisión real, prioridad, si pega a los dos,
-y si el rival te mata primero.
+## Estructura del repo
 
-## Megaevolución: decisión, no suposición
+```
+ChampionsHUD/
+├── app/src/main/
+│   ├── assets/
+│   │   ├── hud.html          # Motor de dominio completo — JS plano, sin dependencias
+│   │   ├── dex.json          # Especies/movimientos/learnsets (generado, no versionado a mano)
+│   │   ├── meta.json         # Uso real de torneos (generado, no versionado a mano)
+│   │   └── sprite_index.json # Huellas de sprites (generado, no versionado a mano)
+│   └── java/com/angel/championshud/
+│       ├── MainActivity.kt      # Onboarding y permisos secuenciales
+│       ├── OverlayService.kt    # Ventana flotante, puente JS↔Kotlin, arrastre, vibración
+│       ├── ScreenCapture.kt     # MediaProjection + VirtualDisplay persistente
+│       ├── SpriteMatcher.kt     # Reconocimiento de Pokémon en dos pasadas
+│       ├── TeamOCR.kt           # OCR on-device (ML Kit) del equipo propio
+│       └── Storage.kt           # Persistencia en disco + haptics
+├── build_sprite_index.py     # Genera sprite_index.json desde Bulbagarden Archives
+├── build_dex.py               # Genera dex.json desde Pokémon Showdown
+├── build_meta.py               # Genera meta.json desde la API de Limitless TCG
+├── build_meta_v2.py            # Fusiona reparto de EVs/naturaleza de Champions Battle Data
+├── validate_data.py            # Valida consistencia mutua de los datasets antes de empaquetar
+├── tests/
+│   ├── run.js                  # 227 tests del motor, sandbox de Node sin dependencias
+│   ├── test_build_meta.py
+│   └── test_build_meta_v2.py
+├── docs/                       # Visión, arquitectura, decisiones (ADR), auditoría, roadmap
+├── GUIA-INSTALACION.md         # Guía paso a paso sin asumir experiencia previa con Android
+└── CLAUDE.md                   # Puntero de contexto para desarrollo asistido por IA
+```
 
-Llevar la piedra no es haberla usado. Tyranitar espera para reinstalar arena,
-y hay equipos que traen la piedra y nunca megaevolucionan.
+## Empezar
 
-Por eso en MÍO hay un botón aparte, **Sin megaevolucionar / Megaevolucionado**.
-Hasta que lo marcás, el HUD calcula con la forma base. Al marcarlo cambian las
-stats, los tipos y todos los números.
+### Como jugador
 
-## Habilidades y megas
+Seguí [`GUIA-INSTALACION.md`](./GUIA-INSTALACION.md) — está escrita asumiendo que nunca compilaste una app Android, de punta a punta (~40-60 minutos, casi todo esperando descargas).
 
-Cada slot propio lleva su habilidad, elegida de la lista real de esa especie.
-El motor modela las que cambian el daño:
+### Como desarrollador
 
-| Atacante | Defensor |
+```bash
+git clone https://github.com/PullAngel/ChampionsHUD.git
+cd ChampionsHUD
+
+# Datos del motor (opcional para desarrollar el motor; obligatorio para compilar
+# con reconocimiento de sprites y learnsets completos)
+pip install requests pillow numpy
+python build_sprite_index.py && cp sprite_index.json app/src/main/assets/
+python build_dex.py && cp dex.json app/src/main/assets/
+
+# Correr la suite completa del motor — no requiere Android Studio ni un dispositivo
+node tests/run.js
+
+# Validar consistencia de los datasets
+python validate_data.py
+
+# Compilar el APK
+./gradlew assembleDebug   # queda en app/build/outputs/apk/debug/
+```
+
+Casi todo el trabajo de motor/producto se hace editando `hud.html` directamente y corriendo `node tests/run.js` — no hace falta Android Studio ni un dispositivo para iterar sobre daño, velocidad, inferencia o predicción.
+
+**Requisitos:** Android Studio (con el SDK 35), Python 3.10+, Node.js (sin dependencias adicionales — la suite de tests usa solo el runtime estándar).
+
+## Cómo contribuir si jugás VGC
+
+El proyecto es personal/comunitario y las formas de aportar más valiosas hoy no son necesariamente código:
+
+- **Capturas de escaneo fallido.** El recorte de tarjetas en `SpriteMatcher` está calibrado a ojo contra un Samsung A55; si el escaneo confunde especies o falla en tu teléfono, una captura de la pantalla de team preview es el insumo más útil que existe para corregirlo.
+- **Datos de meta reales**, si tenés acceso a repartos, sets o resultados de torneos que las fuentes actuales (Limitless TCG, Champions Battle Data) no cubran.
+- **Verificación contra el juego real.** Varios cambios recientes (formato de stats, mecánicas de habilidad como Robustez) se validan contrastando contra capturas reales del juego — más ejemplos de distintas especies y situaciones ayudan a encontrar los próximos casos borde.
+- **Feedback de uso**, sobre todo en el punto donde más falla hoy (`docs/audit.md`): el recorte automático de las tarjetas del rival en team preview.
+
+Antes de tocar código de producto, `CLAUDE.md` y `docs/vision.md` explican la regla no negociable del proyecto (el copiloto describe, nunca decide) y cómo verificar que un cambio no la contradiga.
+
+## Documentación
+
+El repo mantiene documentación de producto y arquitectura versionada junto con el código, en vez de dejarla vivir solo en el historial de una conversación:
+
+| Archivo | Para qué sirve |
 |---|---|
-| Poder Solar, Chorro Potente, Sartén Vudú | Multiescamas, Levitación |
-| Piel Feérica, Adaptable | Filtro / Solidez / Coraza Filtro, Robustez |
-| Torrente / Mar Llamas / Espesura / Enjambre (bajo 1/3 de PS) | Absorbe Fuego / Agua, Pararrayos, Motor Eléctrico |
+| [`docs/vision.md`](./docs/vision.md) | Filosofía y principios del producto — el punto de partida |
+| [`docs/product.md`](./docs/product.md) | Personas, flujo de batalla, capas de interfaz (Glance/Peek/Deep) |
+| [`docs/architecture.md`](./docs/architecture.md) | Diseño técnico, modelo de datos, puntos de extensión reservados |
+| [`docs/inference.md`](./docs/inference.md) | Modelo de conocimiento: event log, hipótesis, reglas, evidencia |
+| [`docs/decisions.md`](./docs/decisions.md) | Registro de decisiones de arquitectura (ADR), 26 entradas numeradas |
+| [`docs/audit.md`](./docs/audit.md) | Auditoría técnica del estado real del código, re-ejecutada contra el HEAD |
+| [`docs/roadmap.md`](./docs/roadmap.md) | Fases del proyecto, criterios de salida, qué sigue |
+| [`docs/calc.md`](./docs/calc.md) | Diseño de la pestaña CALC: auditoría de alternativas, decisiones táctiles |
+| [`docs/future.md`](./docs/future.md) | Lo que se pospuso a propósito, y por qué |
 
-Las demás figuran en el equipo pero no alteran el cálculo.
+## Qué falta
 
-Las piedras mega resuelven a la forma megaevolucionada: elegís Charizardita Y y
-el HUD pasa a usar los 159 de AtqEsp base de la Mega Y, no los 109 del normal.
-Se resuelve automáticamente en cuanto la piedra está equipada — en la práctica
-megaevolucionás el primer turno, pero si querés el cálculo con la forma base
-está la pestaña CALC.
+Honesto y actualizado, no una lista de aspiraciones:
 
-## Lo que falta
+- La tabla `SPD` de velocidades base en `hud.html` cubre ~42 especies y 11 megas; falta el roster legal completo.
+- El motor de movimientos no modela efectos secundarios, precisión real, golpes múltiples ni PP consumido.
+- Intimidación no se aplica sola todavía — hay que marcar la etapa manualmente en CAMPO.
+- Sin Teratipos: Champions todavía no los tiene en el juego; el motor está armado para poder sumarlos sin rehacerse.
+- Sin seguimiento de Protección ni de objetos consumidos (Baya Zidra usada, Banda Focus gastada) — se cuenta mentalmente por ahora.
+- El recorte de tarjetas de `SpriteMatcher` es la causa más frecuente de errores de reconocimiento reportados, y necesita capturas reales de más dispositivos para recalibrarse.
+- El algoritmo de predicción de "quién va a sacar" (`predict()`) probó ser poco confiable contra una partida real y quedó relegado mientras se diseña algo mejor sobre datos reales de meta, en vez de ajustar pesos a ciegas.
 
-- `SPD` en `hud.html` tiene ~42 especies y 11 megas; falta el roster legal completo.
-- `MV` no modela efectos secundarios, precisión, golpes múltiples ni PP.
-- Intimidación no se aplica sola: marcá la etapa −1 a mano en CAMPO.
-- Sin Teratipos.
-- Sin seguimiento de Protección (por ahora se cuenta mentalmente).
-- Sin objetos consumidos (Baya Zidra usada, Banda Focus gastada).
-- Sin Terastalización: todavía no está en el juego. El motor está armado para
-  poder sumarla sin rehacerlo.
-- El recorte de tarjetas en `SpriteMatcher` está calibrado a ojo; puede necesitar
-  ajuste según el teléfono.
+## Estado actual y próximos pasos
 
-## La fórmula, verificada
+Las Fases 0–2 (estabilización, reducción de fricción crítica, datos de meta reales + motor de inferencia por eliminación) están cerradas. Desde entonces el trabajo avanza contra uso real del propio autor, documentado en `docs/roadmap.md` bajo "Post-Fase 2": rediseño de comunicación con el jugador, corrección de bugs reportados con capturas de dispositivo real, deducción de naturaleza por aritmética en vez de lectura de imagen, y la primera mitad de memoria entre partidas de una serie (Bo3) — lo confirmado sobre el rival se arrastra al juego siguiente, lo deducido no.
 
-Champions no usa IVs: todos los Pokémon cuentan como 31 en las seis stats. Lo
-único que define tu reparto son los Stat Points, y **1 SP = +1 punto de stat a
-nivel 50, sumado antes de la alineación**.
+La separación formal Motor/Cliente (Fase 3) resultó estar de hecho ya cumplida al auditarla — el motor corre y se prueba sin Android desde la Fase 0 — y lo que faltaba (que las 8 llamadas de I/O vivan agrupadas en un adaptador con nombre, `IO`, en vez de sueltas) ya está hecho y tiene test propio.
 
-Verificado contra la pantalla de stats del juego con 10 valores de 6 Pokémon
-distintos. Ejemplo: Gholdengo, AtqEsp base 133, con 32 SP y alineación que sube
-da 203 en el juego. `floor((153+32)*1.1) = 203`. Si el SP se sumara después
-daría 200.
+Lo que sigue, sin resolver todavía: la segunda mitad de la Fase 4 (resumen post-combate completo — qué acertó y qué falló el modelo — y una vista para repasar una serie entera), que es explícitamente una conversación de producto antes que una tarea de código. Las decisiones de negocio (licencia, publicidad, distribución) están deliberadamente sin tomar y no condicionan la arquitectura actual — ver `docs/future.md`.
 
-El HUD reproduce exactamente los números de esa pantalla, así que podés
-contrastarlo cuando quieras.
+## Créditos y licencia
 
-Sprites: Bulbagarden Archives, CC BY-NC-SA 2.5. Proyecto personal, no comercial.
+Sprites: [Bulbagarden Archives](https://archives.bulbagarden.net/), CC BY-NC-SA 2.5. Proyecto personal, sin fines comerciales — Pokémon y Pokémon Champions son marcas de sus respectivos dueños; este proyecto no tiene afiliación con ellos.
