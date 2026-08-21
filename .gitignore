@@ -33,3 +33,4 @@ local.properties
 # subir a la URL publica. Es derivada de assets/ — se regenera con un comando,
 # no hay nada que versionar.
 /dist/
+/dist-prueba/

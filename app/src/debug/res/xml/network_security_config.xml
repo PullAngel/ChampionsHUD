@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SOLO PARA BUILDS DE DEBUG. Vive en app/src/debug/, así que el merge de
+  manifiestos NUNCA lo mete en un build de release: la app publicada sigue
+  exigiendo HTTPS, que es el default de Android desde targetSdk 28.
+
+  Por qué hace falta: para probar la actualización de datos por internet
+  (architecture.md §10.7) alcanza con servir la carpeta dist/ desde la PC
+  con `python -m http.server`. Eso es HTTP plano, y sin esta excepción
+  Android lo bloquea con un error que no dice nada útil sobre la causa
+  real. Con esto, probar el flujo completo son 30 segundos en la WiFi de
+  casa en vez de tener que publicar en algún lado primero.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

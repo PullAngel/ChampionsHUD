@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Manifiesto que SOLO se fusiona en los builds de debug. Su único trabajo es
+  permitir HTTP plano para poder probar la actualización de datos contra un
+  servidor local. El manifiesto principal no se toca, así que el build de
+  release queda exactamente como estaba: HTTPS obligatorio.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:networkSecurityConfig="@xml/network_security_config"
+        tools:replace="android:networkSecurityConfig" />
+</manifest>
