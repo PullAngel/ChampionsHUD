@@ -127,7 +127,18 @@ class DataRepository(
          */
         fun meta(ctx: Context) = DataRepository(
             ctx, "meta.json", """{"species":{},"source":"vacio","regulation":"?"}"""
-        ) { o -> if ((o.optJSONObject("species")?.length() ?: 0) == 0) "no trae especies" else null }
+        ) { o ->
+            when {
+                (o.optJSONObject("species")?.length() ?: 0) == 0 -> "no trae especies"
+                // dex.json TAMBIEN tiene un `species` no vacio, asi que pegar
+                // por error la URL del dex en el campo de actualizacion lo
+                // instalaba como si fuera el meta, y el HUD se quedaba sin un
+                // solo dato de uso real sin decir por que. `regulation` es lo
+                // que distingue a un meta.json de cualquier otro archivo.
+                !o.has("regulation") -> "no parece un meta.json (no dice de qué regulación es)"
+                else -> null
+            }
+        }
 
         fun dex(ctx: Context) = DataRepository(
             ctx, "dex.json", """{"species":{},"moves":{},"learnsets":{}}"""

@@ -181,8 +181,12 @@ def promover(dry):
         shutil.copy2(src, ASSETS / nombre)
         log(f"  {nombre} → assets/ ({src.stat().st_size // 1024} KB)")
     # sprite_index.json vive también en la raíz: es la entrada de build_dex.py
-    # y de validate_data.py cuando se corre sin --datos.
-    shutil.copy2(STAGING / "sprite_index.json", ROOT / "sprite_index.json")
+    # y de validate_data.py cuando se corre sin --datos. El `if` es por el caso
+    # de un clon nuevo donde todavía no hay nada instalado: sin él, esto
+    # reventaba con FileNotFoundError en vez de con el mensaje de la validación.
+    idx = STAGING / "sprite_index.json"
+    if idx.exists():
+        shutil.copy2(idx, ROOT / "sprite_index.json")
 
 
 def resumen():
@@ -213,6 +217,10 @@ def main():
                     help="regulación de Limitless a bajar (default: M-B)")
     ap.add_argument("--torneos", type=int, default=40,
                     help="cuántos torneos recientes procesar (default: 40)")
+    ap.add_argument("--dias", type=int, default=None,
+                    help="ventana por TIEMPO en vez de por cantidad: los torneos de "
+                         "los últimos N días. Más estable si cambia cuántos torneos "
+                         "se juegan por semana (medido: 40 torneos = 6 días).")
     ap.add_argument("--dry-run", action="store_true",
                     help="muestra los pasos sin ejecutar nada ni tocar la red")
     a = ap.parse_args()
@@ -233,6 +241,8 @@ def main():
         if p == "meta":
             args = ["--regulation", a.regulacion, "--limit", str(a.torneos),
                     "--dex", str(STAGING / "dex.json")]
+            if a.dias:
+                args += ["--dias", str(a.dias)]
         elif p == "meta_cbd":
             # Sobre el meta y el dex de STAGING, no sobre lo instalado: si
             # leyera assets/ cruzaría CBD contra el meta de la corrida

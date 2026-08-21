@@ -34,7 +34,7 @@ import re
 import sys
 import time
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from itertools import combinations
 from pathlib import Path
 
@@ -244,8 +244,50 @@ def resolve_format(regulation):
     return regulation  # el id de formato de Limitless YA es "M-B" tal cual
 
 
-def fetch_tournaments(fmt, limit):
-    return api_get("tournaments", game=GAME, format=fmt, limit=limit)
+def fetch_tournaments(fmt, limit, dias=None):
+    """
+    Los torneos más recientes del formato.
+
+    Por defecto la ventana se define por CANTIDAD (`limit`), que es como venía
+    desde el sprint 2.3. Eso tiene un problema medido el 2026-08-21: 40 torneos
+    resultaron ser 6 días, pero cuántos días cubren depende de cuántos torneos
+    se jueguen esa semana. Si Champions se vuelve más popular, los mismos 40
+    torneos pasan a cubrir 3 días; si baja la actividad, un mes. **La ventana
+    del meta se corre sola con la popularidad del juego, sin que nada avise.**
+
+    `dias` define la ventana por TIEMPO, que es lo que uno quiere decir de
+    verdad con "el meta de las últimas semanas": se pide un lote generoso y se
+    recorta por fecha. Es también la forma barata de "agregar lo nuevo y
+    descartar lo viejo" sin mantener ningún caché — la API ya devuelve los más
+    recientes primero, así que la ventana se recalcula sola en cada corrida.
+    """
+    if not dias:
+        return api_get("tournaments", game=GAME, format=fmt, limit=limit)
+
+    # Se pide de más y se recorta: no hay forma de filtrar por fecha del lado
+    # del servidor, y pedir 200 cabeceras de torneo es una sola llamada barata
+    # (los equipos, que es lo caro, se bajan después y solo de los que quedan).
+    crudos = api_get("tournaments", game=GAME, format=fmt, limit=max(limit, 200))
+    corte = datetime.now(timezone.utc) - timedelta(days=dias)
+    dentro = []
+    for t in crudos:
+        f = t.get("date")
+        if not f:
+            continue
+        try:
+            cuando = datetime.fromisoformat(f.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if cuando >= corte:
+            dentro.append(t)
+    print(f"  {len(dentro)} torneos en los últimos {dias} días "
+          f"(de {len(crudos)} traídos).")
+    # Si la ventana pedida se come el lote entero, la ventana real es más chica
+    # que la pedida y el número mostrado mentiría. Se avisa en vez de callarlo.
+    if len(dentro) == len(crudos):
+        print(f"  ATENCION: entraron TODOS los torneos traídos, así que la "
+              f"ventana real puede ser menor a {dias} días. Subí el lote.")
+    return dentro
 
 
 def fetch_teams(tournaments, fmt):
@@ -415,6 +457,11 @@ def main():
     ap.add_argument("--regulation", default="M-B")
     ap.add_argument("--limit", type=int, default=40,
                      help="cuántos torneos recientes procesar (default 40)")
+    ap.add_argument("--dias", type=int, default=None,
+                     help="ventana por TIEMPO en vez de por cantidad: procesa los "
+                          "torneos de los últimos N días. Más estable que --limit, "
+                          "que se corre solo si cambia cuántos torneos se juegan "
+                          "por semana (medido: 40 torneos = 6 días el 2026-08-21).")
     ap.add_argument("--out", default="meta.json")
     # --dex existe para que update_data.py encadene este paso sobre un dex.json
     # recién generado que todavía NO está instalado. Sin él, una corrida
@@ -441,8 +488,9 @@ def main():
     print(f"\nFormato: resolviendo {a.regulation!r} contra /games ...")
     fmt = resolve_format(a.regulation)
 
-    print(f"\nTorneos recientes ({a.regulation}, hasta {a.limit}):")
-    tournaments = fetch_tournaments(fmt, a.limit)
+    ventana = f"últimos {a.dias} días" if a.dias else f"hasta {a.limit} torneos"
+    print(f"\nTorneos recientes ({a.regulation}, {ventana}):")
+    tournaments = fetch_tournaments(fmt, a.limit, a.dias)
     teams, failed_tournaments = fetch_teams(tournaments, fmt)
 
     if not teams:
@@ -488,6 +536,12 @@ def main():
         "source": "limitless",
         "sourceCounts": {"tournaments": len(tournaments) - failed_tournaments,
                           "teams": len(teams)},
+        # Con qué criterio se eligieron esos torneos. Va en el archivo porque
+        # dos meta.json con el mismo número de torneos pueden cubrir ventanas
+        # de tiempo muy distintas (medido: 40 torneos = 6 días), y sin esto no
+        # hay forma de saber cuál se está mirando.
+        "window": ({"tipo": "dias", "dias": a.dias} if a.dias
+                   else {"tipo": "cantidad", "torneos": a.limit}),
         "partial": failed_tournaments > 0,
         "note": (f"Generado desde {len(teams)} equipos reales de "
                  f"{len(tournaments) - failed_tournaments} torneos de Limitless TCG "

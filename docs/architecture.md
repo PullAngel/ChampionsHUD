@@ -288,6 +288,32 @@ Eso último no es un detalle con muchos usuarios: los tres archivos pesan ~1.7 M
 
 **Sin verificar en dispositivo:** todo el lado Kotlin de esta sección se escribió sin poder compilar ni correr. Lo que sí se verificó acá: los generadores corrieron de verdad, el manifiesto se generó y se inspeccionó, y las dos variantes de la vista de Ajustes se renderizaron en un sandbox con DOM simulado.
 
+#### 10.7.1 Segunda revisión (2026-08-21) — cuatro correcciones
+
+Una pasada en frío sobre lo anterior, pedida antes de arrancar la v2.0. Encontró un bug que no rompía nada visiblemente y por eso era el más caro de los cuatro.
+
+**1. La comparación de versiones no funcionaba para dos de los tres archivos.** La app decide si bajar comparando la versión del manifiesto contra la del archivo que ya tiene (`DataRepository.version()` lee `updated`, y si no, `generatedAt`). `sprite_index.json` no traía ninguna de las dos y `dex.json` tampoco, así que la comparación **daba siempre distinto**: los dos se re-descargaban en cada chequeo, unos **1,5 MB al pedo por usuario**, exactamente lo que el manifiesto existe para evitar. No fallaba nada — ni un test, ni la validación, ni la app: solo gastaba datos en silencio.
+
+Corregido agregando fecha a `sprite_index.json` y regenerando. Y, más importante, **el contrato quedó como test**: `tests/run.js` replica las dos puntas del cálculo (la de la app y la de `build_data_manifest.py`) y falla si no coinciden. Se probó de las dos formas — falló contra los archivos reales antes del arreglo, y con una divergencia inyectada después.
+
+**2. Un `dex.json` pegado por error en el campo de actualización se instalaba como `meta.json`.** El validador solo exigía un `species` no vacío, y `dex.json` también lo tiene. El HUD se quedaba sin un solo dato de uso real sin decir por qué. Ahora se exige `regulation`, que es lo que distingue a un meta de cualquier otro archivo.
+
+**3. `promover()` reventaba con `FileNotFoundError`** en un clon nuevo sin datos instalados, en vez de dar el mensaje de la validación.
+
+**4. La ventana del meta se define por cantidad, no por tiempo — y se corre sola.** `--limit 40` trae los 40 torneos más recientes. **Medido: eran 6 días.** Pero cuántos días cubren 40 torneos depende de cuántos se jueguen esa semana: si Champions se vuelve más popular pasan a ser 3 días, si baja la actividad, un mes. La ventana del meta cambia con la popularidad del juego sin que nada avise.
+
+Agregado `--dias N`, que define la ventana por tiempo. `meta.json` ahora registra con qué criterio se armó (`window`), porque dos archivos con el mismo número de torneos pueden cubrir períodos muy distintos.
+
+#### 10.7.2 Sobre generar el meta de forma incremental — medido, no conviene
+
+La pregunta razonable: si se actualiza cada semana, ¿hace falta rebajar todo, o alcanza con agregar lo nuevo y descartar lo viejo?
+
+**Medido antes de responder: 40 torneos son 6 días.** Corriendo semanalmente, cada corrida trae casi exactamente la semana que pasó — el solapamiento con la corrida anterior es prácticamente nulo. Un caché por torneo tendría una tasa de acierto cercana al 0%: se pagaría toda la complejidad (invalidación, staleness, un formato de caché más que mantener) para no reusar casi nada.
+
+**Lo que sí resuelve el problema de fondo es `--dias`**, que es la versión barata de "descartar lo viejo con criterio": la API ya devuelve los más recientes primero, así que la ventana se recalcula sola en cada corrida, sin estado que mantener. Una línea, cero caché.
+
+**Cuándo reconsiderarlo:** si la ventana deseada creciera mucho (30+ días) o si Limitless empezara a limitar la tasa de requests. Con 14 días son ~99 torneos y ~3 minutos — todavía lejos de justificar un caché.
+
 ## 11. Dos features chicas, independientes del pipeline de meta — ~~planeadas~~ **HECHAS, 2026-08-03**
 
 Salieron de la sesión de asesoría VGC (`decisions.md` #20). Documentadas primero y no implementadas a propósito (Angel prefiere separar análisis/documentación/plan de escribir código); implementadas después, en la sesión de Fase 2 (sprint 2.5), una vez que ya había plan aprobado y tokens para ejecutarlo.

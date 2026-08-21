@@ -3136,6 +3136,43 @@ check("el motor tolera un meta.json sin `species`, sin `cores` y sin metadatos",
   assert(!e, `el motor se rompió con un meta.json vacío: ${e && e.message}`);
 });
 
+// ── contrato de VERSIONADO para la actualización por internet ──
+// Bug real, encontrado en la segunda revisión (2026-08-21): la app decide si
+// bajar un archivo comparando la versión del manifiesto contra la del archivo
+// que ya tiene (`DataRepository.version()` en Storage.kt lee `updated`, y si
+// no, `generatedAt`). sprite_index.json y dex.json no traían NINGUNA de las
+// dos, así que la comparación daba siempre distinto y los dos se
+// re-descargaban en CADA chequeo: 1,5 MB al pedo por usuario, justo lo que el
+// manifiesto existe para evitar.
+//
+// Nada fallaba. Ni un test, ni la validación, ni la app: solo gastaba datos en
+// silencio. Por eso este test mira la propiedad que de verdad importa — que
+// las DOS puntas calculen la misma versión — y no que el campo exista.
+const ARCHIVOS_DE_DATOS = ["meta.json", "dex.json", "sprite_index.json"];
+
+/** Lo que calcula DataRepository.version() (Storage.kt). */
+const versionQueUsaLaApp = (d) => d.updated || d.generatedAt || "";
+/** Lo que calcula version_de() (build_data_manifest.py). */
+const versionQuePublicaElManifiesto = (d) =>
+  String(d.updated || d.generatedAtV2 || d.generatedAt || "").slice(0, 10);
+
+for (const nombre of ARCHIVOS_DE_DATOS) {
+  check(`${nombre}: la app y el manifiesto calculan la MISMA versión`, () => {
+    const p = path.join(ROOT, "app/src/main/assets", nombre);
+    if (!fs.existsSync(p)) return;
+    const d = JSON.parse(fs.readFileSync(p, "utf-8"));
+    const app = versionQueUsaLaApp(d);
+    const manifiesto = versionQuePublicaElManifiesto(d);
+    assert(app !== "",
+      `${nombre} no declara ni 'updated' ni 'generatedAt'. La app no tiene con qué ` +
+      `comparar su copia contra la publicada, así que se lo va a bajar entero en cada ` +
+      `chequeo aunque no haya cambiado (architecture.md §10.7)`);
+    assertEqual(app, manifiesto,
+      `${nombre}: la app calcularía la versión "${app}" y el manifiesto publicaría ` +
+      `"${manifiesto}". Al no coincidir nunca, el archivo se re-descarga siempre`);
+  });
+}
+
 check("meta.json instalado declara su versión de esquema", () => {
   const metaPath = path.join(ROOT, "app/src/main/assets/meta.json");
   if (!fs.existsSync(metaPath)) return;

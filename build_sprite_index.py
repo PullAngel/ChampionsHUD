@@ -39,6 +39,7 @@ import re
 import sys
 import time
 from collections import namedtuple
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from threading import Lock
@@ -448,8 +449,17 @@ def main():
         if i % 150 == 0:
             print(f"  {i}/{len(ok_jobs)}")
 
+    # `updated` NO es cosmetico: es con lo que la app compara su copia contra
+    # el manifiesto publicado para decidir si hace falta bajar el archivo de
+    # nuevo (build_data_manifest.py / DataRepository.version en Storage.kt).
+    # Sin este campo la comparacion daba siempre distinto y este archivo, que
+    # pesa ~970 KB, se re-descargaba en CADA chequeo aunque no hubiera
+    # cambiado — justo lo que el manifiesto existe para evitar.
+    ahora = datetime.now(timezone.utc)
     INDEX.write_text(json.dumps(
         {"v": 2, "grid": GRID, "cgrid": CGRID, "count": len(entries),
+         "updated": ahora.date().isoformat(),
+         "generatedAt": ahora.strftime("%Y-%m-%dT%H:%M:%SZ"),
          "sprites": entries},
         ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
