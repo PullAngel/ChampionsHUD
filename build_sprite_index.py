@@ -18,10 +18,17 @@ Mejoras sobre la version que tardaba horas:
 En una conexion normal deberia tardar 2-4 minutos.
 
 Uso:
-    pip install requests pillow numpy
+    pip install -r requirements.txt
     python build_sprite_index.py                 # normales + variocolor
     python build_sprite_index.py --no-shiny      # solo normales
     python build_sprite_index.py --workers 12    # mas agresivo
+
+    # Sin red, desde los PNG ya descargados (fondo de red — ver PROVEEDORES):
+    python build_sprite_index.py --fuente carpeta
+    python build_sprite_index.py --fuente carpeta --carpeta /ruta/a/los/png
+
+Normalmente no se corre a mano: `python update_data.py completo` lo encadena
+con el resto del pipeline y valida antes de instalar nada.
 
 Licencia de los sprites: CC BY-NC-SA 2.5 (Bulbagarden). Uso no comercial.
 """
@@ -31,6 +38,7 @@ import json
 import re
 import sys
 import time
+from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from threading import Lock
@@ -41,12 +49,147 @@ from PIL import Image
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+# Mismo motivo que en build_meta.py: la consola de Windows abre en cp1252 y un
+# solo carácter fuera de esa tabla (una flecha «→» del resumen, un nombre de
+# archivo con acento) tira UnicodeEncodeError. Acá reventaba DESPUÉS de haber
+# escrito el índice, así que el script "fallaba" con el trabajo ya hecho.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 API = "https://archives.bulbagarden.net/w/api.php"
 CATS = [
     ("normal", "Category:Champions menu sprites"),
     ("shiny", "Category:Champions Shiny menu sprites"),
 ]
 UA = "ChampionsHUD/0.4 (proyecto personal no comercial)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PROVEEDORES DE SPRITES — el plan de contingencia
+#
+# Bulbagarden es una wiki de la comunidad: puede cambiar la convención de
+# nombres de archivo, renombrar las categorías, o directamente dejar de
+# publicar los sprites de Champions. Que eso pase no debería obligar a
+# reescribir este script.
+#
+# Por eso la parte que sabe DE DÓNDE salen las imágenes está separada de la
+# que sabe QUÉ HACER con ellas. Un proveedor tiene un solo trabajo:
+#
+#     listar() -> [Sprite(slug, dex, form, shiny, origen), ...]
+#
+# donde `origen` es una URL http(s) o una ruta local. Todo lo de abajo —
+# descarga con reintentos, validación del PNG, huella de forma/color/
+# proporción, y el formato de sprite_index.json v2 que lee SpriteMatcher.kt —
+# es agnóstico de la fuente y NO se toca al cambiarla.
+#
+# CAMBIAR DE FUENTE = ESCRIBIR UNA FUNCIÓN. Nada más. El contrato de salida
+# (sprite_index.json v2) queda idéntico, así que la app ni se entera.
+#
+# `carpeta` ya es el fondo de red garantizado: si mañana no hay NINGUNA fuente
+# web disponible, se juntan los PNG como sea (extraídos del juego, de un
+# respaldo, a mano) en una carpeta con el nombre `NNNN[-forma][-shiny].png` y
+# el índice se reconstruye igual. Nunca se depende de que un sitio siga vivo.
+# ─────────────────────────────────────────────────────────────────────────────
+
+Sprite = namedtuple("Sprite", "slug dex form shiny origen")
+
+
+def proveedor_bulbagarden(sess, incluir_shiny):
+    """Fuente por defecto: categorías de Champions en Bulbagarden Archives."""
+    out, malos = [], []
+    for kind, cat in CATS:
+        if kind == "shiny" and not incluir_shiny:
+            continue
+        print(f"Listando «{cat}» ...", end=" ", flush=True)
+        try:
+            files = list_category(sess, cat)
+        except Exception as e:
+            print(f"falló ({e}). Sigo sin esta categoría.")
+            continue
+        print(f"{len(files)} archivos")
+        for title, url in files:
+            pr = parse(title, kind == "shiny")
+            if pr:
+                dex, form, slug, shiny = pr
+                out.append(Sprite(slug, dex, form, shiny, url))
+            else:
+                malos.append(title.split(":", 1)[-1])
+    # Antes esto se perdia en silencio y el script decia "Listo" igual.
+    if malos:
+        print(f"  ATENCION: {len(malos)} nombres no reconocidos, "
+              f"por ejemplo: {', '.join(malos[:3])}")
+    return out
+
+
+# Nombre de archivo del fondo de red: `0003.png`, `0128-paldea-aqua.png`,
+# `0003-shiny.png`. Es EXACTAMENTE el `slug` que este script ya venía usando
+# para guardar en sprites/, así que la carpeta que el proveedor de
+# Bulbagarden deja como caché sirve tal cual como entrada de este otro.
+#
+# El sufijo -shiny se saca ANTES de mirar la forma, en dos pasos, en vez de en
+# un solo regex con dos grupos opcionales. Con un regex, `0003-shiny.png` se
+# leía como «forma shiny, no variocolor»: el grupo de forma es no-codicioso
+# pero igual se come "shiny" cuando no hay nada más que capturar. Medido: 567
+# "normales" y 151 variocolor, cuando la división real es ~359/359.
+# Es la TERCERA vez que este archivo tropieza con lo mismo — el comentario de
+# NAME_RE, más arriba, documenta las dos anteriores. Dos pasos no tienen esa
+# ambigüedad y no hay que razonarlos.
+SUF_SHINY = "-shiny"
+CARPETA_RE = re.compile(r"^(\d{4})(?:-(.+))?$", re.I)
+
+
+def parse_nombre_carpeta(stem):
+    """`0128-paldea-aqua-shiny` -> (128, 'paldea aqua', True). None si no cuadra."""
+    shiny = stem.lower().endswith(SUF_SHINY)
+    base = stem[:-len(SUF_SHINY)] if shiny else stem
+    m = CARPETA_RE.match(base)
+    if not m:
+        return None
+    return int(m.group(1)), (m.group(2) or "").replace("-", " ").strip(), shiny
+
+
+def proveedor_carpeta(carpeta, incluir_shiny):
+    """
+    Fondo de red: PNGs ya descargados en una carpeta local.
+
+    No depende de ningún sitio web. Sirve para regenerar el índice sin red,
+    y como salida de emergencia si la fuente online desaparece.
+    """
+    d = Path(carpeta)
+    if not d.is_dir():
+        print(f"No existe la carpeta {d}", file=sys.stderr)
+        sys.exit(1)
+    out, malos = [], []
+    for f in sorted(d.glob("*.png")):
+        pr = parse_nombre_carpeta(f.stem)
+        if not pr:
+            malos.append(f.name)
+            continue
+        dex, form, shiny = pr
+        if shiny and not incluir_shiny:
+            continue
+        out.append(Sprite(f.stem, dex, form, shiny, f))
+    print(f"Carpeta {d}: {len(out)} sprites reconocidos.")
+    if malos:
+        print(f"  ATENCION: {len(malos)} nombres no reconocidos, "
+              f"por ejemplo: {', '.join(malos[:3])}. "
+              f"El formato esperado es NNNN[-forma][-shiny].png")
+    return out
+
+
+PROVEEDORES = {"bulbagarden": proveedor_bulbagarden, "carpeta": proveedor_carpeta}
+
+
+def es_remoto(sp):
+    """¿Hay que descargarlo, o el archivo ya está en disco?"""
+    return isinstance(sp.origen, str) and sp.origen.startswith(("http://", "https://"))
+
+
+def ruta_de(sp):
+    """Dónde vive (o va a vivir) el PNG de este sprite."""
+    return OUT_DIR / f"{sp.slug}.png" if es_remoto(sp) else Path(sp.origen)
 
 OUT_DIR = Path("sprites")
 INDEX = Path("sprite_index.json")
@@ -105,7 +248,14 @@ def parse(title, from_shiny_cat):
     if not m:
         return None
     dex = int(m.group(1))
-    form = (m.group(2) or "").replace("_", " ").strip()
+    # Minúsculas a propósito: es la única forma que el proveedor «carpeta»
+    # puede recuperar (el slug del archivo ya viene en minúsculas), así que
+    # normalizar acá es lo que hace que las dos fuentes produzcan un índice
+    # IDÉNTICO. Sin esto, cambiar de fuente cambiaba 302 entradas por puras
+    # mayúsculas. El campo es informativo — el motor nunca lo compara
+    # (`onScan` solo lee dex/confidence/shiny) — pero un artefacto que cambia
+    # según de dónde salió no sirve para comparar ni para diagnosticar.
+    form = (m.group(2) or "").replace("_", " ").strip().lower()
     # El nombre manda: si dice shiny, es shiny, venga de la categoria que venga.
     shiny = from_shiny_cat or bool(re.search(r"[ _]shiny\.png$", name, re.I))
     slug = f"{dex:04d}"
@@ -198,6 +348,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--no-shiny", action="store_true")
+    ap.add_argument("--fuente", choices=list(PROVEEDORES), default="bulbagarden",
+                    help="de dónde salen las imágenes (default: bulbagarden). "
+                         "«carpeta» las toma de un directorio local, sin red.")
+    ap.add_argument("--carpeta", default=str(OUT_DIR),
+                    help="con --fuente carpeta: dónde están los PNG "
+                         f"(default: {OUT_DIR}/, la caché de descargas)")
     args = ap.parse_args()
 
     OUT_DIR.mkdir(exist_ok=True)
@@ -214,41 +370,25 @@ def main():
 
     sess = make_session(args.workers)
 
-    jobs = []
-    for kind, cat in CATS:
-        if kind == "shiny" and args.no_shiny:
-            continue
-        print(f"Listando «{cat}» ...", end=" ", flush=True)
-        try:
-            files = list_category(sess, cat)
-        except Exception as e:
-            print(f"falló ({e}). Sigo sin esta categoría.")
-            continue
-        print(f"{len(files)} archivos")
-        malos = []
-        for title, url in files:
-            pr = parse(title, kind == "shiny")
-            if pr:
-                dex, form, slug, shiny = pr
-                jobs.append((slug, dex, form, shiny, url))
-            else:
-                malos.append(title.split(":", 1)[-1])
-        # Antes esto se perdia en silencio y el script decia "Listo" igual.
-        if malos:
-            print(f"  ATENCION: {len(malos)} nombres no reconocidos, "
-                  f"por ejemplo: {', '.join(malos[:3])}")
+    # Único punto que sabe de dónde salen las imágenes. Cambiar de fuente es
+    # escribir otra función acá arriba y agregarla a PROVEEDORES — nada de lo
+    # que sigue (descarga, huella, formato del índice) cambia.
+    if args.fuente == "carpeta":
+        jobs = proveedor_carpeta(args.carpeta, not args.no_shiny)
+    else:
+        jobs = proveedor_bulbagarden(sess, not args.no_shiny)
 
     if not jobs:
-        print("No hay nada para descargar.", file=sys.stderr)
+        print("La fuente no devolvió ningún sprite.", file=sys.stderr)
         sys.exit(1)
 
     seen, uniq = set(), []
     for j in jobs:
-        if j[0] not in seen:
-            seen.add(j[0]); uniq.append(j)
+        if j.slug not in seen:
+            seen.add(j.slug); uniq.append(j)
     jobs = uniq
 
-    ya = sum(1 for j in jobs if valid_png(OUT_DIR / f"{j[0]}.png"))
+    ya = sum(1 for j in jobs if valid_png(ruta_de(j)))
     print(f"\n{len(jobs)} sprites en total; {ya} ya estaban descargados.")
     if ya == len(jobs):
         print("No hay nada que bajar: solo recalculo las huellas.\n")
@@ -260,9 +400,10 @@ def main():
     failed = []
 
     def work(job):
-        slug, dex, form, shiny, url = job
         try:
-            download(sess, url, OUT_DIR / f"{slug}.png")
+            if not es_remoto(job):
+                return ("ok", job, None)      # ya es un archivo local
+            download(sess, job.origen, ruta_de(job))
         except Exception as e:
             return ("fail", job, str(e))
         with _lock:
@@ -286,7 +427,7 @@ def main():
         rec, still = 0, []
         for job, _ in failed:
             try:
-                download(sess, job[4], OUT_DIR / f"{job[0]}.png", tries=5)
+                download(sess, job.origen, ruta_de(job), tries=5)
                 rec += 1
             except Exception as e:
                 still.append((job, str(e)))
@@ -295,14 +436,14 @@ def main():
 
     print("\nCalculando huellas ...")
     entries = []
-    ok_jobs = [j for j in jobs if valid_png(OUT_DIR / f"{j[0]}.png")]
-    for i, (slug, dex, form, shiny, _) in enumerate(ok_jobs, 1):
+    ok_jobs = [j for j in jobs if valid_png(ruta_de(j))]
+    for i, sp in enumerate(ok_jobs, 1):
         try:
-            sil, col, ratio = fingerprint(OUT_DIR / f"{slug}.png")
+            sil, col, ratio = fingerprint(ruta_de(sp))
         except Exception as e:
-            print(f"  huella falló en {slug}: {e}")
+            print(f"  huella falló en {sp.slug}: {e}")
             continue
-        entries.append({"slug": slug, "dex": dex, "form": form, "shiny": shiny,
+        entries.append({"slug": sp.slug, "dex": sp.dex, "form": sp.form, "shiny": sp.shiny,
                         "sil": sil, "col": col, "ratio": ratio})
         if i % 150 == 0:
             print(f"  {i}/{len(ok_jobs)}")

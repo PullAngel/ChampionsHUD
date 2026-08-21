@@ -2665,7 +2665,8 @@ check("validate_data.py corre limpio contra el estado actual del repo", () => {
 // eran una red de seguridad que nadie tiraba: podían haberse roto hace
 // semanas sin que ninguna corrida lo dijera.
 // Se enganchan acá para que "correr los tests" signifique una sola cosa.
-for (const archivo of ["test_build_meta.py", "test_build_meta_v2.py"]) {
+for (const archivo of ["test_build_meta.py", "test_build_meta_v2.py",
+                       "test_sprite_provider.py"]) {
   const ruta = path.join(__dirname, archivo);
   if (!fs.existsSync(ruta)) continue;
   check(`${archivo} pasa (generadores de datos)`, () => correrPython(ruta, archivo));
