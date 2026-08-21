@@ -94,15 +94,31 @@ Todo lo que el motor usa en combate está local — nada depende de una llamada 
 |---|---|---|
 | `sprite_index.json` | `build_sprite_index.py` | 718 huellas de sprites (incluye variocolor) desde Bulbagarden Archives — ~972 KB |
 | `dex.json` | `build_dex.py` | 366 especies, 684 movimientos y sus learnsets desde Pokémon Showdown, recortados a lo que existe en Champions — ~508 KB |
-| `meta.json` | `build_meta.py` + `build_meta_v2.py` | Uso real de **1.838 equipos de 40 torneos** de la API pública de Limitless TCG (Reg. M-B), fusionado con reparto de EVs y naturaleza de Champions Battle Data (235/236 especies) — ~288 KB |
+| `meta.json` | `build_meta.py` + `build_meta_v2.py` | Uso real de **1.703 equipos de 40 torneos** de la API pública de Limitless TCG (Reg. M-B), fusionado con reparto de EVs y naturaleza de Champions Battle Data (235/236 especies) — ~280 KB |
 
-`meta.json` trae metadatos de procedencia en el propio archivo (`source`, `sourceCounts`, `generatedAt`, `partial`) para que el HUD sepa distinguir datos reales de estimados y avisarlo en pantalla en vez de mostrar falsa precisión. Se actualiza sirviéndolo por HTTP y pegando la URL en ⚙ — se valida antes de guardar, y si viene roto el HUD sigue con la versión anterior.
+`meta.json` trae metadatos de procedencia en el propio archivo (`source`, `sourceCounts`, `generatedAt`, `partial`) para que el HUD sepa distinguir datos reales de estimados y avisarlo en pantalla en vez de mostrar falsa precisión.
+
+### Actualizarlos: un comando
+
+Los tres se regeneran con `update_data.py`, en el nivel que corresponda a lo que cambió:
+
+```bash
+python update_data.py meta       # semanal — el meta de torneos se mueve solo
+python update_data.py dex        # parche de balance: nerfeos, bufeos, stats
+python update_data.py completo   # Pokémon u objetos NUEVOS en Champions
+```
+
+Cada nivel corre todo lo que está río abajo, porque las dependencias son reales: `sprites → dex → meta → meta+CBD`. Solo `completo` arranca en sprites, que es el único paso capaz de descubrir especies nuevas y el único que tarda minutos.
+
+**Nada pisa `assets/` hasta que `validate_data.py` da OK** sobre lo recién generado: se genera en `_staging/`, se valida ahí, y recién entonces se promueve. Si falla, lo instalado sigue intacto.
+
+Para publicarlos a usuarios ya instalados, sin APK nuevo: `python build_data_manifest.py` arma `dist/` para subir a cualquier hosting estático. La app baja un manifiesto de <1 KB, compara, y descarga solo lo que cambió — con `sha256` por archivo y validación antes de reemplazar lo que ya funcionaba. Ver `docs/architecture.md` §10.7.
 
 Sin `dex.json` la app arranca igual con tablas mínimas embebidas; sin `sprite_index.json` todo funciona salvo el escaneo. Ningún dato pierde disponibilidad de golpe — degradación elegante, no un interruptor de todo o nada.
 
 ## Disciplina de ingeniería
 
-- **227 tests, cero dependencias externas.** `tests/run.js` extrae el motor de `hud.html` (todo antes de `function vPre(){`) y lo corre en un sandbox de `vm` de Node con un `localStorage` simulado — sin Jest, sin npm install. Cubre el pipeline evento → estado → inferencia → cálculo, la fórmula de stats contra 12 valores reales tomados de capturas del juego, y contratos de datos.
+- **236 tests, cero dependencias externas.** `tests/run.js` extrae el motor de `hud.html` (todo antes de `function vPre(){`) y lo corre en un sandbox de `vm` de Node con un `localStorage` simulado — sin Jest, sin npm install. Cubre el pipeline evento → estado → inferencia → cálculo, la fórmula de stats contra 12 valores reales tomados de capturas del juego, y contratos de datos.
 - **Bugs reales se convierten en tests permanentes, no en parches puntuales.** El bug más repetido del proyecto (encontrado tres veces): `meta.json` guarda movimientos en inglés, la tabla `MV` de `hud.html` está keyeada en español — comparar directo no matcheaba nunca y fallaba en silencio. Ahora hay un test de contrato que verifica que **todo** nombre que entrega `meta.json` — movimientos, sets, ítems, habilidades — el motor lo sabe resolver: medido en **0 fallos sobre 1.279 movimientos, 1.563 movimientos de sets, 564 ítems y 307 habilidades**, y probado inyectando un nombre inválido a propósito para confirmar que el test sí falla cuando corresponde.
 - **"Fallo ruidoso, nunca silencioso"** es un principio de arquitectura, no un eslogan (`docs/decisions.md` #8): nace directamente de bugs reales donde el sistema seguía reportando éxito mientras producía un resultado incorrecto. Ante datos inconsistentes, el HUD lo dice explícitamente en vez de degradar en silencio y mostrar un número plausible pero falso.
 - **Validación de datos en build.** `validate_data.py` corre antes de empaquetar y confirma que `meta.json`, `dex.json`, `sprite_index.json` y las tablas embebidas son mutuamente consistentes.
@@ -137,16 +153,19 @@ ChampionsHUD/
 │       ├── ScreenCapture.kt     # MediaProjection + VirtualDisplay persistente
 │       ├── SpriteMatcher.kt     # Reconocimiento de Pokémon en dos pasadas
 │       ├── TeamOCR.kt           # OCR on-device (ML Kit) del equipo propio
-│       └── Storage.kt           # Persistencia en disco + haptics
-├── build_sprite_index.py     # Genera sprite_index.json desde Bulbagarden Archives
+│       └── Storage.kt           # Persistencia, actualización por internet, haptics
+├── update_data.py             # ← Punto de entrada: regenera los datos en 1 comando
+├── build_data_manifest.py     # Empaqueta dist/ para publicar datos sin APK nuevo
+├── build_sprite_index.py     # Genera sprite_index.json (fuente enchufable, ver contingencia)
 ├── build_dex.py               # Genera dex.json desde Pokémon Showdown
 ├── build_meta.py               # Genera meta.json desde la API de Limitless TCG
 ├── build_meta_v2.py            # Fusiona reparto de EVs/naturaleza de Champions Battle Data
 ├── validate_data.py            # Valida consistencia mutua de los datasets antes de empaquetar
 ├── tests/
-│   ├── run.js                  # 227 tests del motor, sandbox de Node sin dependencias
+│   ├── run.js                  # 236 tests del motor, sandbox de Node sin dependencias
 │   ├── test_build_meta.py
-│   └── test_build_meta_v2.py
+│   ├── test_build_meta_v2.py
+│   └── test_sprite_provider.py  # Contrato de las fuentes de sprites
 ├── docs/                       # Visión, arquitectura, decisiones (ADR), auditoría, roadmap
 ├── GUIA-INSTALACION.md         # Guía paso a paso sin asumir experiencia previa con Android
 └── CLAUDE.md                   # Puntero de contexto para desarrollo asistido por IA
@@ -165,16 +184,15 @@ git clone https://github.com/PullAngel/ChampionsHUD.git
 cd ChampionsHUD
 
 # Datos del motor (opcional para desarrollar el motor; obligatorio para compilar
-# con reconocimiento de sprites y learnsets completos)
-pip install requests pillow numpy
-python build_sprite_index.py && cp sprite_index.json app/src/main/assets/
-python build_dex.py && cp dex.json app/src/main/assets/
+# con reconocimiento de sprites y learnsets completos).
+# Genera, VALIDA y recién entonces instala en assets/ — si algo no cierra,
+# lo que ya estaba sigue intacto.
+pip install -r requirements.txt
+python update_data.py completo
 
-# Correr la suite completa del motor — no requiere Android Studio ni un dispositivo
+# Correr la suite completa — motor (JS) + generadores (Python) + validación de
+# datos, todo con una sola orden. No requiere Android Studio ni un dispositivo.
 node tests/run.js
-
-# Validar consistencia de los datasets
-python validate_data.py
 
 # Compilar el APK
 ./gradlew assembleDebug   # queda en app/build/outputs/apk/debug/
