@@ -54,7 +54,9 @@ class OverlayService : Service() {
     private lateinit var wm: WindowManager
     private lateinit var matcher: SpriteMatcher
     private lateinit var teamOcr: TeamOCR
-    private lateinit var meta: MetaRepository
+    private lateinit var meta: DataRepository
+    private lateinit var dexRepo: DataRepository
+    private lateinit var updater: DataUpdater
     private lateinit var battle: BattleStore
     private lateinit var team: TeamStore
     private lateinit var haptics: Haptics
@@ -88,7 +90,9 @@ class OverlayService : Service() {
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         matcher = SpriteMatcher(this)
         teamOcr = TeamOCR()
-        meta = MetaRepository(this)
+        meta = DataRepository.meta(this)
+        dexRepo = DataRepository.dex(this)
+        updater = DataUpdater(this)
         battle = BattleStore(this)
         team = TeamStore(this)
         haptics = Haptics(this)
@@ -517,10 +521,14 @@ class OverlayService : Service() {
 
         @JavascriptInterface fun loadMeta(): String = meta.load()
 
-        /** Dex completo generado por build_dex.py. Puede pesar cientos de KB. */
-        @JavascriptInterface fun loadDex(): String = runCatching {
-            assets.open("dex.json").bufferedReader().use { it.readText() }
-        }.getOrElse { "" }
+        /**
+         * Dex completo generado por build_dex.py. Puede pesar cientos de KB.
+         * Va por DataRepository (no directo a assets) para que una
+         * actualizacion por internet lo alcance: es el archivo que cambia
+         * cuando Champions agrega Pokemon, movimientos u objetos nuevos.
+         * Si no hay descargado, o el descargado esta roto, cae al del APK.
+         */
+        @JavascriptInterface fun loadDex(): String = dexRepo.load()
         @JavascriptInterface fun loadBattle(): String = battle.load()
         @JavascriptInterface fun saveBattle(json: String) { ioHandler.post { battle.save(json) } }
         @JavascriptInterface fun clearBattle() { ioHandler.post { battle.clear() } }
@@ -531,9 +539,16 @@ class OverlayService : Service() {
         /** kind: 0 = tick al arrastrar la barra, 1 = click de confirmacion. */
         @JavascriptInterface fun haptic(kind: Int) { haptics.pulse(kind) }
 
+        /**
+         * Actualizacion de datos por internet, sin APK nuevo.
+         * La URL puede ser un manifest.json (actualiza los tres archivos,
+         * bajando solo lo que cambio) o un meta.json suelto (comportamiento
+         * anterior, conservado para no romper una URL ya guardada).
+         * Corre en ioHandler: descarga cientos de KB, nunca en el hilo de UI.
+         */
         @JavascriptInterface fun updateMeta(url: String) {
             ioHandler.post {
-                val r = meta.update(url)
+                val r = updater.update(url)
                 ui.post { emit("onMetaUpdate", r) }
             }
         }

@@ -1785,6 +1785,23 @@ function syncActiveMine(){
 
 let B=NEW(), MY=[slot(445),slot(983),slot(727),slot(547),slot(591),slot(1000)];
 let META={species:{},source:"?",regulation:"?"};
+/* ═════ ACTUALIZACIÓN DE DATOS POR INTERNET ═════
+   URL del `manifest.json` publicado (lo genera build_data_manifest.py). Con
+   esto puesto, Ajustes muestra un botón único "Buscar actualizaciones" en vez
+   de pedir que el usuario tipee una URL a mano en el celular — que era el
+   flujo anterior y no escala más allá del propio desarrollador.
+
+   VACÍA A PROPÓSITO: dónde se hospeda esto todavía no está decidido (Angel,
+   2026-08-21: "aún hay que decidir cómo"). Poner una URL inventada sería peor
+   que no poner ninguna — la app intentaría bajar de un lugar que no existe y
+   el error no diría nada útil. Mientras esté vacía, el campo manual sigue
+   funcionando exactamente como antes, así que no se pierde nada.
+
+   Cuando se decida: acá va la URL del manifest.json y nada más. El resto ya
+   está: el manifiesto (<1 KB) dice qué cambió y la app baja solo eso, con
+   sha256 por archivo y validación antes de pisar lo que ya funcionaba
+   (Storage.kt → DataUpdater). Es un cambio de una línea, sin tocar lógica. */
+const DATA_URL="";
 const has=typeof Android!=="undefined";
 /** Fase 3 / preparación para un fork de diseño futuro (decisions.md #26,
     architecture.md §7.4): el resto del motor nunca llama a `Android.*`
@@ -3912,10 +3929,13 @@ function vSet(){
     ${META.source==="estimado"?`<div class="msg w" style="margin-top:5px">Estos números están puestos a ojo, no medidos.</div>`:""}
     <div class="msg" style="margin-top:6px">Qué objeto, ataques y reparto suele llevar cada Pokémon
       en torneos. Es con lo que el HUD estima al rival antes de que muestre nada.</div>
-    <div class="msg" style="margin-top:5px">Si tenés un archivo más nuevo publicado en algún lado,
-      pegá el enlace y se actualiza sin reinstalar. Si falla la descarga, se queda con el que tiene.</div>
-    <input type="text" id="mU" placeholder="https://…/meta.json" style="margin-top:5px">
-    <button class="btn" id="mGo" style="margin-top:4px">Actualizar</button>
+    <div class="msg" style="margin-top:5px">${DATA_URL
+      ?"Busca datos nuevos y baja solo lo que cambió. Si falla, se queda con lo que ya tiene."
+      :"Si tenés un archivo más nuevo publicado en algún lado, pegá el enlace y se actualiza sin reinstalar. Si falla la descarga, se queda con el que tiene."}</div>
+    ${DATA_URL?`<button class="btn g" id="mAuto" style="margin-top:5px">Buscar actualizaciones</button>`:""}
+    <input type="text" id="mU" placeholder="https://…/manifest.json" style="margin-top:5px"
+      value="${esc(DATA_URL||"")}">
+    <button class="btn" id="mGo" style="margin-top:4px">Actualizar desde ese enlace</button>
     <div class="msg" id="mOut" style="margin-top:4px"></div></div></div>`;
 }
 
@@ -4144,11 +4164,19 @@ function wire(){
     const v=$("#tName").value.trim();
     if(v)activeTeam().name=v;
     saveMy();render()};
-  const mg=$("#mGo");if(mg)mg.onclick=()=>{keep();buzz(1);
-    const u=$("#mU").value.trim();
+  /* Una sola función para los dos botones: el automático usa DATA_URL, el
+     manual usa lo que haya en el campo. El puente de Android es el mismo —
+     `updateMeta` distingue solo por el contenido de lo que baja (un
+     manifest.json actualiza los tres archivos, un meta.json suelto sigue
+     funcionando como antes). */
+  const actualizarDatos=u=>{
     if(!u){$("#mOut").textContent="Pegá una URL primero.";return}
-    $("#mOut").textContent="Descargando…";
-    has?Android.updateMeta(u):$("#mOut").textContent="Solo dentro de la app."};
+    $("#mOut").textContent="Buscando…";
+    has?Android.updateMeta(u):$("#mOut").textContent="Solo dentro de la app.";
+  };
+  const mg=$("#mGo");if(mg)mg.onclick=()=>{keep();buzz(1);
+    actualizarDatos($("#mU").value.trim())};
+  const ma=$("#mAuto");if(ma)ma.onclick=()=>{keep();buzz(1);actualizarDatos(DATA_URL)};
   const rt=$("#rt");if(rt)rt.onclick=()=>{keep();buzz(1);resetTurns()};
   const rs=$("#rs");if(rs)rs.onclick=()=>{keep();buzz(1);
     const t=B.team,newTeam=t.map(f=>mkFoe(f.dex,f.confidence,f.shiny));
@@ -4295,8 +4323,21 @@ window.onOwnScan=function(json){
 window.onMetaUpdate=function(json){
   let d;try{d=JSON.parse(json)}catch(e){return}
   const o=$("#mOut");
-  if(d.ok){try{META=JSON.parse(Android.loadMeta())}catch(e){}
-    if(o)o.textContent=`Listo: ${d.count} especies, ${d.regulation}.`;render()}
+  if(d.ok){
+    try{META=JSON.parse(IO.loadMeta())}catch(e){}
+    // Se dice QUÉ se actualizó y qué ya estaba al día, no solo "listo": con
+    // tres archivos que se bajan por separado, "listo" no distingue entre
+    // "se actualizó el meta" y "no hacía falta bajar nada".
+    if(o)o.textContent = d.actualizados
+      ? `Listo: ${d.detalle}.` + (d.alDia?` (${d.alDia} ya estaban al día)`:"")
+      : "Ya tenías todo al día.";
+    // dex.json y sprite_index.json solo se releen al reiniciar la app: el dex
+    // se carga una vez en boot() y el índice de sprites vive en Kotlin. Decirlo
+    // en vez de dejar al usuario preguntándose por qué no ve nada distinto.
+    if(d.detalle&&/dex\.json|sprite_index\.json/.test(d.detalle))
+      if(o)o.textContent+=" Reiniciá la app para que tomen efecto.";
+    render();
+  }
   else if(o)o.textContent="No se pudo: "+(d.error||"error");
 };
 document.body.addEventListener("touchstart",keep,{passive:true});

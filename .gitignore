@@ -28,3 +28,8 @@ local.properties
 # validación falló, queda a propósito para poder mirarla. Nunca es la fuente.
 /_staging/
 
+
+# Salida de build_data_manifest.py: copia de los datos + manifest, lista para
+# subir a la URL publica. Es derivada de assets/ — se regenera con un comando,
+# no hay nada que versionar.
+/dist/

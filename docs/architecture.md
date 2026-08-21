@@ -243,6 +243,51 @@ Estos campos se muestran en Rival/Previa como **tags informativos con su nivel d
 
 **Estado:** `roleInCore`/`speedControlMajority`/`sets` — **HECHOS** (sprints 2.3 y 2.5, generados de verdad contra Limitless). `spreadEstimate` — **HECHO** (sprint 2.7, 2026-08-04) — no terminó siendo una estimación heurística compuesta como preveía el diseño original de este párrafo (Pikalytics + rol + movimientos), sino datos reales de reparto/naturaleza de Champions Battle Data. Los cuatro campos de esta lista están hoy instalados en `assets/meta.json` y consumidos por `vFoe()`.
 
+### 10.7 Generación periódica y distribución (2026-08-21)
+
+#### Un comando, tres niveles
+
+`update_data.py` reemplaza el proceso anterior de correr cuatro scripts a mano en orden, recordando cuál dependía de cuál y copiando archivos a `assets/` con `cp`. Los niveles salen de la **frecuencia real de cambio de cada fuente**, no de una división arbitraria:
+
+| Comando | Cuándo | Qué corre | Costo |
+|---|---|---|---|
+| `python update_data.py meta` | semanal | meta de Limitless + cruce con Champions Battle Data | ~2-3 min |
+| `python update_data.py dex` | parche de balance (nerfeos/bufeos) | lo anterior + dex de Showdown | +1 min |
+| `python update_data.py completo` | Pokémon u objetos **nuevos** en Champions | lo anterior + índice de sprites | +2-4 min |
+
+La cadena de dependencias es real, no una convención: `sprites → dex → meta → meta+CBD`. `sprite_index.json` es la fuente de verdad de **qué especies existen** en Champions (sale de la categoría de sprites del propio juego), así que es el único paso capaz de descubrir especies nuevas — y el único lento. Por eso no se corre siempre.
+
+#### Staging → validar → promover
+
+Nada pisa `app/src/main/assets/` hasta que `validate_data.py` da OK sobre lo recién generado. Se genera en `_staging/`, se valida ahí (`validate_data.py --datos`), y solo entonces se promueve. Si falla, lo instalado sigue intacto y los archivos quedan en `_staging/` para inspeccionarlos.
+
+No es celo de más: la app corre offline y confía en que estos tres archivos son mutuamente consistentes. Un `meta.json` que nombre un movimiento que el dex no conoce no rompe con una excepción — **degrada en silencio**, que es el patrón de bug recurrente de este proyecto (`audit.md` §8). **La red se probó sola:** la primera corrida real falló (un torneo de Limitless con un emoji en el nombre reventaba la consola cp1252 de Windows) y no instaló nada.
+
+#### Distribución sin APK nuevo
+
+El requisito: que un usuario con la app instalada reciba datos nuevos sin reinstalar, y que eso escale a miles de usuarios.
+
+**Lo que había, y su hueco.** `updateMeta(url)` existía desde antes pero **solo actualizaba `meta.json`** — `dex.json` y `sprite_index.json` se leían directo de `assets/`, sin ninguna vía de actualización. O sea: con Pokémon nuevos, hacía falta APK nuevo sí o sí, que es justo el caso que más importa. Además pedía **tipear una URL a mano** en el celular, algo que no escala más allá del propio desarrollador.
+
+**Lo que hay ahora.** `DataRepository` (Storage.kt) generaliza el patrón que `MetaRepository` ya usaba —*lo descargado gana sobre lo empaquetado, con caída automática al APK si lo descargado está roto*— a los tres archivos. `loadDex()` y `SpriteMatcher` pasan por ahí en vez de leer `assets/` directo.
+
+`build_data_manifest.py` arma la carpeta `dist/` que se sube a cualquier hosting estático (GitHub Pages, un bucket, un CDN — **no hace falta servidor**). El `manifest.json` pesa <1 KB y lista versión, tamaño, `sha256` y `schema` de cada archivo. La app lo baja, compara contra lo que tiene, y **descarga solo lo que cambió**.
+
+Eso último no es un detalle con muchos usuarios: los tres archivos pesan ~1.7 MB juntos y el que más cambia (`meta.json`, 279 KB) es el más chico. Bajar todo cada semana sería servir 6 veces más datos de lo necesario.
+
+**Garantías de la descarga**, en orden de lo que cada una tapa:
+- **`sha256` por archivo** — una descarga cortada es JSON inválido y se detecta igual; una corrupta *y parseable* no se detecta de otra forma.
+- **Validación de cordura antes de reemplazar** — un `dex.json` sin especies o un `sprite_index.json` de formato viejo se rechazan y se conserva el que funcionaba.
+- **Escritura atómica** (`.tmp` + rename) — nunca queda un archivo a medias.
+- **`minAppVersion`** — el freno de mano. Si unos datos nuevos necesitan código que las apps viejas no tienen, se marca en el manifiesto y esas apps los ignoran en vez de romperse.
+- **Un archivo que la app no conoce se ignora en silencio, a propósito** — es lo que permite publicar una capa de datos nueva sin romper a las apps viejas (junto con el contrato aditivo de §10.2).
+
+**Lo que falta decidir, y por qué no se inventó:** dónde se hospeda. `DATA_URL` en `hud.html` está **vacía a propósito** — poner una URL inventada sería peor que ninguna, porque la app intentaría bajar de un lugar inexistente y el error no diría nada útil. Mientras esté vacía, el campo manual funciona igual que siempre. Cuando se decida, es **cambiar esa línea y nada más**.
+
+**Compatibilidad hacia atrás:** `updateMeta` distingue por el contenido de lo que baja. Un `manifest.json` dispara el flujo de tres archivos; un `meta.json` suelto sigue funcionando como antes, para no romper una URL que alguien ya tenga guardada.
+
+**Sin verificar en dispositivo:** todo el lado Kotlin de esta sección se escribió sin poder compilar ni correr. Lo que sí se verificó acá: los generadores corrieron de verdad, el manifiesto se generó y se inspeccionó, y las dos variantes de la vista de Ajustes se renderizaron en un sandbox con DOM simulado.
+
 ## 11. Dos features chicas, independientes del pipeline de meta — ~~planeadas~~ **HECHAS, 2026-08-03**
 
 Salieron de la sesión de asesoría VGC (`decisions.md` #20). Documentadas primero y no implementadas a propósito (Angel prefiere separar análisis/documentación/plan de escribir código); implementadas después, en la sesión de Fase 2 (sprint 2.5), una vez que ya había plan aprobado y tokens para ejecutarlo.

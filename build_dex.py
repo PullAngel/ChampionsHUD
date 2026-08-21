@@ -22,6 +22,7 @@ Salida tipica: ~400 KB. Datos de Pokemon Showdown (smogon), uso no comercial.
 
 import json
 import re
+from datetime import datetime, timezone
 import sys
 from pathlib import Path
 
@@ -152,7 +153,13 @@ def main():
     for m in mv.values():
         m["t"] = inv.get(m["t"], "NOR")
 
+    # `v` es la versión del FORMATO (contrato aditivo, docs/architecture.md
+    # §10.2). `updated`/`generatedAt` fechan el CONTENIDO — sin eso, la
+    # publicación por internet no tiene con qué comparar y la app terminaría
+    # bajando el archivo entero cada vez (ver build_data_manifest.py).
     out = {"v": 1, "source": "pokemon-showdown",
+           "updated": datetime.now(timezone.utc).date().isoformat(),
+           "generatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
            "species": species, "moves": mv, "learnsets": ls}
     OUT.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")),
                    encoding="utf-8")

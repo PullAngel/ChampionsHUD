@@ -78,34 +78,40 @@ class SpriteMatcher(context: Context) {
     }
 
     init {
-        val raw = runCatching {
-            context.assets.open("sprite_index.json").bufferedReader().use { it.readText() }
-        }.getOrNull()
-
-        if (raw == null) {
-            indexError = "Falta sprite_index.json en assets. Corré build_sprite_index.py."
-        } else {
-            val root = runCatching { JSONObject(raw) }.getOrNull()
-            when {
-                root == null -> indexError = "sprite_index.json ilegible."
-                root.optInt("v", 1) < 2 -> indexError =
-                    "El índice es de una versión anterior. Volvé a correr build_sprite_index.py " +
-                    "(no descarga nada de nuevo, solo recalcula) y copiá el archivo a assets."
-                else -> {
-                    grid = root.optInt("grid", 16)
-                    cgrid = root.optInt("cgrid", 8)
-                    val arr = root.optJSONArray("sprites") ?: JSONArray()
-                    refs = Array(arr.length()) { i ->
-                        val o = arr.getJSONObject(i)
-                        Ref(
-                            o.optInt("dex"), o.optString("form", ""), o.optBoolean("shiny", false),
-                            o.getJSONArray("sil").hundredths(),
-                            o.getJSONArray("col").hundredths(),
-                            o.optDouble("ratio", 1.0).toFloat()
-                        )
-                    }
-                    if (refs.isEmpty()) indexError = "El índice está vacío."
+        // Via DataRepository, no directo a assets: asi una actualizacion por
+        // internet alcanza tambien al indice de sprites — es el archivo que
+        // cambia cuando Champions agrega especies nuevas, y sin el las nuevas
+        // no se reconocen en team preview aunque el dex ya las conozca.
+        // El repositorio cae solo al del APK si no hay descargado o si el
+        // descargado esta roto, asi que el comportamiento sin actualizar es
+        // exactamente el de antes.
+        // load() nunca devuelve null ni lanza: si no hay descargado ni
+        // empaquetado devuelve un indice vacio pero VALIDO, que cae en la rama
+        // de `refs.isEmpty()` de abajo con un mensaje claro. Por eso ya no hay
+        // una rama de "archivo ausente" aparte — seria inalcanzable.
+        val raw = DataRepository.sprites(context).load()
+        val root = runCatching { JSONObject(raw) }.getOrNull()
+        when {
+            root == null -> indexError = "sprite_index.json ilegible."
+            root.optInt("v", 1) < 2 -> indexError =
+                "El índice es de una versión anterior. Volvé a correr build_sprite_index.py " +
+                "(no descarga nada de nuevo, solo recalcula) y copiá el archivo a assets."
+            else -> {
+                grid = root.optInt("grid", 16)
+                cgrid = root.optInt("cgrid", 8)
+                val arr = root.optJSONArray("sprites") ?: JSONArray()
+                refs = Array(arr.length()) { i ->
+                    val o = arr.getJSONObject(i)
+                    Ref(
+                        o.optInt("dex"), o.optString("form", ""), o.optBoolean("shiny", false),
+                        o.getJSONArray("sil").hundredths(),
+                        o.getJSONArray("col").hundredths(),
+                        o.optDouble("ratio", 1.0).toFloat()
+                    )
                 }
+                if (refs.isEmpty()) indexError =
+                    "El índice de sprites está vacío: no hay uno descargado ni empaquetado " +
+                    "en el APK. Corré `python update_data.py completo` y recompilá."
             }
         }
     }
