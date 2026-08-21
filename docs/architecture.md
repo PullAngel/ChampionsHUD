@@ -190,6 +190,19 @@ Se mantiene **JSON plano**, consistente con el resto del proyecto (sin SQLite, s
 
 **Migrar a SQLite** (vía `sql.js`/`wa-sqlite` dentro del WebView, o un puente nativo con Room) únicamente si el índice supera **~10 MB**, si aparecen consultas que requieren joins en tiempo de ejecución, o si el arranque se degrada más allá del umbral anterior. Hasta que eso ocurra, JSON gana por simplicidad — no migrar preventivamente.
 
+#### Contrato de esquema: los cambios son aditivos (2026-08-21)
+
+Los tres archivos de datos declaran su versión de esquema: `meta.json` en `schema`, `dex.json` y `sprite_index.json` en `v`. **Esa versión describe el FORMATO, no el contenido** — el contenido lo fecha `updated`/`generatedAt`.
+
+La regla que hace escalable agregar capas de datos nuevas:
+
+- **Agregar un campo NO sube la versión.** El motor lee todo con `?.`/`||`, así que ignora lo que no conoce. Un `meta.json` con una dimensión nueva funciona sin cambios en una app vieja, y un `meta.json` viejo funciona en una app nueva (el campo simplemente no está y la vista que lo usa no se muestra). Esto es lo que permite publicar datos por internet sin coordinar la actualización de la app (§10.7).
+- **Solo se sube la versión al RENOMBRAR o QUITAR un campo**, que es lo único capaz de romper a un lector viejo. Si eso pasa, el lector nuevo tiene que soportar los dos formatos durante una transición, o negarse explícitamente a leer un esquema que no entiende — nunca leerlo a medias.
+
+**Esto no es una convención escrita y nada más: es un test.** `tests/run.js` → "contrato de esquema de meta.json" alimenta al motor con (a) campos desconocidos arriba y por especie, (b) una especie sin ningún campo opcional, (c) un `meta.json` completamente vacío, y verifica que todas las funciones que consumen META sigan funcionando. Se probó rompiéndolo a propósito (sacándole la lectura defensiva a `probableMoves()`): falla y nombra el problema.
+
+El caso (b) no es hipotético — hoy hay **48 especies así** en el `meta.json` instalado: aparecen en Champions Battle Data pero no en la muestra de torneos de Limitless, así que llegan sin `usage`, sin `moves` y sin `sets`.
+
 ### 10.3 Índice de combinaciones parciales
 
 Viable y ya validado como concepto por productos de terceros (Pokémon Zone publica "team cores" de 2-4 Pokémon con sus completions más probables). Se construye desde los equipos crudos de Limitless:

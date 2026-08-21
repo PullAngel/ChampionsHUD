@@ -75,6 +75,11 @@ SPEED_CONTROL_MOVES = {
     "Nuzzle": "paralysis",
 }
 
+# Ver el comentario junto a "schema" en main(): es la versión del ESQUEMA y
+# solo sube si se rompe la compatibilidad hacia atrás (renombrar/quitar un
+# campo). Agregar campos nuevos es aditivo y NO la sube.
+META_SCHEMA = 1
+
 MIN_TEAMS_PER_SPECIES = 2   # menos que esto es ruido de una sola lista
 TOP_ITEMS = 6
 TOP_MOVES = 8
@@ -467,6 +472,15 @@ def main():
             print(f"Sin resolver ({label}, {sum(counter.values())} veces): {top}")
 
     out = {
+        # Versión del ESQUEMA, no del contenido (`updated` es el contenido).
+        # Contrato, documentado en docs/architecture.md §10.2: los cambios son
+        # ADITIVOS. Agregar un campo nuevo NO sube este número — el motor lee
+        # todo con `?.`/`||` y simplemente ignora lo que no conoce, así que un
+        # meta nuevo funciona en una app vieja y viceversa. Solo se sube si
+        # alguna vez se RENOMBRA o se QUITA un campo existente, que es lo único
+        # que puede romper a un lector viejo. Hay un test que lo verifica
+        # (tests/run.js, "contrato de esquema de meta.json").
+        "schema": META_SCHEMA,
         "regulation": a.regulation,
         "format": "doubles",
         "generatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

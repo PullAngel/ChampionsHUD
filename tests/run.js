@@ -158,6 +158,7 @@ function loadEngine() {
     this.observeOrder = observeOrder;
     this.solveBulk = solveBulk;
     this.spdRange = spdRange;
+    this.metaOf = metaOf;
     this.shown = shown;
     this.nextEventId = nextEventId;
     this.NEW = NEW;
@@ -3048,6 +3049,101 @@ check("todo nombre que meta.json entrega, el motor lo sabe resolver (con dex.jso
     `${fallos.length} nombres de meta.json que el motor no puede resolver. ` +
     `Cualquier código que los consuma los va a descartar en silencio — el bug que ya apareció ` +
     `tres veces. Ejemplos: ${muestra.join(", ")}`);
+});
+
+// ── contrato de ESQUEMA de meta.json (docs/architecture.md §10.2) ──
+// El de arriba verifica que los NOMBRES que meta.json entrega el motor los
+// sepa resolver. Estos verifican algo distinto y complementario: que la FORMA
+// del archivo pueda evolucionar sin romper al motor. Es lo que hace viable
+// agregar una capa de datos nueva más adelante (o publicar un meta nuevo a
+// usuarios con una app vieja) sin coordinar las dos puntas.
+//
+// El motor hoy lee todo con `?.`/`||`, así que cumple. Pero eso no estaba
+// garantizado por nada: alcanzaba con que alguien escribiera `m.sets.length`
+// en vez de `(m.sets||[]).length` para romperlo en silencio la próxima vez
+// que una especie viniera sin ese campo.
+console.log("\ncontrato de esquema de meta.json (architecture.md §10.2):");
+
+/** meta.json mínimo pero VÁLIDO, con dos especies: una completa y otra pelada. */
+function metaDePrueba(extra) {
+  return Object.assign({
+    schema: 1, regulation: "M-B", format: "doubles", updated: "2026-01-01",
+    source: "test", sourceCounts: { tournaments: 1, teams: 100 },
+    cores: [{ pair: [445, 983], count: 30, pct: 30.0 }],
+    species: {
+      445: { usage: 30.0, moves: [["Earthquake", 90]], items: [["Life Orb", 40]],
+             abilities: [["roughskin", 80]], sets: [{ moves: ["Earthquake"], count: 5 }],
+             topNatures: [{ name: "Jolly", pct: 60 }],
+             topEvSpreads: [{ sp: [0, 32, 0, 0, 0, 32], pct: 50 }] },
+      // La segunda NO trae ninguno de los campos opcionales. Es el caso real de
+      // una especie que aparece en una fuente y no en la otra — hoy hay 48 así
+      // en el meta instalado (vienen de CBD, sin datos de torneo).
+      983: {},
+    },
+  }, extra || {});
+}
+
+/** Corre todo lo que consume META y devuelve el primer error, o null. */
+function ejercitarConsumidoresDeMeta() {
+  const B = E.getB();
+  B.team = [E.mkFoe(445, 0.9), E.mkFoe(983, 0.9)];
+  B.pick = 0;
+  const f = B.team[0];
+  try {
+    E.metaOf(445); E.metaOf(983); E.metaOf(999999);
+    E.probableMoves(445, 4); E.probableMoves(983, 4);
+    E.compatibleSets(f); E.compatibleSets(B.team[1]);
+    E.foeMovePool(f); E.foeMovePool(B.team[1]);
+    E.coresAmong([445, 983]);
+    E.speedWeights(445); E.speedWeights(983);
+    // whyBring() recibe una ENTRADA de foeBringOrder(), no un número de dex —
+    // encadenarlas así ejercita el flujo real (el de vPre()) en vez de inventar
+    // una forma de entrada que en producción nunca ocurre.
+    for (const x of E.foeBringOrder()) E.whyBring(x);
+    return null;
+  } catch (e) {
+    return e;
+  }
+}
+
+check("el motor tolera campos NUEVOS que no conoce, arriba y por especie (cambio aditivo)", () => {
+  // El escenario real: se publica un meta con una capa de datos nueva y una
+  // app vieja lo descarga. Tiene que ignorar lo que no entiende, no romperse.
+  const m = metaDePrueba({ capaFutura: { loQueSea: 1 }, otroCampoNuevo: "x" });
+  m.species[445].dimensionNueva = [{ cosa: "valor", pct: 10 }];
+  m.species[445].otraMas = 42;
+  E.setMetaRaw(m);
+  const e = ejercitarConsumidoresDeMeta();
+  assert(!e, `el motor se rompió con campos que no conoce: ${e && e.message}. ` +
+    `El contrato de architecture.md §10.2 dice que los campos nuevos son ignorables — ` +
+    `si esto falla, publicar datos nuevos obliga a actualizar la app a la vez`);
+});
+
+check("el motor tolera una especie SIN ninguno de los campos opcionales", () => {
+  // No es hipotético: hoy hay 48 especies así en el meta instalado (aparecen en
+  // Champions Battle Data pero no en la muestra de torneos de Limitless).
+  E.setMetaRaw(metaDePrueba());
+  const e = ejercitarConsumidoresDeMeta();
+  assert(!e, `el motor se rompió con una especie sin campos opcionales: ${e && e.message}`);
+});
+
+check("el motor tolera un meta.json sin `species`, sin `cores` y sin metadatos", () => {
+  // El peor caso realista: la descarga trajo un archivo válido pero vacío, o de
+  // una fuente que todavía no llenó nada. Tiene que degradar, no explotar.
+  E.setMetaRaw({});
+  const e = ejercitarConsumidoresDeMeta();
+  assert(!e, `el motor se rompió con un meta.json vacío: ${e && e.message}`);
+});
+
+check("meta.json instalado declara su versión de esquema", () => {
+  const metaPath = path.join(ROOT, "app/src/main/assets/meta.json");
+  if (!fs.existsSync(metaPath)) return;
+  const m = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+  assert(typeof m.schema === "number",
+    "meta.json no declara `schema`. Sin eso no hay forma de que un lector " +
+    "detecte un cambio incompatible de formato (architecture.md §10.2)");
+  assertEqual(m.schema, 1, "si esto cambió, fue a propósito: revisá architecture.md §10.2 " +
+    "y confirmá que el motor sigue leyendo el formato nuevo");
 });
 
 console.log("\nseparación Motor / Cliente (Fase 3):");
