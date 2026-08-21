@@ -1,0 +1,14 @@
+# Dependencias de los generadores de datos (update_data.py y los build_*.py).
+# Nada de esto va al APK: corren en la PC del desarrollador, no en el teléfono
+# (docs/architecture.md §10 — la app nunca depende de red durante el combate).
+#
+#     pip install -r requirements.txt
+#
+# Además hace falta `curl` en el PATH del sistema: build_meta_v2.py lo usa en
+# vez de `requests` porque Champions Battle Data responde en 1-3s a curl y en
+# 30-45s a requests contra el mismo endpoint (fingerprint TLS, ver el docstring
+# de ese script). En Windows 10+ y en macOS/Linux modernos ya viene instalado.
+
+requests>=2.31.0     # build_dex.py, build_meta.py, build_sprite_index.py
+pillow>=10.0.0       # build_sprite_index.py — huella de forma/color del sprite
+numpy>=1.24.0        # build_sprite_index.py — cálculo de la huella

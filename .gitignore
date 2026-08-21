@@ -22,3 +22,9 @@ local.properties
 # a mano en cada commit.
 /meta.json
 /meta_v2.json
+
+# Carpeta de trabajo de update_data.py: ahí se genera y se VALIDA todo antes de
+# promoverlo a assets/. Lo que queda adentro es una copia intermedia — y si la
+# validación falló, queda a propósito para poder mirarla. Nunca es la fuente.
+/_staging/
+

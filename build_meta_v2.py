@@ -54,6 +54,7 @@ Uso:
     # genera meta_v2.json en la raíz — no pisa meta.json ni assets/meta.json
 """
 
+import argparse
 import csv
 import io
 import json
@@ -209,17 +210,30 @@ def cbd_ev_spreads(rows):
 
 
 def main():
-    if not LIMITLESS_META.exists():
-        print(f"Falta {LIMITLESS_META} -- corré build_meta.py primero (este script "
+    # --base/--dex/--out existen para que update_data.py pueda encadenar este
+    # paso sobre un meta.json recién generado que TODAVÍA no está instalado
+    # (staging). Sin ellos este script leía siempre el instalado, así que en
+    # una corrida encadenada habría cruzado CBD contra el meta de la semana
+    # pasada sin avisar. Los defaults conservan el uso suelto de siempre.
+    ap = argparse.ArgumentParser(description="Cruce de meta.json con Champions Battle Data.")
+    ap.add_argument("--base", default=str(LIMITLESS_META),
+                    help="meta.json de Limitless que se usa como base")
+    ap.add_argument("--dex", default=str(DEX), help="dex.json a usar")
+    ap.add_argument("--out", default=str(ROOT / "meta_v2.json"), help="dónde escribir la salida")
+    a = ap.parse_args()
+
+    base_path, dex_path, out_path = Path(a.base), Path(a.dex), Path(a.out)
+    if not base_path.exists():
+        print(f"Falta {base_path} -- corré build_meta.py primero (este script "
               "usa su salida como base de usage/moves/items/abilities/sets/cores).",
               file=sys.stderr)
         sys.exit(1)
-    if not DEX.exists():
-        print(f"Falta {DEX} -- corré build_dex.py primero.", file=sys.stderr)
+    if not dex_path.exists():
+        print(f"Falta {dex_path} -- corré build_dex.py primero.", file=sys.stderr)
         sys.exit(1)
 
-    base = json.loads(LIMITLESS_META.read_text(encoding="utf-8"))
-    dex = json.loads(DEX.read_text(encoding="utf-8"))
+    base = json.loads(base_path.read_text(encoding="utf-8"))
+    dex = json.loads(dex_path.read_text(encoding="utf-8"))
 
     print("Tablas canónicas de hud.html ...")
     item_es_by_en, mega_by_norm, abil_slugs = bm.load_canonical_tables()
@@ -301,7 +315,6 @@ def main():
                    "-- EXPERIMENTAL, ver build_meta_v2.py.")
     out["generatedAtV2"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    out_path = ROOT / "meta_v2.json"
     out_path.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"\n{out_path}: {matched} especies cruzadas con CBD de {len(species)} totales "
           f"(base Limitless: {len(base.get('species', {}))}).")

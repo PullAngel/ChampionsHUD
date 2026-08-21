@@ -40,6 +40,19 @@ from pathlib import Path
 
 import requests
 
+# Los nombres de torneo vienen de internet y traen lo que sea: acentos,
+# kanji, emojis. En Windows la consola abre en cp1252 y un solo emoji en un
+# nombre de torneo tira UnicodeEncodeError y aborta la generación entera —
+# pasó de verdad con un torneo llamado "🍋 ...". El dato no tiene nada de
+# malo; el que no lo soporta es el terminal. Se fuerza UTF-8 con reemplazo:
+# peor caso, un nombre sale con signos raros en pantalla, pero el JSON
+# generado (que se escribe aparte, siempre en UTF-8) no se ve afectado.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 ROOT = Path(__file__).parent
 HUD = ROOT / "app/src/main/assets/hud.html"
 DEX = ROOT / "app/src/main/assets/dex.json"
@@ -398,7 +411,17 @@ def main():
     ap.add_argument("--limit", type=int, default=40,
                      help="cuántos torneos recientes procesar (default 40)")
     ap.add_argument("--out", default="meta.json")
+    # --dex existe para que update_data.py encadene este paso sobre un dex.json
+    # recién generado que todavía NO está instalado. Sin él, una corrida
+    # encadenada resolvía los nombres de Limitless contra el dex de la versión
+    # anterior: con especies nuevas en el juego, las nuevas quedarían "sin
+    # resolver" sin que nada explique por qué. El default no cambia el uso suelto.
+    ap.add_argument("--dex", default=None, help="dex.json a usar (default: el instalado)")
     a = ap.parse_args()
+
+    if a.dex:
+        global DEX
+        DEX = Path(a.dex)
 
     dex = load_dex()
     if dex is None:

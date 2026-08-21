@@ -17,6 +17,7 @@ Uso:
     python validate_data.py
 """
 
+import argparse
 import json
 import re
 import sys
@@ -178,7 +179,24 @@ def check_species_abilities_vs_dex(dex):
 
 
 def main():
-    print("Validando datos de Champions HUD...\n")
+    # --datos DIR permite validar una carpeta de STAGING antes de promoverla a
+    # assets/ (update_data.py hace exactamente eso: genera aparte, valida, y
+    # recién ahí pisa lo que la app usa). Sin el flag, el comportamiento es el
+    # de siempre: validar lo que ya está instalado.
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--datos", metavar="DIR", default=None,
+                    help="carpeta con dex.json/meta.json/sprite_index.json a validar "
+                         "(por defecto: app/src/main/assets/)")
+    a = ap.parse_args()
+
+    global DEX, META, SPRITE_INDEX
+    if a.datos:
+        d = Path(a.datos)
+        DEX, META, SPRITE_INDEX = d / "dex.json", d / "meta.json", d / "sprite_index.json"
+        print(f"Validando datos de Champions HUD en {d}/ ...\n")
+    else:
+        print("Validando datos de Champions HUD...\n")
+
     html = HUD.read_text(encoding="utf-8") if HUD.exists() else ""
     if not html:
         err(f"hud.html: no existe ({HUD})")
